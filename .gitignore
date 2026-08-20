@@ -100,13 +100,29 @@ desktop.ini
 
 # ── Claude Code ───────────────────────────────────────────────
 # The planning tree and the skills are deliberately local-only.
-# CLAUDE.md and the root specs ARE committed — they are the
-# public contract; the plan and skills are the working method.
 .claude/plan/
 .claude/skills/
 .claude/settings.local.json
 .claude/projects/
 .claude/todos/
+
+# ── Specification documents — local only ──────────────────────
+# Deliberately not published. CLAUDE.md, README.md, LICENSE and
+# docs/ remain committed; these twelve do not.
+# NOTE: adding a path here does not untrack it. Anything already
+# committed needs `git rm --cached <path>` as well.
+AGENTS.md
+ANALYTICS.md
+ARCHITECTURE.md
+ARCHITECTURE-ESSENTIALS.md
+COMPLIANCE.md
+COPY.md
+DATABASE.md
+DESIGN-SYSTEM.md
+ERRORS.md
+OBSERVABILITY.md
+SUPPORT.md
+UI-UX.md
 
 # ── Misc ──────────────────────────────────────────────────────
 example
