@@ -1,0 +1,31 @@
+{
+  // Local config until shared-config/01 lands @coachos/config/tsconfig.base.json —
+  // this then shrinks to an extends line plus these Node-specific settings.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    // Source imports write the real .ts extension (Node's --experimental-strip-types
+    // dev runner needs the literal file on disk); tsc rewrites it to .js in the
+    // emitted output so the built dist/ still resolves correctly under Node's ESM.
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"],
+
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src"]
+}
