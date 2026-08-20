@@ -50,6 +50,7 @@ apps/*/android/
 dist/
 web-build/
 expo-env.d.ts
+next-env.d.ts
 .easignore
 
 # ── Build output & caches ─────────────────────────────────────
@@ -111,7 +112,11 @@ desktop.ini
 # docs/ remain committed; these twelve do not.
 # NOTE: adding a path here does not untrack it. Anything already
 # committed needs `git rm --cached <path>` as well.
-AGENTS.md
+# AGENTS.md is anchored to the repo root (/AGENTS.md) deliberately — Next.js
+# auto-generates its own apps/web/AGENTS.md tooling-guidance file and
+# explicitly asks to have it committed; a bare pattern here would swallow
+# that unrelated file too.
+/AGENTS.md
 ANALYTICS.md
 ARCHITECTURE.md
 ARCHITECTURE-ESSENTIALS.md

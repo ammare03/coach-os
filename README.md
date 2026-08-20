@@ -1,56 +1,40 @@
-# Welcome to your Expo app 👋
+# CoachOS
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+CoachOS is a mobile-first SaaS platform for online fitness coaches and their clients. It
+replaces the fragmented stack — WhatsApp, Google Meet, spreadsheets, Google Drive — that
+online coaches currently use, so a coach can see, in one place, whether a client trained,
+what they ate, how their form looked, and how they feel.
 
-## Get started
+This repository is a **pnpm + Turborepo monorepo**: one Expo app for both coaches and
+clients, one Hono + tRPC API, and a Next.js marketing/dashboard site.
 
-1. Install dependencies
+## Where the real documentation lives
 
-   ```bash
-   npm install
-   ```
+Read these before writing any code — this README is not the specification.
 
-2. Start the app
+| Document | Owns |
+|---|---|
+| `CLAUDE.md` | What this repository *is* and *why* — product, stack, money, and the decisions nothing else should own |
+| `DATABASE.md` | Every table, key, bucket path, and retention rule |
+| `.claude/skills/` | Conventions and procedures — load the relevant skill before coding |
+| `.claude/plan/` | The build order, phase by phase, task by task — find the lowest-numbered task whose dependencies are done |
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Getting started
 
 ```bash
-npm run reset-project
+pnpm install
+pnpm dev            # api + mobile together
+pnpm dev:mobile      # expo start --dev-client
+pnpm dev:api
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+See `CLAUDE.md` §24 for the full command list, and the `configuration` skill for local
+environment setup.
 
-### Other setup steps
+## Before you contribute
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+- Run `pnpm check` before opening a PR — it must exit 0.
+- No `any` in committed TypeScript.
+- Feature branches + PR only; never commit directly to `main`.
 
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+See the `git-workflow` and `code-conventions` skills for the full rules.
