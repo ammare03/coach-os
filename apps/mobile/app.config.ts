@@ -14,9 +14,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   icon: './assets/images/icon.png',
   scheme: 'coachos',
   userInterfaceStyle: 'automatic',
-  ios: {
-    icon: './assets/expo.icon',
-  },
   android: {
     adaptiveIcon: {
       backgroundColor: '#E6F4FE',
