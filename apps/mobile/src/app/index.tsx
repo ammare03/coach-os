@@ -2,6 +2,10 @@ import * as Device from 'expo-device';
 import { Platform, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+// TEMPORARY — proves Metro resolves a pnpm workspace package. Removed by
+// .claude/plan/phase-00-repository-foundation/workspace-scaffold/03-strip-template.md.
+import { workspaceLinkProof } from '@coachos/utils';
+
 import { AnimatedIcon } from '@/components/animated-icon';
 import { HintRow } from '@/components/hint-row';
 import { ThemedText } from '@/components/themed-text';
@@ -49,6 +53,10 @@ export default function HomeScreen() {
             hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
           />
           <HintRow title="Dev tools" hint={getDevMenuHint()} />
+          <HintRow
+            title="Workspace link"
+            hint={<ThemedText type="small">{workspaceLinkProof}</ThemedText>}
+          />
           <HintRow
             title="Fresh start"
             hint={<ThemedText type="code">npm run reset-project</ThemedText>}
