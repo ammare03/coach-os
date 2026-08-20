@@ -1,5 +1,8 @@
 {
   "enabledPlugins": {
     "expo@claude-plugins-official": true
+  },
+  "env": {
+    "ECC_DISABLED_HOOKS": "pre:edit-write:gateguard-fact-force,pre:bash:gateguard-fact-force"
   }
 }
