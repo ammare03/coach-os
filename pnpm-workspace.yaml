@@ -10,3 +10,15 @@ allowBuilds:
 # symlinked node_modules layout. A flat, hoisted tree avoids resolution
 # failures that otherwise look like missing modules. See CLAUDE.md §3.1.
 nodeLinker: hoisted
+
+# jest-config's own dependency on jest-environment-node stays pinned to the
+# 29.x line even under jest@30 (same for jest-environment-jsdom, pulled in
+# by jest-expo). Left alone, that nests an old jest-mock that jest-runtime
+# 30.4.2 can't talk to — "clearMocksOnScope is not a function" the moment
+# clearMocks/restoreMocks run (packages/config/jest.base.js). Force the
+# whole workspace onto one matching jest-mock/-environment-* line instead
+# of turning those settings off (quality-gates/01).
+overrides:
+  jest-environment-node: '30.4.1'
+  jest-environment-jsdom: '30.4.1'
+  jest-mock: '30.4.1'

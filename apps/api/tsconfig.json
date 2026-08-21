@@ -11,7 +11,10 @@
     // emitted output so the built dist/ still resolves correctly under Node's ESM.
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
-    "types": ["node"],
+    // "jest" is needed for src/__tests__/**.test.ts to typecheck — this
+    // tsconfig doubles as both the build config and the typecheck config
+    // (quality-gates/01).
+    "types": ["node", "jest"],
 
     "outDir": "dist",
     "rootDir": "src"

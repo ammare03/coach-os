@@ -1,6 +1,8 @@
 {
   "extends": ["expo/tsconfig.base", "@coachos/config/tsconfig.base.json"],
   "compilerOptions": {
+    // Needed for src/app/*.test.tsx to typecheck (quality-gates/01).
+    "types": ["jest"],
     "paths": {
       "@/*": [
         "./src/*"

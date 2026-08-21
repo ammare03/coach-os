@@ -7,7 +7,10 @@
     "./eslint.base": "./eslint.base.js",
     "./eslint.react-native": "./eslint.react-native.js",
     "./tailwind.base": "./tailwind.base.js",
-    "./prettier.json": "./prettier.json"
+    "./prettier.json": "./prettier.json",
+    "./jest.base": "./jest.base.js",
+    "./jest.node": "./jest.node.js",
+    "./jest.react-native": "./jest.react-native.js"
   },
   "peerDependencies": {
     "eslint": "^9.0.0",
@@ -20,6 +23,7 @@
     "eslint-import-resolver-node": "0.4.0",
     "eslint-import-resolver-typescript": "4.4.5",
     "eslint-plugin-import": "2.32.0",
+    "jest-expo": "57.0.4",
     "typescript-eslint": "8.67.0"
   }
 }

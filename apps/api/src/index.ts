@@ -19,6 +19,13 @@ app.get('/health', (c) =>
   }),
 );
 
-export const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
-  console.log(`API listening on http://localhost:${info.port}`);
-});
+// Guarded so importing this module under test (to get `app`) never opens a
+// real port — Jest would otherwise leave every test file with an open
+// handle. `env.ts`'s NODE_ENV enum has carried a 'test' value since it was
+// written for exactly this check (quality-gates/01).
+export const server =
+  env.NODE_ENV === 'test'
+    ? undefined
+    : serve({ fetch: app.fetch, port: env.PORT }, (info) => {
+        console.log(`API listening on http://localhost:${info.port}`);
+      });
