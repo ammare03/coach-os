@@ -5,6 +5,7 @@
 // §0, phase-01-data-layer/README.md).
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   boolean,
   check,
   date,
@@ -108,6 +109,41 @@ export const authProviders = identitySchema.table(
     // DB§7: every FK is indexed, no exceptions — Postgres doesn't do this
     // for you. Neither of this table's other indexes leads with user_id.
     userIdIdx: index('auth_providers_user_id_idx').on(t.userId),
+  }),
+);
+
+export const refreshTokens = identitySchema.table(
+  'refresh_tokens',
+  {
+    ...id,
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull().unique(), // SHA-256. NEVER store the raw token — enforced in application code (auth-server/02, /04), not by this column.
+    familyId: uuid('family_id').notNull(), // rotation family; reuse => revoke family
+    deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'set null' }), // losing the device record must not invalidate an otherwise-valid session
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    // Self-referencing rotation chain. DB§5.1's DDL leaves ON DELETE
+    // unspecified here; DB§2's general cascade policy ("everything else
+    // RESTRICT") is the more complete rule to fall back to when DATABASE.md
+    // is silent on a specific FK (identity-schema/02 §Approach 2).
+    replacedBy: uuid('replaced_by').references((): AnyPgColumn => refreshTokens.id, {
+      onDelete: 'restrict',
+    }),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => ({
+    // Partial: active-token queries (family validity, current active token)
+    // never need to scan revoked history (DB§7).
+    familyIdx: index('refresh_tokens_family')
+      .on(t.familyId)
+      .where(sql`${t.revokedAt} IS NULL`),
+    // DB§7: every FK is indexed, no exceptions. None of these three are
+    // covered by refresh_tokens_family (a different column).
+    userIdIdx: index('refresh_tokens_user_id_idx').on(t.userId),
+    deviceIdIdx: index('refresh_tokens_device_id_idx').on(t.deviceId),
+    replacedByIdx: index('refresh_tokens_replaced_by_idx').on(t.replacedBy),
   }),
 );
 
