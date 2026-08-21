@@ -7,7 +7,7 @@
   "types": "src/index.ts",
   "scripts": {
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "node --env-file-if-exists=.env --experimental-strip-types src/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "db:seed": "node --env-file=.env --experimental-strip-types src/seed.ts",
     "typecheck": "tsc --noEmit",
@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@coachos/config": "workspace:*",
+    "@types/node": "22.20.1",
     "drizzle-kit": "0.31.10",
     "typescript": "~6.0.3"
   }

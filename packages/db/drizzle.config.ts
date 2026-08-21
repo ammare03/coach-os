@@ -5,13 +5,16 @@
 // all of them. See db-package-scaffold/01's "Risks" section.
 import { defineConfig } from 'drizzle-kit';
 
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
-  // drizzle-kit is a CLI, run outside the API process, so it can't go
-  // through apps/api/src/env.ts — this is the one place in the repo a
-  // Postgres connection string is read directly from process.env.
-  throw new Error('DATABASE_URL must be set to run drizzle-kit (see packages/db/.env.example).');
-}
+import { parseEnvironment, resolveConnectionString } from './src/migrate-env.ts';
+
+// drizzle-kit's CLI doesn't forward custom flags into this file, so
+// `db:generate`/`db:studio` target a non-local database via DRIZZLE_ENV
+// rather than `--env` (which `db:migrate` uses instead — see migrate.ts).
+// `db:generate` and `db:studio` are local-only in every command DB§12.4
+// documents; DRIZZLE_ENV exists for the rare case of pointing `db:studio`
+// at staging to inspect it, not as a routine workflow.
+const target = parseEnvironment(process.env.DRIZZLE_ENV);
+const databaseUrl = resolveConnectionString(target);
 
 export default defineConfig({
   dialect: 'postgresql',

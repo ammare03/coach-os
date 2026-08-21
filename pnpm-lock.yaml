@@ -248,6 +248,9 @@ importers:
       '@coachos/config':
         specifier: workspace:*
         version: link:../config
+      '@types/node':
+        specifier: 22.20.1
+        version: 22.20.1
       drizzle-kit:
         specifier: 0.31.10
         version: 0.31.10
