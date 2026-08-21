@@ -1,7 +1,7 @@
 {
-  // Next's required TypeScript config. Once shared-config/01 lands, this
-  // extends @coachos/config/tsconfig.base.json and keeps only what Next
-  // itself demands (jsx, moduleResolution, the next plugin, next-env.d.ts).
+  "extends": "@coachos/config/tsconfig.base.json",
+  // Next's required TypeScript config — only what Next itself demands
+  // (jsx, moduleResolution, the next plugin, next-env.d.ts).
   "compilerOptions": {
     "target": "ES2017",
     "lib": [
@@ -10,14 +10,9 @@
       "esnext"
     ],
     "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
     "noEmit": true,
-    "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
     "plugins": [

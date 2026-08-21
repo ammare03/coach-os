@@ -7,8 +7,9 @@
 // no hint the resolver never looked outside apps/mobile/node_modules.
 // See CLAUDE.md §3.1 and
 // .claude/plan/phase-00-repository-foundation/workspace-scaffold/02-relocate-expo-app.md.
-const { getDefaultConfig } = require('expo/metro-config');
 const path = require('node:path');
+
+const { getDefaultConfig } = require('expo/metro-config');
 
 const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, '../..');

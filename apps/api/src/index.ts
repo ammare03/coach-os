@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 
 import packageJson from '../package.json' with { type: 'json' };
+
 import { env } from './env.ts';
 
 // The Hono app instance is created and exported before the listener starts,

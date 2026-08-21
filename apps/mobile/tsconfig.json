@@ -1,7 +1,6 @@
 {
-  "extends": "expo/tsconfig.base",
+  "extends": ["expo/tsconfig.base", "@coachos/config/tsconfig.base.json"],
   "compilerOptions": {
-    "strict": true,
     "paths": {
       "@/*": [
         "./src/*"
