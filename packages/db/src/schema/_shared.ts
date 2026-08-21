@@ -5,7 +5,7 @@
 // Drizzle's bare `pgTable` lands in the `public` schema and is a review
 // blocker (db-package-scaffold/01).
 import { sql } from 'drizzle-orm';
-import { pgSchema, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { customType, pgSchema, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { uuidv7 } from 'uuidv7';
 
 // DB§3 — one database, five schemas, mirroring the feature slices. This is
@@ -48,3 +48,14 @@ export const timestamps = {
 export const softDelete = {
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
 };
+
+// DB§2.1's `citext` extension, as a Drizzle column type — drizzle-orm has
+// no built-in `citext`, so this is `customType`'s documented use case, not
+// a workaround. Every email column in DB§5.1 uses this, never plain `text`
+// with application-side lowercasing: the case-insensitive guarantee lives
+// in the column type itself (identity-schema/01 §Risks).
+export const citext = customType<{ data: string }>({
+  dataType() {
+    return 'citext';
+  },
+});

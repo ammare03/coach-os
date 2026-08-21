@@ -8,6 +8,13 @@
       "when": 1787330242978,
       "tag": "0000_extensions_and_enums",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787333473818,
+      "tag": "0001_identity_users_auth_devices",
+      "breakpoints": true
     }
   ]
 }
