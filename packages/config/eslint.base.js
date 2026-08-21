@@ -15,8 +15,63 @@ const prettierConfig = require('eslint-config-prettier');
 
 const TS_FILES = ['**/*.{ts,tsx,mts,cts}'];
 
+// packages/utils's purity boundary (shared-config/02): it must run
+// identically on the server, on the device, and in a worklet, so it may
+// depend on nothing that only exists in one of those three. Defined once,
+// here, and applied two ways below: unconditionally by
+// packages/utils/eslint.config.cjs (files-glob matching is relative to
+// wherever ESLint is invoked from, so a path-scoped rule silently never
+// fires when linting runs with packages/utils itself as the cwd — the
+// normal case), and path-scoped in this file's own exported array as
+// defense-in-depth for a future whole-repo lint run.
+const utilsPurityRules = {
+  'import/no-nodejs-modules': [
+    'error',
+    {
+      allow: [],
+    },
+  ],
+  'no-restricted-imports': [
+    'error',
+    {
+      paths: [
+        {
+          name: 'react',
+          message:
+            'packages/utils runs on the server and in a Reanimated worklet, ' +
+            'neither of which has React — the formula belongs in a package ' +
+            'that has a UI, or this dependency belongs on the caller.',
+        },
+        {
+          name: 'react-dom',
+          message: 'packages/utils has no DOM. See the "react" restriction above.',
+        },
+        {
+          name: 'react-native',
+          message: 'packages/utils has no React Native runtime. See the "react" restriction above.',
+        },
+      ],
+      patterns: [
+        {
+          group: ['react-native/*', '@react-native/*', 'react-native-*', 'expo', 'expo-*', '@expo/*'],
+          message:
+            'packages/utils must run on the server too — nothing from the ' +
+            'Expo/React Native ecosystem may be imported here.',
+        },
+        {
+          group: ['@coachos/*'],
+          message:
+            'packages/utils has zero dependency on other @coachos/* workspace ' +
+            'packages by design — that is what makes it safe to import from ' +
+            'anywhere. If two packages need to share this code, it belongs here instead.',
+        },
+      ],
+    },
+  ],
+};
+
 /** @type {import('eslint').Linter.Config[]} */
-module.exports = tseslint.config(
+const config = tseslint.config(
   js.configs.recommended,
   {
     // typescript-eslint's own recommended config includes two entries with
@@ -71,6 +126,10 @@ module.exports = tseslint.config(
       'import/no-default-export': 'error',
     },
   },
+  {
+    files: ['packages/utils/**/*.{ts,tsx}'],
+    rules: utilsPurityRules,
+  },
   prettierConfig,
   {
     // Framework/tooling config files (eslint.config.js, next.config.ts, …)
@@ -87,3 +146,6 @@ module.exports = tseslint.config(
     ignores: ['dist/**', '.next/**', '.expo/**', '.turbo/**', 'node_modules/**'],
   },
 );
+
+module.exports = config;
+module.exports.utilsPurityRules = utilsPurityRules;

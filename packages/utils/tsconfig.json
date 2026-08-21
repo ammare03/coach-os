@@ -1,0 +1,21 @@
+{
+  "extends": "@coachos/config/tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    // apps/api imports this package's raw .ts source under Node's native
+    // type-stripping loader, which needs the literal .ts extension on
+    // relative imports (same convention as apps/api itself).
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    // No "node" here on purpose — packages/utils never targets Node specifically
+    // (it also runs on-device, in a worklet). Ambient Node globals like `process`
+    // would let code lean on them without an import, defeating the purity rule
+    // below, which only catches explicit `require`/`import` of node builtins.
+    "types": ["jest"],
+    "noEmit": true
+  },
+  "include": ["src"]
+}
