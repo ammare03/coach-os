@@ -80,6 +80,9 @@ jobs:
       # Blocks on high/critical only (CLAUDE.md §21.2); moderate/low are
       # still printed but never fail the run. A gate that goes permanently
       # red on an unfixable transitive advisory is a gate nobody reads
-      # (quality-gates/03 §Risks).
+      # (quality-gates/03 §Risks) — two currently-unfixable image-size
+      # advisories are explicitly allow-listed in pnpm-workspace.yaml's
+      # `auditConfig`, not silenced here, so the exception is visible next
+      # to the lockfile it applies to.
       - name: pnpm audit (high/critical only)
         run: pnpm audit --audit-level=high

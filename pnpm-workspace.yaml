@@ -6,6 +6,20 @@ allowBuilds:
   esbuild: true
   unrs-resolver: true
 
+# GHSA-w3rx-r6r6-pgpr / GHSA-5p2g-fcmc-qvqq — image-size (transitive, via
+# metro <- react-native <- expo, apps/mobile's build toolchain only; never
+# runtime-shipped code). Both are DoS-via-malformed-image-parsing; GitHub's
+# own advisory lists first_patched_version: null for each — no version of
+# image-size fixes them yet as of 2026-08-21. `pnpm audit --ignore <id>`
+# wrote this block; it's what keeps CI's audit gate (quality-gates/03) from
+# going permanently red on an advisory nobody can currently act on. Remove
+# an entry the day image-size actually ships a fix — check `pnpm audit`
+# locally before removing either one.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-w3rx-r6r6-pgpr
+    - GHSA-5p2g-fcmc-qvqq
+
 # Metro (React Native's bundler) does not reliably follow pnpm's default
 # symlinked node_modules layout. A flat, hoisted tree avoids resolution
 # failures that otherwise look like missing modules. See CLAUDE.md §3.1.
