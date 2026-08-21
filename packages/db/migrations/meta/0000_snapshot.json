@@ -1,0 +1,175 @@
+{
+  "id": "bb396594-439b-405f-8d3d-b9d13c3ec248",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {},
+  "enums": {
+    "public.assignment_status": {
+      "name": "assignment_status",
+      "schema": "public",
+      "values": ["active", "completed", "paused", "cancelled"]
+    },
+    "public.billing_platform": {
+      "name": "billing_platform",
+      "schema": "public",
+      "values": ["app_store", "play_store", "stripe", "manual"]
+    },
+    "public.checkin_cadence": {
+      "name": "checkin_cadence",
+      "schema": "public",
+      "values": ["weekly", "biweekly", "monthly"]
+    },
+    "public.checkin_status": {
+      "name": "checkin_status",
+      "schema": "public",
+      "values": ["pending", "submitted", "reviewed", "missed"]
+    },
+    "public.client_status": {
+      "name": "client_status",
+      "schema": "public",
+      "values": ["invited", "active", "paused", "archived"]
+    },
+    "public.comment_target": {
+      "name": "comment_target",
+      "schema": "public",
+      "values": [
+        "workout_session",
+        "set_log",
+        "meal",
+        "media_asset",
+        "checkin",
+        "program_day",
+        "body_metric"
+      ]
+    },
+    "public.experience_level": {
+      "name": "experience_level",
+      "schema": "public",
+      "values": ["beginner", "intermediate", "advanced"]
+    },
+    "public.export_status": {
+      "name": "export_status",
+      "schema": "public",
+      "values": ["queued", "building", "ready", "failed", "expired"]
+    },
+    "public.food_source": {
+      "name": "food_source",
+      "schema": "public",
+      "values": ["openfoodfacts", "usda", "coach", "client", "verified"]
+    },
+    "public.live_session_kind": {
+      "name": "live_session_kind",
+      "schema": "public",
+      "values": ["checkin_call", "live_workout", "group"]
+    },
+    "public.meal_type": {
+      "name": "meal_type",
+      "schema": "public",
+      "values": ["breakfast", "lunch", "dinner", "snack", "pre_workout", "post_workout"]
+    },
+    "public.media_kind": {
+      "name": "media_kind",
+      "schema": "public",
+      "values": ["video", "image", "audio", "document"]
+    },
+    "public.media_status": {
+      "name": "media_status",
+      "schema": "public",
+      "values": ["uploading", "processing", "ready", "failed", "deleted"]
+    },
+    "public.media_visibility": {
+      "name": "media_visibility",
+      "schema": "public",
+      "values": ["coach_only", "shared", "private"]
+    },
+    "public.metric_source": {
+      "name": "metric_source",
+      "schema": "public",
+      "values": ["manual", "checkin", "coach"]
+    },
+    "public.moderation_action": {
+      "name": "moderation_action",
+      "schema": "public",
+      "values": ["none", "warning", "content_removed", "suspension", "ban"]
+    },
+    "public.movement_pattern": {
+      "name": "movement_pattern",
+      "schema": "public",
+      "values": ["squat", "hinge", "push", "pull", "carry", "core", "isolation", "other"]
+    },
+    "public.photo_angle": {
+      "name": "photo_angle",
+      "schema": "public",
+      "values": ["front", "side", "back", "custom"]
+    },
+    "public.report_reason": {
+      "name": "report_reason",
+      "schema": "public",
+      "values": [
+        "harassment",
+        "spam",
+        "inappropriate_content",
+        "impersonation",
+        "unsafe_advice",
+        "other"
+      ]
+    },
+    "public.report_status": {
+      "name": "report_status",
+      "schema": "public",
+      "values": ["pending", "triaged", "actioned", "dismissed"]
+    },
+    "public.report_target": {
+      "name": "report_target",
+      "schema": "public",
+      "values": ["message", "comment", "media_asset", "user"]
+    },
+    "public.session_status": {
+      "name": "session_status",
+      "schema": "public",
+      "values": ["scheduled", "in_progress", "completed", "skipped"]
+    },
+    "public.subscription_status": {
+      "name": "subscription_status",
+      "schema": "public",
+      "values": ["trialing", "active", "grace", "paused", "expired", "refunded"]
+    },
+    "public.subscription_tier": {
+      "name": "subscription_tier",
+      "schema": "public",
+      "values": ["starter", "coach", "pro", "studio", "agency"]
+    },
+    "public.training_goal": {
+      "name": "training_goal",
+      "schema": "public",
+      "values": ["fat_loss", "muscle_gain", "performance", "health", "other"]
+    },
+    "public.user_role": {
+      "name": "user_role",
+      "schema": "public",
+      "values": ["coach", "client", "assistant"]
+    },
+    "public.weight_unit": {
+      "name": "weight_unit",
+      "schema": "public",
+      "values": ["kg", "lb"]
+    }
+  },
+  "schemas": {
+    "coaching": "coaching",
+    "identity": "identity",
+    "nutrition": "nutrition",
+    "platform": "platform",
+    "training": "training"
+  },
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

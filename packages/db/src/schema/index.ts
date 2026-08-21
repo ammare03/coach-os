@@ -1,5 +1,5 @@
-// Re-exports every schema module plus their relations() blocks. Empty for
-// now — `phase-01-data-layer/db-package-scaffold/01` re-exports
-// identity.ts, training.ts, nutrition.ts, coaching.ts, platform.ts, and
-// enums.ts here (DATABASE.md DB§11.1).
-export {};
+// Barrel — re-exports every schema module plus their relations() blocks.
+// identity.ts, training.ts, nutrition.ts, coaching.ts, and platform.ts join
+// this list as features 2 through 6 fill them in (DATABASE.md DB§11.1).
+export * from './enums.ts';
+export * from './_shared.ts';
