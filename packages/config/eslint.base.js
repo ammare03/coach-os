@@ -12,6 +12,7 @@ const js = require('@eslint/js');
 const tseslint = require('typescript-eslint');
 const importPlugin = require('eslint-plugin-import');
 const prettierConfig = require('eslint-config-prettier');
+const noHandWrittenRowType = require('./eslint-rules/no-hand-written-row-type.js');
 
 const TS_FILES = ['**/*.{ts,tsx,mts,cts}'];
 
@@ -53,7 +54,14 @@ const utilsPurityRules = {
       ],
       patterns: [
         {
-          group: ['react-native/*', '@react-native/*', 'react-native-*', 'expo', 'expo-*', '@expo/*'],
+          group: [
+            'react-native/*',
+            '@react-native/*',
+            'react-native-*',
+            'expo',
+            'expo-*',
+            '@expo/*',
+          ],
           message:
             'packages/utils must run on the server too — nothing from the ' +
             'Expo/React Native ecosystem may be imported here.',
@@ -129,6 +137,18 @@ const config = tseslint.config(
   {
     files: ['packages/utils/**/*.{ts,tsx}'],
     rules: utilsPurityRules,
+  },
+  {
+    // db-package-scaffold/05: flags a hand-written row type outside
+    // packages/db, where the real `typeof someTable.$inferSelect`
+    // declarations legitimately live (and where this rule would never
+    // fire anyway — see the rule's own doc comment on TSTypeQuery).
+    files: TS_FILES,
+    ignores: ['packages/db/**'],
+    plugins: { local: { rules: { 'no-hand-written-row-type': noHandWrittenRowType } } },
+    rules: {
+      'local/no-hand-written-row-type': 'error',
+    },
   },
   prettierConfig,
   {
