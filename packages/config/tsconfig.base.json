@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    // CLAUDE.md §17.1's five non-negotiable flags. Every workspace inherits
+    // these — a workspace that overrides one locally is a review blocker,
+    // not a local decision (shared-config/01).
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+
+    // Required for verbatimModuleSyntax to hold under every module target
+    // this workspace mixes (NodeNext, bundler, esnext).
+    "isolatedModules": true,
+
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true
+  }
+}

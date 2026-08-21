@@ -2,6 +2,7 @@
   "name": "coach-os",
   "private": true,
   "packageManager": "pnpm@11.22.0",
+  "prettier": "@coachos/config/prettier.json",
   "scripts": {
     "dev": "turbo run dev",
     "dev:mobile": "turbo run dev --filter=mobile",
@@ -10,9 +11,14 @@
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "check": "turbo run check"
+    "check": "turbo run check",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
+    "@coachos/config": "workspace:*",
+    "eslint": "9.39.5",
+    "prettier": "3.9.6",
     "turbo": "2.10.11"
   }
 }
