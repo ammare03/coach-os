@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # The repo was bootstrapped with npm; this is what stops
       # package-lock.json (or a stray yarn.lock) from reappearing the first
@@ -44,13 +44,13 @@ jobs:
           fi
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       # cache: pnpm needs pnpm already on PATH (the prior step) to resolve
       # the store directory; it keys on pnpm-lock.yaml automatically, so a PR
       # touching one file never re-downloads the whole dependency tree.
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -60,7 +60,7 @@ jobs:
       # justified at the $0/mo Phase 1 ceiling (CLAUDE.md §3.4.1 step 5,
       # §3.4.2); this local cache covers the same need for free.
       - name: Cache Turborepo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .turbo
           key: turbo-${{ runner.os }}-${{ github.sha }}
