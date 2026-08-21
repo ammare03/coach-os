@@ -1,0 +1,78 @@
+CREATE TABLE "identity"."client_profiles" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL,
+	"coach_id" uuid NOT NULL,
+	"status" "client_status" DEFAULT 'invited' NOT NULL,
+	"invited_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"activated_at" timestamp with time zone,
+	"paused_at" timestamp with time zone,
+	"archived_at" timestamp with time zone,
+	"seat_hold_until" timestamp with time zone,
+	"date_of_birth" date,
+	"sex_at_birth" text,
+	"height_cm" numeric(5, 1),
+	"goal" "training_goal",
+	"goal_notes" text,
+	"experience_level" "experience_level",
+	"training_days_per_week" smallint,
+	"equipment_access" text[] DEFAULT '{}' NOT NULL,
+	"dietary_restrictions" text[] DEFAULT '{}' NOT NULL,
+	"injuries" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"target_calories" integer,
+	"target_protein_g" integer,
+	"target_carbs_g" integer,
+	"target_fat_g" integer,
+	"targets_by_weekday" jsonb,
+	"deleted_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "client_profiles_sex_at_birth_check" CHECK ("identity"."client_profiles"."sex_at_birth" IN ('male', 'female', 'intersex', 'prefer_not_to_say')),
+	CONSTRAINT "client_profiles_height_cm_check" CHECK ("identity"."client_profiles"."height_cm" BETWEEN 50 AND 260),
+	CONSTRAINT "client_profiles_training_days_per_week_check" CHECK ("identity"."client_profiles"."training_days_per_week" BETWEEN 0 AND 14),
+	CONSTRAINT "client_profiles_target_calories_check" CHECK ("identity"."client_profiles"."target_calories" BETWEEN 500 AND 10000),
+	CONSTRAINT "client_profiles_target_protein_g_check" CHECK ("identity"."client_profiles"."target_protein_g" >= 0),
+	CONSTRAINT "client_profiles_target_carbs_g_check" CHECK ("identity"."client_profiles"."target_carbs_g" >= 0),
+	CONSTRAINT "client_profiles_target_fat_g_check" CHECK ("identity"."client_profiles"."target_fat_g" >= 0),
+	CONSTRAINT "client_status_timestamps" CHECK (("identity"."client_profiles"."status" <> 'active' OR "identity"."client_profiles"."activated_at" IS NOT NULL) AND ("identity"."client_profiles"."status" <> 'archived' OR "identity"."client_profiles"."archived_at" IS NOT NULL))
+);
+--> statement-breakpoint
+CREATE TABLE "identity"."coach_profiles" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL,
+	"business_name" text,
+	"bio" text,
+	"specialties" text[] DEFAULT '{}' NOT NULL,
+	"certifications" text[] DEFAULT '{}' NOT NULL,
+	"instagram_handle" text,
+	"website" text,
+	"brand_primary_color" text,
+	"brand_logo_asset_id" uuid,
+	"subscription_tier" "subscription_tier" DEFAULT 'starter' NOT NULL,
+	"subscription_status" "subscription_status" DEFAULT 'active' NOT NULL,
+	"billing_platform" "billing_platform",
+	"revenuecat_app_user_id" text,
+	"store_transaction_id" text,
+	"stripe_customer_id" text,
+	"billing_country" char(2),
+	"billing_currency" char(3),
+	"seat_packs" integer DEFAULT 0 NOT NULL,
+	"entitlement_expires_at" timestamp with time zone,
+	"trial_used_at" timestamp with time zone,
+	"billing_synced_at" timestamp with time zone,
+	"quiet_hours_start" time,
+	"quiet_hours_end" time,
+	"deleted_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "coach_profiles_user_id_unique" UNIQUE("user_id"),
+	CONSTRAINT "coach_profiles_revenuecat_app_user_id_unique" UNIQUE("revenuecat_app_user_id"),
+	CONSTRAINT "coach_profiles_brand_primary_color_check" CHECK ("identity"."coach_profiles"."brand_primary_color" ~ '^#[0-9A-Fa-f]{6}$'),
+	CONSTRAINT "coach_profiles_seat_packs_check" CHECK ("identity"."coach_profiles"."seat_packs" BETWEEN 0 AND 3)
+);
+--> statement-breakpoint
+ALTER TABLE "identity"."client_profiles" ADD CONSTRAINT "client_profiles_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "identity"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "identity"."client_profiles" ADD CONSTRAINT "client_profiles_coach_id_coach_profiles_id_fk" FOREIGN KEY ("coach_id") REFERENCES "identity"."coach_profiles"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "identity"."coach_profiles" ADD CONSTRAINT "coach_profiles_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "identity"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "client_profiles_one_active_coach" ON "identity"."client_profiles" USING btree ("user_id") WHERE "identity"."client_profiles"."deleted_at" IS NULL;--> statement-breakpoint
+CREATE INDEX "client_profiles_coach" ON "identity"."client_profiles" USING btree ("coach_id","status");--> statement-breakpoint
+CREATE INDEX "client_profiles_active_seats" ON "identity"."client_profiles" USING btree ("coach_id") WHERE "identity"."client_profiles"."status" IN ('active', 'invited') AND "identity"."client_profiles"."deleted_at" IS NULL;

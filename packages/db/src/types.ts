@@ -14,7 +14,14 @@
 // `interface`/`type` that mirrors a table — `eslint.base.js`'s
 // `local/no-hand-written-row-type` rule flags the common case of the
 // latter.
-import type { authProviders, devices, refreshTokens, users } from './schema/identity.ts';
+import type {
+  authProviders,
+  clientProfiles,
+  coachProfiles,
+  devices,
+  refreshTokens,
+  users,
+} from './schema/identity.ts';
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -27,3 +34,9 @@ export type NewDevice = typeof devices.$inferInsert;
 
 export type RefreshToken = typeof refreshTokens.$inferSelect;
 export type NewRefreshToken = typeof refreshTokens.$inferInsert;
+
+export type CoachProfile = typeof coachProfiles.$inferSelect;
+export type NewCoachProfile = typeof coachProfiles.$inferInsert;
+
+export type ClientProfile = typeof clientProfiles.$inferSelect;
+export type NewClientProfile = typeof clientProfiles.$inferInsert;

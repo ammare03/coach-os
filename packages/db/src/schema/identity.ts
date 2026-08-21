@@ -7,17 +7,32 @@ import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   boolean,
+  char,
   check,
   date,
   index,
+  integer,
+  jsonb,
+  numeric,
+  smallint,
   text,
+  time,
   timestamp,
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 
 import { citext, id, identitySchema, softDelete, timestamps } from './_shared.ts';
-import { userRole, weightUnit } from './enums.ts';
+import {
+  billingPlatform,
+  clientStatus,
+  experienceLevel,
+  subscriptionStatus,
+  subscriptionTier,
+  trainingGoal,
+  userRole,
+  weightUnit,
+} from './enums.ts';
 
 // `avatar_asset_id` references `coaching.media_assets(id)` per DB§5.1, but
 // that table doesn't exist until coaching-schema (a later feature in this
@@ -169,5 +184,156 @@ export const devices = identitySchema.table(
       t.userId,
       t.expoPushToken,
     ),
+  }),
+);
+
+// `parent_coach_id` (the assistant-coach hierarchy column) and its guard
+// trigger are identity-schema/05's job, not this task's — DB§5.1's DDL
+// shows it inline in one CREATE TABLE, but the task breakdown deliberately
+// splits it into its own reviewable migration. Every coach is a root coach
+// until task 05 lands.
+//
+// `brand_logo_asset_id` has the same forward-reference problem as
+// `users.avatar_asset_id` (identity-schema/01): `coaching.media_assets`
+// doesn't exist yet, so this is strategy 1 again — a plain `uuid` column,
+// FK added later by coaching-schema.
+export const coachProfiles = identitySchema.table(
+  'coach_profiles',
+  {
+    ...id,
+    userId: uuid('user_id')
+      .notNull()
+      .unique()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    businessName: text('business_name'),
+    bio: text('bio'),
+    specialties: text('specialties').array().notNull().default([]),
+    certifications: text('certifications').array().notNull().default([]),
+    instagramHandle: text('instagram_handle'),
+    website: text('website'),
+    brandPrimaryColor: text('brand_primary_color'),
+    brandLogoAssetId: uuid('brand_logo_asset_id'), // FK added later — see comment above
+
+    // Billing replica; RevenueCat is the system of record (§15.7).
+    subscriptionTier: subscriptionTier('subscription_tier').notNull().default('starter'),
+    subscriptionStatus: subscriptionStatus('subscription_status').notNull().default('active'),
+    billingPlatform: billingPlatform('billing_platform'),
+    revenuecatAppUserId: text('revenuecat_app_user_id').unique(),
+    storeTransactionId: text('store_transaction_id'),
+    stripeCustomerId: text('stripe_customer_id'), // Agency / web only
+    billingCountry: char('billing_country', { length: 2 }), // ISO-3166-1 alpha-2 storefront, from RevenueCat
+    // ISO-4217, from RevenueCat. Reporting and support copy ONLY — never an
+    // input to an entitlement, seat, or feature decision (§15.6).
+    billingCurrency: char('billing_currency', { length: 3 }),
+    seatPacks: integer('seat_packs').notNull().default(0),
+    entitlementExpiresAt: timestamp('entitlement_expires_at', { withTimezone: true }),
+    trialUsedAt: timestamp('trial_used_at', { withTimezone: true }),
+    billingSyncedAt: timestamp('billing_synced_at', { withTimezone: true }),
+
+    quietHoursStart: time('quiet_hours_start'), // §8.8 coach availability
+    quietHoursEnd: time('quiet_hours_end'),
+    ...softDelete,
+    ...timestamps,
+  },
+  (t) => ({
+    // NOTE: client_seat_limit is DERIVED in packages/utils, never stored
+    // (§15.7) — no column for it exists here, and none should without a
+    // CLAUDE.md §27 decision entry.
+    brandColorHex: check(
+      'coach_profiles_brand_primary_color_check',
+      sql`${t.brandPrimaryColor} ~ '^#[0-9A-Fa-f]{6}$'`,
+    ),
+    seatPacksBound: check('coach_profiles_seat_packs_check', sql`${t.seatPacks} BETWEEN 0 AND 3`),
+  }),
+);
+
+export const clientProfiles = identitySchema.table(
+  'client_profiles',
+  {
+    ...id,
+    // NOT a plain-unique column, deliberately — DB§5.1's own DDL text
+    // writes `UNIQUE` inline here, but that directly contradicts the very
+    // next line's `client_profiles_one_active_coach` partial index (and
+    // this task's own "Why this exists" section, which explains at length
+    // why the partial index — not a plain UNIQUE — is the real invariant).
+    // A plain UNIQUE would make that index dead code and would also
+    // permanently block ever reassigning a client to a new coach after
+    // detachment, since even a soft-deleted row's user_id would collide
+    // with a new one. Treated as a drafting error in DATABASE.md's DDL
+    // block, not something to transcribe (identity-schema/03).
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    // The DIRECTLY-responsible coach — root or assistant, whichever
+    // currently handles this client day to day (DB§5.1). RESTRICT: a coach
+    // with active clients cannot be deleted out from under them — the §21.4
+    // detachment flow must run first. Never CASCADE — client data survives
+    // the coach relationship ending (CLAUDE.md §21.3).
+    coachId: uuid('coach_id')
+      .notNull()
+      .references(() => coachProfiles.id, { onDelete: 'restrict' }),
+    status: clientStatus('status').notNull().default('invited'),
+    invitedAt: timestamp('invited_at', { withTimezone: true }).notNull().defaultNow(),
+    activatedAt: timestamp('activated_at', { withTimezone: true }),
+    pausedAt: timestamp('paused_at', { withTimezone: true }),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    seatHoldUntil: timestamp('seat_hold_until', { withTimezone: true }), // anti-gaming, §15.5
+
+    dateOfBirth: date('date_of_birth'),
+    sexAtBirth: text('sex_at_birth'), // CHECK (sex_at_birth IN (...)) — DB§5.1 uses text + CHECK, not an enum
+    heightCm: numeric('height_cm', { precision: 5, scale: 1 }),
+    goal: trainingGoal('goal'),
+    goalNotes: text('goal_notes'),
+    experienceLevel: experienceLevel('experience_level'),
+    trainingDaysPerWeek: smallint('training_days_per_week'),
+    equipmentAccess: text('equipment_access').array().notNull().default([]),
+    dietaryRestrictions: text('dietary_restrictions').array().notNull().default([]),
+    injuries: jsonb('injuries').notNull().default([]), // [{area,notes,since,severity}]
+
+    targetCalories: integer('target_calories'),
+    targetProteinG: integer('target_protein_g'),
+    targetCarbsG: integer('target_carbs_g'),
+    targetFatG: integer('target_fat_g'),
+    targetsByWeekday: jsonb('targets_by_weekday'), // {"1":{cal,p,c,f}, ...} §8.5
+
+    ...softDelete,
+    ...timestamps,
+  },
+  (t) => ({
+    sexAtBirthCheck: check(
+      'client_profiles_sex_at_birth_check',
+      sql`${t.sexAtBirth} IN ('male', 'female', 'intersex', 'prefer_not_to_say')`,
+    ),
+    heightBound: check('client_profiles_height_cm_check', sql`${t.heightCm} BETWEEN 50 AND 260`),
+    trainingDaysBound: check(
+      'client_profiles_training_days_per_week_check',
+      sql`${t.trainingDaysPerWeek} BETWEEN 0 AND 14`,
+    ),
+    targetCaloriesBound: check(
+      'client_profiles_target_calories_check',
+      sql`${t.targetCalories} BETWEEN 500 AND 10000`,
+    ),
+    targetProteinBound: check(
+      'client_profiles_target_protein_g_check',
+      sql`${t.targetProteinG} >= 0`,
+    ),
+    targetCarbsBound: check('client_profiles_target_carbs_g_check', sql`${t.targetCarbsG} >= 0`),
+    targetFatBound: check('client_profiles_target_fat_g_check', sql`${t.targetFatG} >= 0`),
+    statusTimestamps: check(
+      'client_status_timestamps',
+      sql`(${t.status} <> 'active' OR ${t.activatedAt} IS NOT NULL) AND (${t.status} <> 'archived' OR ${t.archivedAt} IS NOT NULL)`,
+    ),
+    // A client belongs to exactly one coach at a time (§8.1 AC) — the
+    // single most security-relevant index in this schema.
+    oneActiveCoach: uniqueIndex('client_profiles_one_active_coach')
+      .on(t.userId)
+      .where(sql`${t.deletedAt} IS NULL`),
+    // DB§7's own named indexes for this table — both lead with coach_id, so
+    // together they also satisfy "every FK is indexed" for the coach_id FK.
+    coachStatusIdx: index('client_profiles_coach').on(t.coachId, t.status),
+    // Seat counting, §15.5.
+    activeSeatsIdx: index('client_profiles_active_seats')
+      .on(t.coachId)
+      .where(sql`${t.status} IN ('active', 'invited') AND ${t.deletedAt} IS NULL`),
   }),
 );
