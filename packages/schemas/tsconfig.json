@@ -1,0 +1,17 @@
+{
+  "extends": "@coachos/config/tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    // apps/api imports this package's raw .ts source under Node's native
+    // type-stripping loader, which needs the literal .ts extension on
+    // relative imports (same convention as apps/api and packages/utils).
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "types": ["jest"],
+    "noEmit": true
+  },
+  "include": ["src"]
+}

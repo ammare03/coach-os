@@ -13,6 +13,7 @@
     "reset-project": "node ./scripts/reset-project.js"
   },
   "dependencies": {
+    "@coachos/schemas": "workspace:*",
     "@coachos/utils": "workspace:*",
     "expo": "~57.0.12",
     "expo-constants": "~57.0.10",
