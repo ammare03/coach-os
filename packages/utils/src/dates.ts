@@ -109,4 +109,3 @@ export function localWeekRangeUtc(
 export function formatLocalDate(instant: Date, timeZone: string, formatStr = 'PPPP'): string {
   return formatInTimeZone(instant, timeZone, formatStr);
 }
-export const _ciBlockTest: number = 'not a number';
