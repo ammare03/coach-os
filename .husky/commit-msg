@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# quality-gates/02. Conventional Commits, validated against commitlint.config.js
+# (git-workflow skill §3).
+npx --no -- commitlint --edit "$1"

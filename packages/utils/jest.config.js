@@ -1,6 +1,15 @@
 // CLAUDE.md §18.1: 100% coverage for pure logic, no exceptions — and a
 // threshold that only warns is decoration, so this one fails the run.
 //
+// Deliberately self-contained rather than importing
+// @coachos/config/jest.node the way every other Node workspace does
+// (quality-gates/01): packages/utils's own lint config enforces zero
+// dependency on any @coachos/* package, tooling included, so it can be
+// imported from anywhere without risk of a cycle (eslint.config.cjs,
+// shared-config/02). The transform below is intentionally identical to
+// @coachos/config/jest.node's — see that file if the two ever need to
+// change together.
+//
 // The package's real tsconfig targets NodeNext (matching how apps/api
 // consumes this package's raw .ts source at runtime), but Jest itself
 // isn't running with Node's native ESM loader here — ts-jest is asked to
@@ -9,6 +18,12 @@
 // package in their own module systems.
 /** @type {import('jest').Config} */
 export default {
+  clearMocks: true,
+  restoreMocks: true,
+  passWithNoTests: true,
+  coverageReporters: ['text', 'lcov'],
+  testPathIgnorePatterns: ['/node_modules/', '/dist/', '/\\.expo/', '/\\.turbo/'],
+  watchPathIgnorePatterns: ['/node_modules/', '/dist/', '/\\.expo/', '/\\.turbo/'],
   testEnvironment: 'node',
   moduleFileExtensions: ['ts', 'js', 'json'],
   transform: {

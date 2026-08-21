@@ -1,0 +1,11 @@
+{
+  "*.{md,mdx,json,yml,yaml}": ["prettier --write"],
+  "*.{ts,tsx,js,jsx,cjs,mjs}": ["prettier --write"],
+  "apps/api/**/*.{ts,tsx,js,cjs,mjs}": "pnpm --dir apps/api exec eslint --fix",
+  "apps/mobile/**/*.{ts,tsx,js,cjs,mjs}": "pnpm --dir apps/mobile exec eslint --fix",
+  "apps/web/**/*.{ts,tsx,js,cjs,mjs}": "pnpm --dir apps/web exec eslint --fix",
+  "packages/db/**/*.{ts,tsx,js,cjs,mjs}": "pnpm --dir packages/db exec eslint --fix",
+  "packages/schemas/**/*.{ts,tsx,js,cjs,mjs}": "pnpm --dir packages/schemas exec eslint --fix",
+  "packages/ui/**/*.{ts,tsx,js,cjs,mjs}": "pnpm --dir packages/ui exec eslint --fix",
+  "packages/utils/**/*.{ts,tsx,js,cjs,mjs}": "pnpm --dir packages/utils exec eslint --fix"
+}

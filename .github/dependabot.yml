@@ -1,0 +1,36 @@
+version: 2
+updates:
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 5
+    groups:
+      # One weekly PR for everything that passes the ignore list below,
+      # rather than a dozen ungrouped ones a week that nobody reads
+      # (quality-gates/03 §Approach 9).
+      pnpm-dependencies:
+        patterns:
+          - '*'
+    ignore:
+      # The Expo SDK is a matched version set. Only `npx expo install --fix`
+      # knows the compatible matrix (CLAUDE.md §3.1) — an independent
+      # Dependabot bump of any of these breaks the build in a way that takes
+      # a while to diagnose.
+      - dependency-name: 'expo'
+      - dependency-name: 'expo-*'
+      - dependency-name: '@expo/*'
+      - dependency-name: 'react-native'
+      - dependency-name: 'react-native-*'
+      - dependency-name: '@react-native/*'
+      - dependency-name: 'react'
+      - dependency-name: 'react-dom'
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    groups:
+      github-actions:
+        patterns:
+          - '*'

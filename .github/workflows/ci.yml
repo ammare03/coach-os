@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Three pushes in five minutes should consume one pipeline run, not three —
+# one of the largest free-tier savings available (quality-gates/03 §Approach 6).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# This workflow installs, checks, and audits — nothing more. It never
+# deploys, touches a database, or builds a signed app, so it is granted no
+# secret and no write access (quality-gates/03 §Risks).
+permissions:
+  contents: read
+
+jobs:
+  # One job, not three. Turborepo already parallelises typecheck/lint/test
+  # within it; splitting into separate jobs would each re-checkout, re-install,
+  # and re-warm the cache for no wall-clock win (quality-gates/03 §Approach 1).
+  # The job id below ("check") is the required status check's name — keep it
+  # stable, since renaming it silently disables branch protection.
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # The repo was bootstrapped with npm; this is what stops
+      # package-lock.json (or a stray yarn.lock) from reappearing the first
+      # time somebody reflexively runs the wrong install command — two
+      # lockfiles resolve independently and silently drift apart
+      # (quality-gates/03 §The lockfile guard).
+      - name: Fail if a foreign lockfile is committed
+        run: |
+          if git ls-files | grep -E 'package-lock\.json|yarn\.lock'; then
+            echo "::error::A package-lock.json or yarn.lock is committed. This repo uses pnpm only (workspace-scaffold/01)."
+            exit 1
+          fi
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      # cache: pnpm needs pnpm already on PATH (the prior step) to resolve
+      # the store directory; it keys on pnpm-lock.yaml automatically, so a PR
+      # touching one file never re-downloads the whole dependency tree.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Turborepo's local cache, so a PR touching only apps/mobile doesn't
+      # re-typecheck apps/api. Remote caching is a paid Vercel feature — not
+      # justified at the $0/mo Phase 1 ceiling (CLAUDE.md §3.4.1 step 5,
+      # §3.4.2); this local cache covers the same need for free.
+      - name: Cache Turborepo
+        uses: actions/cache@v6
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-
+
+      # Fails if pnpm-lock.yaml disagrees with the manifests — the state
+      # produced by editing a dependency by hand and not reinstalling.
+      # Without this flag CI silently resolves a different tree than the one
+      # a developer actually tested against.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: pnpm check
+        run: pnpm check
+
+      # Blocks on high/critical only (CLAUDE.md §21.2); moderate/low are
+      # still printed but never fail the run. A gate that goes permanently
+      # red on an unfixable transitive advisory is a gate nobody reads
+      # (quality-gates/03 §Risks) — two currently-unfixable image-size
+      # advisories are explicitly allow-listed in pnpm-workspace.yaml's
+      # `auditConfig`, not silenced here, so the exception is visible next
+      # to the lockfile it applies to.
+      - name: pnpm audit (high/critical only)
+        run: pnpm audit --audit-level=high
