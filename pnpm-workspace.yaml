@@ -3,6 +3,7 @@ packages:
   - 'packages/*'
 
 allowBuilds:
+  esbuild: true
   unrs-resolver: true
 
 # Metro (React Native's bundler) does not reliably follow pnpm's default

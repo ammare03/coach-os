@@ -1,0 +1,17 @@
+{
+  "extends": "@coachos/config/tsconfig.base.json",
+  // Mirrors the React Native-relevant options from expo/tsconfig.base
+  // directly, rather than extending it — packages/ui depends on React
+  // Native only as a peer, never on the `expo` package itself.
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["DOM", "ESNext"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "customConditions": ["react-native"],
+    "jsx": "react-jsx",
+    "noEmit": true
+  },
+  "include": ["src"]
+}

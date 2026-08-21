@@ -1,0 +1,25 @@
+{
+  "name": "@coachos/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "db:generate": "echo \"db:generate is a placeholder — see phase-01-data-layer/db-package-scaffold/01\"",
+    "db:migrate": "echo \"db:migrate is a placeholder — see phase-01-data-layer/db-package-scaffold/01\"",
+    "db:studio": "echo \"db:studio is a placeholder — see phase-01-data-layer/db-package-scaffold/01\"",
+    "db:seed": "echo \"db:seed is a placeholder — see phase-01-data-layer/db-package-scaffold/01\"",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "postgres": "3.4.9"
+  },
+  "devDependencies": {
+    "@coachos/config": "workspace:*",
+    "drizzle-kit": "0.31.10",
+    "typescript": "~6.0.3"
+  }
+}
