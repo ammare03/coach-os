@@ -18,7 +18,8 @@
     "db:generate": "turbo run db:generate --filter=@coachos/db",
     "db:migrate": "turbo run db:migrate --filter=@coachos/db",
     "db:studio": "turbo run db:studio --filter=@coachos/db",
-    "db:seed": "turbo run db:seed --filter=@coachos/db"
+    "db:seed": "turbo run db:seed --filter=@coachos/db",
+    "db:seed:demo": "turbo run db:seed:demo --filter=@coachos/db"
   },
   "devDependencies": {
     "@coachos/config": "workspace:*",
