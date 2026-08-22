@@ -71,6 +71,27 @@
       "when": 1787372951606,
       "tag": "0009_set_logs_records",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787374895496,
+      "tag": "0010_foods",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1787375089504,
+      "tag": "0011_meals_summary",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1787375299168,
+      "tag": "0012_meal_plans_water",
+      "breakpoints": true
     }
   ]
 }
