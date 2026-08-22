@@ -24,7 +24,17 @@ import type {
   refreshTokens,
   users,
 } from './schema/identity.ts';
-import type { dailyNutritionSummary, foods, mealItems, meals } from './schema/nutrition.ts';
+import type {
+  dailyNutritionSummary,
+  foods,
+  mealItems,
+  mealPlanAssignments,
+  mealPlanDays,
+  mealPlanItems,
+  mealPlans,
+  meals,
+  waterLogs,
+} from './schema/nutrition.ts';
 import type {
   assignments,
   exercises,
@@ -103,3 +113,18 @@ export type NewMealItem = typeof mealItems.$inferInsert;
 
 export type DailyNutritionSummary = typeof dailyNutritionSummary.$inferSelect;
 export type NewDailyNutritionSummary = typeof dailyNutritionSummary.$inferInsert;
+
+export type MealPlan = typeof mealPlans.$inferSelect;
+export type NewMealPlan = typeof mealPlans.$inferInsert;
+
+export type MealPlanDay = typeof mealPlanDays.$inferSelect;
+export type NewMealPlanDay = typeof mealPlanDays.$inferInsert;
+
+export type MealPlanItem = typeof mealPlanItems.$inferSelect;
+export type NewMealPlanItem = typeof mealPlanItems.$inferInsert;
+
+export type MealPlanAssignment = typeof mealPlanAssignments.$inferSelect;
+export type NewMealPlanAssignment = typeof mealPlanAssignments.$inferInsert;
+
+export type WaterLog = typeof waterLogs.$inferSelect;
+export type NewWaterLog = typeof waterLogs.$inferInsert;

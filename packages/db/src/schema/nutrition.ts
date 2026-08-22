@@ -222,3 +222,125 @@ export const dailyNutritionSummary = nutritionSchema.table(
     pk: primaryKey({ columns: [t.clientId, t.date] }),
   }),
 );
+
+// Structurally similar to training.programs (training-schema/02) — a
+// coach-owned reusable template.
+export const mealPlans = nutritionSchema.table(
+  'meal_plans',
+  {
+    ...id,
+    coachId: uuid('coach_id')
+      .notNull()
+      .references(() => coachProfiles.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    isTemplate: boolean('is_template').notNull().default(true),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => ({
+    coachIdIdx: index('meal_plans_coach_id_idx').on(t.coachId),
+  }),
+);
+
+export const mealPlanDays = nutritionSchema.table(
+  'meal_plan_days',
+  {
+    ...id,
+    mealPlanId: uuid('meal_plan_id')
+      .notNull()
+      .references(() => mealPlans.id, { onDelete: 'cascade' }),
+    dayNumber: smallint('day_number').notNull(),
+    // No `notes`/`name`/`is_rest_day` here, unlike training.program_days —
+    // DB§5.3 gives this table exactly these two columns plus the implicit
+    // id/created_at/updated_at boilerplate (DB§5); meal plans have no week
+    // dimension, only a repeating 7-day cycle.
+    ...timestamps,
+  },
+  (t) => ({
+    dayNumberBound: check('meal_plan_days_day_number_check', sql`${t.dayNumber} BETWEEN 1 AND 7`),
+    mealPlanDayUnique: uniqueIndex('meal_plan_days_meal_plan_id_day_number_unique').on(
+      t.mealPlanId,
+      t.dayNumber,
+    ),
+  }),
+);
+
+// Deliberately NO item_identified-style CHECK here, unlike meal_items
+// (task 02) — DB§5.3's own comment flags this exact omission and transcribes
+// it faithfully rather than silently "fixing" an apparent inconsistency
+// (nutrition-schema/03's own Risks section). If this is genuinely a
+// documentation gap rather than an intentional choice, that determination
+// belongs in a CLAUDE.md §27 conversation, not in this schema file.
+export const mealPlanItems = nutritionSchema.table(
+  'meal_plan_items',
+  {
+    ...id,
+    mealPlanDayId: uuid('meal_plan_day_id')
+      .notNull()
+      .references(() => mealPlanDays.id, { onDelete: 'cascade' }),
+    mealType: mealType('meal_type').notNull(),
+    foodId: uuid('food_id').references(() => foods.id, { onDelete: 'set null' }),
+    customName: text('custom_name'),
+    // No positive-quantity CHECK here either, unlike meal_items.quantity_g —
+    // same faithful-transcription reasoning as the missing item_identified
+    // check above; DB§5.3 simply doesn't specify one for this table.
+    quantityG: numeric('quantity_g', { precision: 8, scale: 2 }).notNull(),
+    orderIndex: smallint('order_index').notNull().default(0),
+    ...timestamps,
+  },
+  (t) => ({
+    // DB§7: every FK is indexed, no exceptions.
+    mealPlanDayIdIdx: index('meal_plan_items_meal_plan_day_id_idx').on(t.mealPlanDayId),
+    foodIdIdx: index('meal_plan_items_food_id_idx').on(t.foodId),
+  }),
+);
+
+// created_at only, no updated_at — matching the same "no incidental edits"
+// reasoning as identity.refreshTokens (identity-schema/02) and
+// training.personalRecords (training-schema/04): an assignment's lifecycle
+// is start and end (via ended_at), not arbitrary modification.
+export const mealPlanAssignments = nutritionSchema.table(
+  'meal_plan_assignments',
+  {
+    ...id,
+    mealPlanId: uuid('meal_plan_id')
+      .notNull()
+      .references(() => mealPlans.id, { onDelete: 'cascade' }),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clientProfiles.id, { onDelete: 'cascade' }),
+    startDate: date('start_date').notNull(),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => ({
+    // DB§7: every FK is indexed, no exceptions.
+    mealPlanIdIdx: index('meal_plan_assignments_meal_plan_id_idx').on(t.mealPlanId),
+    clientIdIdx: index('meal_plan_assignments_client_id_idx').on(t.clientId),
+  }),
+);
+
+// The simplest table in the entire phase — no notes field, no soft delete,
+// just a positive quantity on a day.
+export const waterLogs = nutritionSchema.table(
+  'water_logs',
+  {
+    ...id,
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clientProfiles.id, { onDelete: 'cascade' }),
+    loggedDate: date('logged_date').notNull(), // client-local calendar day, matching every other logged_date/scheduled_date column in this phase
+    amountMl: integer('amount_ml').notNull(),
+    loggedAt: timestamp('logged_at', { withTimezone: true }).notNull().defaultNow(),
+    clientLocalId: text('client_local_id').notNull(),
+    ...timestamps,
+  },
+  (t) => ({
+    amountPositive: check('water_logs_amount_ml_check', sql`${t.amountMl} > 0`),
+    clientLocalUnique: uniqueIndex('water_logs_client_id_client_local_id_unique').on(
+      t.clientId,
+      t.clientLocalId,
+    ),
+  }),
+);
