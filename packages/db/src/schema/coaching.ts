@@ -5,19 +5,23 @@
 // phase-01-data-layer/README.md).
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   bigint,
+  boolean,
   check,
   index,
   integer,
+  jsonb,
   numeric,
   smallint,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 
 import { coachingSchema, id, timestamps } from './_shared.ts';
-import { mediaKind, mediaStatus, mediaVisibility } from './enums.ts';
+import { commentTarget, mediaKind, mediaStatus, mediaVisibility } from './enums.ts';
 import { clientProfiles, coachProfiles, users } from './identity.ts';
 import { exercises, setLogs, workoutSessions } from './training.ts';
 
@@ -96,5 +100,112 @@ export const mediaAssets = coachingSchema.table(
     expiringIdx: index('media_expiring')
       .on(t.expiresAt)
       .where(sql`${t.expiresAt} IS NOT NULL AND ${t.deletedAt} IS NULL`),
+  }),
+);
+
+// DATABASE.md §5.4 states it without hedging: `comments` is deliberately
+// polymorphic, and it is the heart of the product — every piece of coach
+// feedback (on a set, a meal, a video, a check-in) is a row here.
+// `target_id` is intentionally a bare uuid with NO foreign key: DB§10 calls
+// this "a real loss of integrity, accepted deliberately," because a real FK
+// would require picking one target table and defeat the entire polymorphic
+// design. `comment_target` is the only type safety this relationship has.
+//
+// DB§10 names four mitigations for the resulting gap. This task's
+// contribution to each, so nothing is silently dropped between the schema
+// and its enforcement:
+//   1. `client_id` denormalised onto every comment, always resolvable
+//      regardless of `target_type` — THIS TASK, the column below.
+//   2. A single application-layer resolver validates `target_id` exists in
+//      the table `target_type` implies, in the same transaction as the
+//      insert; nothing else may insert into `comments` —
+//      phase-12-feedback-comments/comment-core/02 (does not exist yet).
+//   3. A nightly orphan sweep counts comments whose target no longer
+//      exists and alerts above a threshold; orphans are soft-deleted, never
+//      hard-deleted — phase-12-feedback-comments/comment-core/03.
+//   4. Deleting a target explicitly soft-deletes its comments in
+//      application code — there is no cascade to rely on. Each phase that
+//      deletes a commentable thing owns this for its own target type.
+// Until mitigation 2 exists, a direct insert with a `target_id` matching no
+// row anywhere succeeds at the schema level — a known, accepted gap, not a
+// bug (see this file's own verification below and coaching-schema/02's
+// task doc).
+export const comments = coachingSchema.table(
+  'comments',
+  {
+    ...id,
+    authorUserId: uuid('author_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    targetType: commentTarget('target_type').notNull(),
+    targetId: uuid('target_id').notNull(), // polymorphic; see DB§10, no FK — deliberate
+    // Always resolvable — the key to how authorisation works on a table
+    // that otherwise has no reliable path from a comment to the client it
+    // concerns (DB§5.4's own comment on this column).
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clientProfiles.id, { onDelete: 'cascade' }),
+    body: text('body'),
+    voiceNoteAssetId: uuid('voice_note_asset_id').references(() => mediaAssets.id, {
+      onDelete: 'set null',
+    }),
+    videoReplyAssetId: uuid('video_reply_asset_id').references(() => mediaAssets.id, {
+      onDelete: 'set null',
+    }),
+    timestampMs: integer('timestamp_ms'), // position within a video
+    annotation: jsonb('annotation'), // [{frame_ms, strokes:[…], shape}] — §8.6
+    // A reply's existence is tied to its parent — CASCADE, unlike
+    // refresh_tokens.replaced_by's self-reference (no cascade there,
+    // identity-schema/02), because a superseded refresh token is a
+    // historical record worth keeping while a reply genuinely has no
+    // meaning independent of the comment it replies to.
+    parentCommentId: uuid('parent_comment_id').references((): AnyPgColumn => comments.id, {
+      onDelete: 'cascade',
+    }),
+    isAiGenerated: boolean('is_ai_generated').notNull().default(false), // §8.11, must be labelled
+    readAt: timestamp('read_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => ({
+    hasContent: check(
+      'comment_has_content',
+      sql`${t.body} IS NOT NULL OR ${t.voiceNoteAssetId} IS NOT NULL OR ${t.videoReplyAssetId} IS NOT NULL OR ${t.annotation} IS NOT NULL`,
+    ),
+    timestampNonNegative: check('comments_timestamp_ms_check', sql`${t.timestampMs} >= 0`),
+    // Loading every comment on a given thing, reverse-chronological.
+    targetIdx: index('comments_target')
+      .on(t.targetType, t.targetId, t.createdAt.desc())
+      .where(sql`${t.deletedAt} IS NULL`),
+    // The client's feedback-inbox unread badge — only possible because
+    // client_id is denormalised onto every comment regardless of target.
+    clientUnreadIdx: index('comments_client_unread')
+      .on(t.clientId, t.createdAt.desc())
+      .where(sql`${t.readAt} IS NULL AND ${t.deletedAt} IS NULL`),
+  }),
+);
+
+// Same polymorphic shape as `comments`, minus the client_id denormalisation
+// — reactions are lighter-weight and DB§5.4 doesn't carry that column for
+// them. Do not "correct" this to match `comments`; it's not an oversight.
+export const reactions = coachingSchema.table(
+  'reactions',
+  {
+    ...id,
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    targetType: commentTarget('target_type').notNull(),
+    targetId: uuid('target_id').notNull(),
+    emoji: text('emoji').notNull(),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => ({
+    reactionUnique: uniqueIndex('reactions_user_target_emoji_unique').on(
+      t.userId,
+      t.targetType,
+      t.targetId,
+      t.emoji,
+    ),
   }),
 );
