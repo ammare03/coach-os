@@ -6,9 +6,12 @@
 import { sql } from 'drizzle-orm';
 import {
   boolean,
+  check,
   customType,
   index,
+  integer,
   numeric,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -94,5 +97,156 @@ export const exercises = trainingSchema.table(
     // partial substring matches.
     searchIdx: index('exercises_search').using('gin', t.searchVector),
     trgmIdx: index('exercises_trgm').using('gin', t.name.op('gin_trgm_ops')),
+  }),
+);
+
+export const programs = trainingSchema.table(
+  'programs',
+  {
+    ...id,
+    coachId: uuid('coach_id')
+      .notNull()
+      .references(() => coachProfiles.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    durationWeeks: smallint('duration_weeks').notNull(),
+    isTemplate: boolean('is_template').notNull().default(true),
+    version: integer('version').notNull().default(1),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => ({
+    durationWeeksBound: check(
+      'programs_duration_weeks_check',
+      sql`${t.durationWeeks} BETWEEN 1 AND 104`,
+    ),
+    // DB§7: every FK is indexed, no exceptions.
+    coachIdIdx: index('programs_coach_id_idx').on(t.coachId),
+  }),
+);
+
+export const programWeeks = trainingSchema.table(
+  'program_weeks',
+  {
+    ...id,
+    programId: uuid('program_id')
+      .notNull()
+      .references(() => programs.id, { onDelete: 'cascade' }),
+    weekNumber: smallint('week_number').notNull(),
+    notes: text('notes'),
+    ...timestamps,
+  },
+  (t) => ({
+    weekNumberPositive: check('program_weeks_week_number_check', sql`${t.weekNumber} > 0`),
+    // A program cannot have two "week 3"s. Also satisfies DB§7's "every FK
+    // is indexed" for program_id — this leads with it.
+    programWeekUnique: uniqueIndex('program_weeks_program_id_week_number_unique').on(
+      t.programId,
+      t.weekNumber,
+    ),
+  }),
+);
+
+export const programDays = trainingSchema.table(
+  'program_days',
+  {
+    ...id,
+    programWeekId: uuid('program_week_id')
+      .notNull()
+      .references(() => programWeeks.id, { onDelete: 'cascade' }),
+    dayNumber: smallint('day_number').notNull(),
+    name: text('name').notNull(), // coach-facing label, e.g. 'Push A'
+    notes: text('notes'),
+    isRestDay: boolean('is_rest_day').notNull().default(false),
+    ...timestamps,
+  },
+  (t) => ({
+    dayNumberBound: check('program_days_day_number_check', sql`${t.dayNumber} BETWEEN 1 AND 7`),
+    // A week cannot have two "day 3"s — scoped to the WEEK, not the program
+    // (a mistake here would silently prevent every program from having a
+    // "day 1" in more than one week). Also satisfies DB§7's FK-indexing rule
+    // for program_week_id.
+    weekDayUnique: uniqueIndex('program_days_program_week_id_day_number_unique').on(
+      t.programWeekId,
+      t.dayNumber,
+    ),
+  }),
+);
+
+export const programExercises = trainingSchema.table(
+  'program_exercises',
+  {
+    ...id,
+    programDayId: uuid('program_day_id')
+      .notNull()
+      .references(() => programDays.id, { onDelete: 'cascade' }),
+    // RESTRICT, unlike this table's other three FKs (all cascade): an
+    // exercise referenced by a program cannot be deleted out from under it.
+    // This is why the exercise-library feature's archive behaviour uses
+    // `archived_at` rather than deletion (P07).
+    exerciseId: uuid('exercise_id')
+      .notNull()
+      .references(() => exercises.id, { onDelete: 'restrict' }),
+    orderIndex: smallint('order_index').notNull(),
+    targetSets: smallint('target_sets').notNull(),
+    targetRepsMin: smallint('target_reps_min'),
+    targetRepsMax: smallint('target_reps_max'),
+    targetRpe: numeric('target_rpe', { precision: 3, scale: 1 }),
+    targetRir: smallint('target_rir'),
+    targetWeightKg: numeric('target_weight_kg', { precision: 6, scale: 2 }),
+    targetPercent1rm: numeric('target_percent_1rm', { precision: 4, scale: 1 }),
+    targetRestSeconds: smallint('target_rest_seconds'),
+    tempo: text('tempo'), // 4-digit eccentric/pause/concentric/pause, e.g. '3010' — CLAUDE.md §26
+    supersetGroup: text('superset_group'),
+    // Coach-approved swap list, §8.4 — `phase-09-workout-logger/
+    // session-modifications/02` reads this when a client swaps an exercise
+    // mid-session. No array-element FK: Postgres doesn't support one: the
+    // application layer (`phase-07-exercise-and-program-authoring/
+    // program-builder/05`) is responsible for only ever writing real
+    // exercise ids here (DB§5.2's own documented gap).
+    alternatives: uuid('alternatives').array().notNull().default([]),
+    coachNotes: text('coach_notes'),
+    ...timestamps,
+  },
+  (t) => ({
+    targetSetsBound: check(
+      'program_exercises_target_sets_check',
+      sql`${t.targetSets} BETWEEN 1 AND 20`,
+    ),
+    targetRepsMinPositive: check(
+      'program_exercises_target_reps_min_check',
+      sql`${t.targetRepsMin} > 0`,
+    ),
+    // Genuine cross-column CHECK, not two independent single-column checks.
+    targetRepsMaxGteMin: check(
+      'program_exercises_target_reps_max_check',
+      sql`${t.targetRepsMax} >= ${t.targetRepsMin}`,
+    ),
+    targetRpeBound: check(
+      'program_exercises_target_rpe_check',
+      sql`${t.targetRpe} BETWEEN 1 AND 10`,
+    ),
+    targetRirBound: check(
+      'program_exercises_target_rir_check',
+      sql`${t.targetRir} BETWEEN 0 AND 10`,
+    ),
+    targetPercent1rmBound: check(
+      'program_exercises_target_percent_1rm_check',
+      sql`${t.targetPercent1rm} BETWEEN 1 AND 150`,
+    ),
+    tempoFormat: check('program_exercises_tempo_check', sql`${t.tempo} ~ '^[0-9X]{4}$'`),
+    supersetGroupFormat: check(
+      'program_exercises_superset_group_check',
+      sql`${t.supersetGroup} ~ '^[A-Z]$'`,
+    ),
+    // An exercise's order within a day is unique. Also satisfies DB§7's
+    // FK-indexing rule for program_day_id.
+    dayOrderUnique: uniqueIndex('program_exercises_program_day_id_order_index_unique').on(
+      t.programDayId,
+      t.orderIndex,
+    ),
+    // DB§7: every FK is indexed, no exceptions — dayOrderUnique above
+    // covers program_day_id but not this one.
+    exerciseIdIdx: index('program_exercises_exercise_id_idx').on(t.exerciseId),
   }),
 );

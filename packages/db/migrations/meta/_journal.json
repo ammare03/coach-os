@@ -50,6 +50,13 @@
       "when": 1787372145057,
       "tag": "0006_exercises",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787372437258,
+      "tag": "0007_programs_structure",
+      "breakpoints": true
     }
   ]
 }
