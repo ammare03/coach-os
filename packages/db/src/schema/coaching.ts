@@ -57,7 +57,12 @@ export const mediaAssets = coachingSchema.table(
     ownerUserId: uuid('owner_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    // Who can see it.
+    // Who can see it. DB§6-denormalised — unlike every other guarded table
+    // in this schema, neither column here is clearly "primary FK, other
+    // derived": a media asset isn't strictly owned by one client the way a
+    // set_log is, so both are independently guarded by
+    // `media_assets_no_coach_change` / `media_assets_no_client_change`
+    // (derived-data/02, migrations/0022_guard_triggers.sql).
     coachId: uuid('coach_id').references(() => coachProfiles.id, { onDelete: 'cascade' }),
     clientId: uuid('client_id').references(() => clientProfiles.id, { onDelete: 'cascade' }),
     kind: mediaKind('kind').notNull(),
@@ -152,7 +157,9 @@ export const comments = coachingSchema.table(
     targetId: uuid('target_id').notNull(), // polymorphic; see DB§10, no FK — deliberate
     // Always resolvable — the key to how authorisation works on a table
     // that otherwise has no reliable path from a comment to the client it
-    // concerns (DB§5.4's own comment on this column).
+    // concerns (DB§5.4's own comment on this column). Guarded by
+    // `comments_no_owner_change` (derived-data/02,
+    // migrations/0022_guard_triggers.sql).
     clientId: uuid('client_id')
       .notNull()
       .references(() => clientProfiles.id, { onDelete: 'cascade' }),
@@ -264,6 +271,10 @@ export const checkins = coachingSchema.table(
     clientId: uuid('client_id')
       .notNull()
       .references(() => clientProfiles.id, { onDelete: 'cascade' }),
+    // Denormalised, DB§6 — client_id above is the primary FK (whose
+    // check-in this is); this column exists for checkins_coach_pending's
+    // query shape. Guarded by `checkins_no_owner_change` (derived-data/02,
+    // migrations/0022_guard_triggers.sql).
     coachId: uuid('coach_id')
       .notNull()
       .references(() => coachProfiles.id, { onDelete: 'cascade' }),
@@ -405,6 +416,11 @@ export const liveSessions = coachingSchema.table(
   'live_sessions',
   {
     ...id,
+    // Denormalised, DB§6 — set by the coach who starts the session.
+    // Guarded by `live_sessions_no_owner_change` (derived-data/02,
+    // migrations/0022_guard_triggers.sql). client_id below is not
+    // guarded — it's nullable ("who's invited," not derived from
+    // coach_id) and legitimately null for a group session.
     coachId: uuid('coach_id')
       .notNull()
       .references(() => coachProfiles.id, { onDelete: 'cascade' }),

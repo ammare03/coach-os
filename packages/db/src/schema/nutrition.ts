@@ -125,6 +125,8 @@ export const meals = nutritionSchema.table(
       .references(() => clientProfiles.id, { onDelete: 'cascade' }),
     // Denormalised, DB§6 — same rationale and same INSERT-only/trigger-guard
     // discipline as training.workout_sessions.coach_id (training-schema/03).
+    // Guarded by `meals_no_owner_change` (derived-data/02,
+    // migrations/0022_guard_triggers.sql).
     coachId: uuid('coach_id')
       .notNull()
       .references(() => coachProfiles.id, { onDelete: 'cascade' }),
