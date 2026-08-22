@@ -50,7 +50,7 @@ import type {
   meals,
   waterLogs,
 } from './schema/nutrition.ts';
-import type { notificationPreferences, notifications } from './schema/platform.ts';
+import type { auditLog, notificationPreferences, notifications } from './schema/platform.ts';
 import type {
   assignments,
   exercises,
@@ -191,3 +191,8 @@ export type NewNotification = typeof notifications.$inferInsert;
 
 export type NotificationPreference = typeof notificationPreferences.$inferSelect;
 export type NewNotificationPreference = typeof notificationPreferences.$inferInsert;
+
+// ⚠️ Append-only — see the DO INSTEAD NOTHING warning on `auditLog` itself
+// in schema/platform.ts.
+export type AuditLogEntry = typeof auditLog.$inferSelect;
+export type NewAuditLogEntry = typeof auditLog.$inferInsert;
