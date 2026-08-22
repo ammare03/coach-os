@@ -2,8 +2,16 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
+# cpu-features / ssh2 / protobufjs are `testcontainers`' transitive deps
+# (derived-data/03) for its optional remote-Docker-over-SSH tunnel path —
+# not needed for the local-Docker-socket use every test in this repo
+# actually uses. Declined (false): skips their native builds rather than
+# compiling crypto acceleration nobody exercises here.
 allowBuilds:
+  cpu-features: false
   esbuild: true
+  protobufjs: false
+  ssh2: false
   unrs-resolver: true
 
 # GHSA-w3rx-r6r6-pgpr / GHSA-5p2g-fcmc-qvqq — image-size (transitive, via
