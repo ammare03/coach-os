@@ -24,6 +24,7 @@ import type {
   refreshTokens,
   users,
 } from './schema/identity.ts';
+import type { foods } from './schema/nutrition.ts';
 import type {
   assignments,
   exercises,
@@ -90,3 +91,6 @@ export type NewSetLog = typeof setLogs.$inferInsert;
 
 export type PersonalRecord = typeof personalRecords.$inferSelect;
 export type NewPersonalRecord = typeof personalRecords.$inferInsert;
+
+export type Food = typeof foods.$inferSelect;
+export type NewFood = typeof foods.$inferInsert;
