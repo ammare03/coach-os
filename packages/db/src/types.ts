@@ -28,6 +28,7 @@ import type {
   messages,
   progressPhotos,
   reactions,
+  vClientOverview,
 } from './schema/coaching.ts';
 import type {
   authProviders,
@@ -212,3 +213,6 @@ export type NewFeatureUsage = typeof featureUsage.$inferInsert;
 
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type NewWebhookEvent = typeof webhookEvents.$inferInsert;
+
+// Read-only — a Postgres VIEW, never insertable. No "New" counterpart.
+export type ClientOverview = typeof vClientOverview.$inferSelect;
