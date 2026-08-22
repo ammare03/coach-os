@@ -24,7 +24,7 @@ import type {
   refreshTokens,
   users,
 } from './schema/identity.ts';
-import type { foods } from './schema/nutrition.ts';
+import type { dailyNutritionSummary, foods, mealItems, meals } from './schema/nutrition.ts';
 import type {
   assignments,
   exercises,
@@ -94,3 +94,12 @@ export type NewPersonalRecord = typeof personalRecords.$inferInsert;
 
 export type Food = typeof foods.$inferSelect;
 export type NewFood = typeof foods.$inferInsert;
+
+export type Meal = typeof meals.$inferSelect;
+export type NewMeal = typeof meals.$inferInsert;
+
+export type MealItem = typeof mealItems.$inferSelect;
+export type NewMealItem = typeof mealItems.$inferInsert;
+
+export type DailyNutritionSummary = typeof dailyNutritionSummary.$inferSelect;
+export type NewDailyNutritionSummary = typeof dailyNutritionSummary.$inferInsert;
