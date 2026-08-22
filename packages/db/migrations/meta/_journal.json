@@ -36,6 +36,13 @@
       "when": 1787368826435,
       "tag": "0004_notes_and_invites",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787369136899,
+      "tag": "0005_coach_hierarchy",
+      "breakpoints": true
     }
   ]
 }

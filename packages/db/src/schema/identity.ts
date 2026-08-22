@@ -187,12 +187,6 @@ export const devices = identitySchema.table(
   }),
 );
 
-// `parent_coach_id` (the assistant-coach hierarchy column) and its guard
-// trigger are identity-schema/05's job, not this task's — DB§5.1's DDL
-// shows it inline in one CREATE TABLE, but the task breakdown deliberately
-// splits it into its own reviewable migration. Every coach is a root coach
-// until task 05 lands.
-//
 // `brand_logo_asset_id` has the same forward-reference problem as
 // `users.avatar_asset_id` (identity-schema/01): `coaching.media_assets`
 // doesn't exist yet, so this is strategy 1 again — a plain `uuid` column,
@@ -205,6 +199,15 @@ export const coachProfiles = identitySchema.table(
       .notNull()
       .unique()
       .references(() => users.id, { onDelete: 'cascade' }),
+    // NULL = root coach (billed directly). Non-null = assistant coach,
+    // delegated by the referenced root (§2, §15.2). Single level only —
+    // enforced by the coach_profiles_single_level_hierarchy trigger below
+    // (identity-schema/05), not by this FK alone. RESTRICT mirrors
+    // client_profiles.coach_id: a root cannot be deleted out from under an
+    // assistant who still references it.
+    parentCoachId: uuid('parent_coach_id').references((): AnyPgColumn => coachProfiles.id, {
+      onDelete: 'restrict',
+    }),
     businessName: text('business_name'),
     bio: text('bio'),
     specialties: text('specialties').array().notNull().default([]),
@@ -244,6 +247,16 @@ export const coachProfiles = identitySchema.table(
       sql`${t.brandPrimaryColor} ~ '^#[0-9A-Fa-f]{6}$'`,
     ),
     seatPacksBound: check('coach_profiles_seat_packs_check', sql`${t.seatPacks} BETWEEN 0 AND 3`),
+    // "List my assistants" / resolve-root lookups (identity-schema/05). The
+    // FK is auto-indexed per DB§7's lint rule; this named partial index
+    // exists because the hierarchy resolver's actual query shape (live
+    // assistants of one root) is worth naming rather than relying on the
+    // unscoped default — and scoping out parent_coach_id IS NULL keeps it
+    // from indexing every root coach's NULL alongside the (rare, until P25)
+    // assistant rows it actually exists to serve.
+    parentIdx: index('coach_profiles_parent')
+      .on(t.parentCoachId)
+      .where(sql`${t.deletedAt} IS NULL AND ${t.parentCoachId} IS NOT NULL`),
   }),
 );
 
