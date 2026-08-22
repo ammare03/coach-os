@@ -5,6 +5,7 @@
 // phase-01-data-layer/README.md).
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   boolean,
   check,
   customType,
@@ -21,6 +22,16 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { id, timestamps, nutritionSchema } from './_shared.ts';
+// `photo_asset_id` below references `coaching.media_assets(id)` per DB§5.3.
+// That table didn't exist when this file was first written
+// (nutrition-schema/02), so it was declared as a plain `uuid` column with no
+// `.references()`. coaching-schema/01 resolves it for real now that
+// `./coaching.ts` exists, using the same `(): AnyPgColumn => …` thunk
+// `identity.coach_profiles.parent_coach_id` uses for its self-reference —
+// safe despite the resulting circular import (nutrition.ts ⇄ coaching.ts)
+// because the thunk is never called until Drizzle resolves the FK, by which
+// point both modules have finished loading.
+import { mediaAssets } from './coaching.ts';
 import { foodSource, mealType } from './enums.ts';
 import { clientProfiles, coachProfiles, users } from './identity.ts';
 
@@ -125,7 +136,9 @@ export const meals = nutritionSchema.table(
     mealType: mealType('meal_type').notNull(),
     loggedAt: timestamp('logged_at', { withTimezone: true }).notNull().defaultNow(),
     notes: text('notes'),
-    photoAssetId: uuid('photo_asset_id'), // FK added later — see comment above
+    photoAssetId: uuid('photo_asset_id').references((): AnyPgColumn => mediaAssets.id, {
+      onDelete: 'set null',
+    }),
     // NOT NULL, matching set_logs's pattern (training-schema/04) — meal
     // logging is offline-capable by design, no server-only path.
     clientLocalId: text('client_local_id').notNull(),

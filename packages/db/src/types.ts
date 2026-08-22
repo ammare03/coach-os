@@ -14,6 +14,7 @@
 // `interface`/`type` that mirrors a table — `eslint.base.js`'s
 // `local/no-hand-written-row-type` rule flags the common case of the
 // latter.
+import type { mediaAssets } from './schema/coaching.ts';
 import type {
   authProviders,
   clientProfiles,
@@ -128,3 +129,6 @@ export type NewMealPlanAssignment = typeof mealPlanAssignments.$inferInsert;
 
 export type WaterLog = typeof waterLogs.$inferSelect;
 export type NewWaterLog = typeof waterLogs.$inferInsert;
+
+export type MediaAsset = typeof mediaAssets.$inferSelect;
+export type NewMediaAsset = typeof mediaAssets.$inferInsert;

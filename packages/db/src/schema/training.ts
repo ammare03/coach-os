@@ -5,6 +5,7 @@
 // (CLAUDE.md §0, phase-01-data-layer/README.md).
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   boolean,
   check,
   customType,
@@ -21,6 +22,16 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { id, timestamps, trainingSchema } from './_shared.ts';
+// `demo_asset_id` below references `coaching.media_assets(id)` per DB§5.2.
+// That table didn't exist when this file was first written
+// (training-schema/01), so it was declared as a plain `uuid` column with no
+// `.references()`. coaching-schema/01 resolves it for real now that
+// `./coaching.ts` exists, using the same `(): AnyPgColumn => …` thunk
+// `identity.coach_profiles.parent_coach_id` uses for its self-reference —
+// safe despite the resulting circular import (training.ts ⇄ coaching.ts)
+// because the thunk is never called until Drizzle resolves the FK, by which
+// point both modules have finished loading.
+import { mediaAssets } from './coaching.ts';
 import { assignmentStatus, movementPattern, sessionStatus } from './enums.ts';
 import { clientProfiles, coachProfiles } from './identity.ts';
 
@@ -32,12 +43,6 @@ const tsvector = customType<{ data: string }>({
   },
 });
 
-// `demo_asset_id` references `coaching.media_assets(id)` per DB§5.2, but that
-// table doesn't exist until coaching-schema (a later feature in this same
-// phase) — same forward-reference problem as `identity.users.avatar_asset_id`
-// (identity-schema/01). Strategy 1: a plain `uuid` column with no
-// `.references()`; the FK constraint itself is added by an ALTER TABLE
-// migration in coaching-schema once `media_assets` exists.
 export const exercises = trainingSchema.table(
   'exercises',
   {
@@ -52,7 +57,9 @@ export const exercises = trainingSchema.table(
     secondaryMuscles: text('secondary_muscles').array().notNull().default([]),
     equipment: text('equipment').notNull(), // open-ended value set stays text, not an enum — DB§4
     movementPattern: movementPattern('movement_pattern').notNull(),
-    demoAssetId: uuid('demo_asset_id'), // FK added later — see comment above
+    demoAssetId: uuid('demo_asset_id').references((): AnyPgColumn => mediaAssets.id, {
+      onDelete: 'set null',
+    }),
     cues: text('cues').array().notNull().default([]),
     isUnilateral: boolean('is_unilateral').notNull().default(false),
     isBodyweight: boolean('is_bodyweight').notNull().default(false),
