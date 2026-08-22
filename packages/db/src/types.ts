@@ -51,6 +51,14 @@ import type {
   waterLogs,
 } from './schema/nutrition.ts';
 import type {
+  auditLog,
+  featureUsage,
+  notificationPreferences,
+  notifications,
+  storageUsage,
+  webhookEvents,
+} from './schema/platform.ts';
+import type {
   assignments,
   exercises,
   personalRecords,
@@ -184,3 +192,23 @@ export type NewConversation = typeof conversations.$inferInsert;
 
 export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
+
+export type Notification = typeof notifications.$inferSelect;
+export type NewNotification = typeof notifications.$inferInsert;
+
+export type NotificationPreference = typeof notificationPreferences.$inferSelect;
+export type NewNotificationPreference = typeof notificationPreferences.$inferInsert;
+
+// ⚠️ Append-only — see the DO INSTEAD NOTHING warning on `auditLog` itself
+// in schema/platform.ts.
+export type AuditLogEntry = typeof auditLog.$inferSelect;
+export type NewAuditLogEntry = typeof auditLog.$inferInsert;
+
+export type StorageUsage = typeof storageUsage.$inferSelect;
+export type NewStorageUsage = typeof storageUsage.$inferInsert;
+
+export type FeatureUsage = typeof featureUsage.$inferSelect;
+export type NewFeatureUsage = typeof featureUsage.$inferInsert;
+
+export type WebhookEvent = typeof webhookEvents.$inferSelect;
+export type NewWebhookEvent = typeof webhookEvents.$inferInsert;
