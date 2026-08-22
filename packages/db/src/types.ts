@@ -24,6 +24,7 @@ import type {
   refreshTokens,
   users,
 } from './schema/identity.ts';
+import type { exercises } from './schema/training.ts';
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -52,3 +53,6 @@ export type NewCoachClientNote = typeof coachClientNotes.$inferInsert;
 
 export type Invite = typeof invites.$inferSelect;
 export type NewInvite = typeof invites.$inferInsert;
+
+export type Exercise = typeof exercises.$inferSelect;
+export type NewExercise = typeof exercises.$inferInsert;
