@@ -127,6 +127,13 @@
       "when": 1787387361055,
       "tag": "0017_live_and_messaging",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787389419506,
+      "tag": "0018_notifications",
+      "breakpoints": true
     }
   ]
 }

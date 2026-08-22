@@ -50,6 +50,7 @@ import type {
   meals,
   waterLogs,
 } from './schema/nutrition.ts';
+import type { notificationPreferences, notifications } from './schema/platform.ts';
 import type {
   assignments,
   exercises,
@@ -184,3 +185,9 @@ export type NewConversation = typeof conversations.$inferInsert;
 
 export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
+
+export type Notification = typeof notifications.$inferSelect;
+export type NewNotification = typeof notifications.$inferInsert;
+
+export type NotificationPreference = typeof notificationPreferences.$inferSelect;
+export type NewNotificationPreference = typeof notificationPreferences.$inferInsert;
