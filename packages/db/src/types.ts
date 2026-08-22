@@ -27,10 +27,12 @@ import type {
 import type {
   assignments,
   exercises,
+  personalRecords,
   programDays,
   programExercises,
   programs,
   programWeeks,
+  setLogs,
   workoutSessions,
 } from './schema/training.ts';
 
@@ -82,3 +84,9 @@ export type NewAssignment = typeof assignments.$inferInsert;
 
 export type WorkoutSession = typeof workoutSessions.$inferSelect;
 export type NewWorkoutSession = typeof workoutSessions.$inferInsert;
+
+export type SetLog = typeof setLogs.$inferSelect;
+export type NewSetLog = typeof setLogs.$inferInsert;
+
+export type PersonalRecord = typeof personalRecords.$inferSelect;
+export type NewPersonalRecord = typeof personalRecords.$inferInsert;

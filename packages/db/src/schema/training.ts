@@ -381,3 +381,117 @@ export const workoutSessions = trainingSchema.table(
     programDayIdIdx: index('workout_sessions_program_day_id_idx').on(t.programDayId),
   }),
 );
+
+export const setLogs = trainingSchema.table(
+  'set_logs',
+  {
+    ...id,
+    // A set has no meaning independent of its session.
+    workoutSessionId: uuid('workout_session_id')
+      .notNull()
+      .references(() => workoutSessions.id, { onDelete: 'cascade' }),
+    // RESTRICT, matching program_exercises's pattern (task 02) — an exercise
+    // logged in history cannot be deleted out from under it.
+    exerciseId: uuid('exercise_id')
+      .notNull()
+      .references(() => exercises.id, { onDelete: 'restrict' }),
+    // Denormalised, DB§6 — same rationale and same INSERT-only/trigger-guard
+    // discipline as workout_sessions.coach_id (training-schema/03).
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clientProfiles.id, { onDelete: 'cascade' }),
+    setNumber: smallint('set_number').notNull(),
+    reps: smallint('reps'),
+    weightKg: numeric('weight_kg', { precision: 6, scale: 2 }),
+    rpe: numeric('rpe', { precision: 3, scale: 1 }),
+    rir: smallint('rir'),
+    durationSeconds: integer('duration_seconds'), // timed holds/carries
+    distanceM: numeric('distance_m', { precision: 8, scale: 2 }), // carries/cardio
+    isWarmup: boolean('is_warmup').notNull().default(false),
+    isFailure: boolean('is_failure').notNull().default(false),
+    notes: text('notes'),
+    estimated1rmKg: numeric('estimated_1rm_kg', { precision: 6, scale: 2 }), // Epley, computed on write by application code (packages/utils) — not by the database
+    loggedAt: timestamp('logged_at', { withTimezone: true }).notNull().defaultNow(),
+    // REQUIRED for offline dedup — unlike workout_sessions.client_local_id
+    // (nullable, task 03), every set log is offline-capable by design, with
+    // no server-only creation path.
+    clientLocalId: text('client_local_id').notNull(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => ({
+    // At least one of reps/duration_seconds/distance_m must be non-null —
+    // an OR across the three optional measurement columns (not an AND: a
+    // rep-based lift legitimately has null duration_seconds and distance_m).
+    // Lets one table represent a rep-based lift, a timed plank, and a
+    // farmer's-carry distance without three separate tables, while still
+    // rejecting a set that logged nothing measurable at all.
+    setHasMeasurement: check(
+      'set_has_measurement',
+      sql`${t.reps} IS NOT NULL OR ${t.durationSeconds} IS NOT NULL OR ${t.distanceM} IS NOT NULL`,
+    ),
+    // Plain (non-partial) unique, in contrast to sessions_client_local
+    // (task 03) — client_local_id is NOT NULL here, so a partial
+    // `WHERE client_local_id IS NOT NULL` clause would be a no-op filter.
+    // Deliberate, not an inconsistency (DB§5.2).
+    clientLocalUnique: uniqueIndex('set_logs_client_local').on(t.clientId, t.clientLocalId),
+    // The index behind the single most frequently run query in the workout
+    // logger, "last time you did this exercise" (DB§22's cookbook).
+    // Equality columns first, range/sort last (DB§7's composite-index rule):
+    // client_id and exercise_id are both equality filters, logged_at DESC
+    // is the sort — this exact column order is what makes the index usable
+    // for that query shape.
+    clientExerciseIdx: index('set_logs_client_exercise')
+      .on(t.clientId, t.exerciseId, t.loggedAt.desc())
+      .where(sql`${t.deletedAt} IS NULL`),
+    // DB§7's own named index — satisfies the workout_session_id FK-indexing
+    // rule and doubles as the natural ordering for rendering one session's
+    // sets. exercise_id gets its own plain index: neither unique index above
+    // leads with it, so it isn't covered on its own (same reasoning applied
+    // to workout_sessions in task 03).
+    sessionIdx: index('set_logs_session').on(t.workoutSessionId, t.setNumber),
+    exerciseIdIdx: index('set_logs_exercise_id_idx').on(t.exerciseId),
+  }),
+);
+
+export const personalRecords = trainingSchema.table(
+  'personal_records',
+  {
+    ...id,
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clientProfiles.id, { onDelete: 'cascade' }),
+    exerciseId: uuid('exercise_id')
+      .notNull()
+      .references(() => exercises.id, { onDelete: 'cascade' }),
+    recordType: text('record_type').notNull(), // CHECK (record_type IN (...)) — DB§5.2 uses text + CHECK, not an enum
+    value: numeric('value', { precision: 10, scale: 2 }).notNull(),
+    // The record survives even if the specific set that achieved it is
+    // later edited or removed.
+    setLogId: uuid('set_log_id').references(() => setLogs.id, { onDelete: 'set null' }),
+    achievedAt: timestamp('achieved_at', { withTimezone: true }).notNull(),
+    // DB§5.2 gives this table created_at only — no updated_at. This table
+    // holds only the CURRENT record per (client, exercise, record_type);
+    // history lives in set_logs itself, queryable by ordering on
+    // estimated_1rm_kg or weight_kg (DB§5.2's own comment).
+    createdAt: timestamps.createdAt,
+  },
+  (t) => ({
+    recordTypeCheck: check(
+      'personal_records_record_type_check',
+      sql`${t.recordType} IN ('1rm_estimated', 'max_weight', 'max_reps', 'max_volume')`,
+    ),
+    // One current record per client, per exercise, per record type — a
+    // client can hold a '1rm_estimated' record and a 'max_reps' record for
+    // the same exercise simultaneously (different rows), but not two
+    // '1rm_estimated' records for the same exercise. Also satisfies DB§7's
+    // FK-indexing rule for client_id.
+    clientExerciseTypeUnique: uniqueIndex(
+      'personal_records_client_id_exercise_id_record_type_unique',
+    ).on(t.clientId, t.exerciseId, t.recordType),
+    // DB§7: every FK is indexed, no exceptions — exercise_id and set_log_id
+    // aren't the leading column of the unique index above.
+    exerciseIdIdx: index('personal_records_exercise_id_idx').on(t.exerciseId),
+    setLogIdIdx: index('personal_records_set_log_id_idx').on(t.setLogId),
+  }),
+);
