@@ -9,6 +9,7 @@ import {
   bigint,
   boolean,
   check,
+  date,
   index,
   integer,
   jsonb,
@@ -21,7 +22,14 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { coachingSchema, id, timestamps } from './_shared.ts';
-import { commentTarget, mediaKind, mediaStatus, mediaVisibility } from './enums.ts';
+import {
+  checkinCadence,
+  checkinStatus,
+  commentTarget,
+  mediaKind,
+  mediaStatus,
+  mediaVisibility,
+} from './enums.ts';
 import { clientProfiles, coachProfiles, users } from './identity.ts';
 import { exercises, setLogs, workoutSessions } from './training.ts';
 
@@ -207,5 +215,81 @@ export const reactions = coachingSchema.table(
       t.targetId,
       t.emoji,
     ),
+  }),
+);
+
+export const checkinTemplates = coachingSchema.table(
+  'checkin_templates',
+  {
+    ...id,
+    coachId: uuid('coach_id')
+      .notNull()
+      .references(() => coachProfiles.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    cadence: checkinCadence('cadence').notNull().default('weekly'),
+    dueWeekday: smallint('due_weekday'), // 0-6, CHECK below
+    // Ordered [{key,label,type,required,options,min,max}] — one of DB§2's
+    // six deliberate jsonb uses: a coach-defined field list is genuinely
+    // schemaless. NOT NULL (a template with no fields at all is
+    // meaningless), but nothing here requires the array itself be non-empty.
+    fields: jsonb('fields').notNull(),
+    isDefault: boolean('is_default').notNull().default(false),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => ({
+    dueWeekdayBound: check(
+      'checkin_templates_due_weekday_check',
+      sql`${t.dueWeekday} BETWEEN 0 AND 6`,
+    ),
+  }),
+);
+
+// `template_snapshot` is the column deserving the most scrutiny here: it
+// freezes `checkin_templates.fields` AS THEY WERE at creation time (DB§5.4's
+// own comment), so a coach editing their template next month never
+// retroactively changes what a client's check-in from last month appears to
+// have asked. NOT NULL, same as `fields` above — but nothing in this
+// schema populates it; phase-17-structured-checkins/checkin-scheduler/01's
+// auto-creation logic is what actually copies the template's fields in at
+// generation time. The NOT NULL constraint proves this column was written
+// to; it cannot prove it was written to correctly.
+export const checkins = coachingSchema.table(
+  'checkins',
+  {
+    ...id,
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clientProfiles.id, { onDelete: 'cascade' }),
+    coachId: uuid('coach_id')
+      .notNull()
+      .references(() => coachProfiles.id, { onDelete: 'cascade' }),
+    // A check-in survives its template being deleted.
+    templateId: uuid('template_id').references(() => checkinTemplates.id, {
+      onDelete: 'set null',
+    }),
+    templateSnapshot: jsonb('template_snapshot').notNull(),
+    periodStart: date('period_start').notNull(),
+    periodEnd: date('period_end').notNull(),
+    status: checkinStatus('status').notNull().default('pending'),
+    responses: jsonb('responses').notNull().default({}), // {field_key: value}
+    draftResponses: jsonb('draft_responses'), // autosave, §8.7 AC — NOT `responses`, a different column
+    submittedAt: timestamp('submitted_at', { withTimezone: true }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    coachSummary: text('coach_summary'),
+    coachVideoAssetId: uuid('coach_video_asset_id').references(() => mediaAssets.id, {
+      onDelete: 'set null',
+    }),
+    ...timestamps,
+  },
+  (t) => ({
+    periodCheck: check('checkin_period', sql`${t.periodEnd} >= ${t.periodStart}`),
+    clientPeriodUnique: uniqueIndex('checkins_client_period_unique').on(t.clientId, t.periodStart),
+    // The coach's check-ins-due counter and one branch of §8.2's
+    // dashboard three-counter row. A checkin already 'reviewed' or
+    // 'missed' must not count toward it.
+    coachPendingIdx: index('checkins_coach_pending')
+      .on(t.coachId, t.periodEnd)
+      .where(sql`${t.status} IN ('pending', 'submitted')`),
   }),
 );

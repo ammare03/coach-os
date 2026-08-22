@@ -14,7 +14,13 @@
 // `interface`/`type` that mirrors a table — `eslint.base.js`'s
 // `local/no-hand-written-row-type` rule flags the common case of the
 // latter.
-import type { comments, mediaAssets, reactions } from './schema/coaching.ts';
+import type {
+  checkinTemplates,
+  checkins,
+  comments,
+  mediaAssets,
+  reactions,
+} from './schema/coaching.ts';
 import type {
   authProviders,
   clientProfiles,
@@ -138,3 +144,9 @@ export type NewComment = typeof comments.$inferInsert;
 
 export type Reaction = typeof reactions.$inferSelect;
 export type NewReaction = typeof reactions.$inferInsert;
+
+export type CheckinTemplate = typeof checkinTemplates.$inferSelect;
+export type NewCheckinTemplate = typeof checkinTemplates.$inferInsert;
+
+export type Checkin = typeof checkins.$inferSelect;
+export type NewCheckin = typeof checkins.$inferInsert;
