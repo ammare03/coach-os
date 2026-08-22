@@ -29,6 +29,8 @@ import {
   mediaKind,
   mediaStatus,
   mediaVisibility,
+  metricSource,
+  photoAngle,
 } from './enums.ts';
 import { clientProfiles, coachProfiles, users } from './identity.ts';
 import { exercises, setLogs, workoutSessions } from './training.ts';
@@ -291,5 +293,104 @@ export const checkins = coachingSchema.table(
     coachPendingIdx: index('checkins_coach_pending')
       .on(t.coachId, t.periodEnd)
       .where(sql`${t.status} IN ('pending', 'submitted')`),
+  }),
+);
+
+export const bodyMetrics = coachingSchema.table(
+  'body_metrics',
+  {
+    ...id,
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clientProfiles.id, { onDelete: 'cascade' }),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull(),
+    recordedDate: date('recorded_date').notNull(), // client-local, for charting
+    weightKg: numeric('weight_kg', { precision: 5, scale: 2 }),
+    bodyFatPct: numeric('body_fat_pct', { precision: 4, scale: 1 }),
+    waistCm: numeric('waist_cm', { precision: 5, scale: 1 }),
+    hipCm: numeric('hip_cm', { precision: 5, scale: 1 }),
+    chestCm: numeric('chest_cm', { precision: 5, scale: 1 }),
+    armCm: numeric('arm_cm', { precision: 5, scale: 1 }),
+    thighCm: numeric('thigh_cm', { precision: 5, scale: 1 }),
+    neckCm: numeric('neck_cm', { precision: 5, scale: 1 }),
+    source: metricSource('source').notNull().default('manual'),
+    checkinId: uuid('checkin_id').references(() => checkins.id, { onDelete: 'set null' }),
+    // Nullable, unlike set_logs' mandatory version (training-schema/04) — a
+    // check-in-sourced metric never goes through the offline outbox at all;
+    // only the manual/offline entry path needs the idempotency key.
+    clientLocalId: text('client_local_id'),
+    ...timestamps,
+  },
+  (t) => ({
+    weightBound: check('body_metrics_weight_kg_check', sql`${t.weightKg} BETWEEN 20 AND 400`),
+    bodyFatBound: check('body_metrics_body_fat_pct_check', sql`${t.bodyFatPct} BETWEEN 1 AND 70`),
+    clientDateIdx: index('body_metrics_client_date').on(t.clientId, t.recordedDate.desc()),
+  }),
+);
+
+// ⚠️ HIGHEST SENSITIVITY. See DATABASE.md DB§18. Never joined into any
+// export, analytics, or AI prompt. This warning is preserved verbatim from
+// DB§5.4's own comment on this table so it travels with the code, not only
+// with the planning docs — a future contributor scanning this file for
+// what's safe to log or send to an AI context builder
+// (phase-23-ai-assistant) needs to hit it here, at the point of use.
+//
+// Both foreign keys CASCADE — unusual for a media reference in this
+// schema, where SET NULL is the norm (media_assets' own exercise_id /
+// workout_session_id / set_log_id, coaching-schema/01). A progress photo
+// genuinely has no independent meaning once either its client or its
+// underlying asset is gone, unlike a coach's demo video, which retains
+// value even if a specific exercise reference is removed.
+export const progressPhotos = coachingSchema.table('progress_photos', {
+  ...id,
+  clientId: uuid('client_id')
+    .notNull()
+    .references(() => clientProfiles.id, { onDelete: 'cascade' }),
+  assetId: uuid('asset_id')
+    .notNull()
+    .references(() => mediaAssets.id, { onDelete: 'cascade' }),
+  angle: photoAngle('angle').notNull(),
+  takenAt: timestamp('taken_at', { withTimezone: true }).notNull(),
+  checkinId: uuid('checkin_id').references(() => checkins.id, { onDelete: 'set null' }),
+  createdAt: timestamps.createdAt, // no updated_at — taken once, never modified in place
+});
+
+export const habits = coachingSchema.table(
+  'habits',
+  {
+    ...id,
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clientProfiles.id, { onDelete: 'cascade' }),
+    coachId: uuid('coach_id')
+      .notNull()
+      .references(() => coachProfiles.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    icon: text('icon'),
+    targetPerWeek: smallint('target_per_week').notNull().default(7),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => ({
+    targetPerWeekBound: check(
+      'habits_target_per_week_check',
+      sql`${t.targetPerWeek} BETWEEN 1 AND 7`,
+    ),
+  }),
+);
+
+export const habitLogs = coachingSchema.table(
+  'habit_logs',
+  {
+    ...id,
+    habitId: uuid('habit_id')
+      .notNull()
+      .references(() => habits.id, { onDelete: 'cascade' }),
+    date: date('date').notNull(),
+    completed: boolean('completed').notNull().default(true),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => ({
+    habitDateUnique: uniqueIndex('habit_logs_habit_date_unique').on(t.habitId, t.date),
   }),
 );

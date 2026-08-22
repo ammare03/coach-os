@@ -15,10 +15,14 @@
 // `local/no-hand-written-row-type` rule flags the common case of the
 // latter.
 import type {
+  bodyMetrics,
   checkinTemplates,
   checkins,
   comments,
+  habitLogs,
+  habits,
   mediaAssets,
+  progressPhotos,
   reactions,
 } from './schema/coaching.ts';
 import type {
@@ -150,3 +154,17 @@ export type NewCheckinTemplate = typeof checkinTemplates.$inferInsert;
 
 export type Checkin = typeof checkins.$inferSelect;
 export type NewCheckin = typeof checkins.$inferInsert;
+
+export type BodyMetric = typeof bodyMetrics.$inferSelect;
+export type NewBodyMetric = typeof bodyMetrics.$inferInsert;
+
+// ⚠️ HIGHEST SENSITIVITY — DATABASE.md DB§18. Never joined into any export,
+// analytics, or AI prompt.
+export type ProgressPhoto = typeof progressPhotos.$inferSelect;
+export type NewProgressPhoto = typeof progressPhotos.$inferInsert;
+
+export type Habit = typeof habits.$inferSelect;
+export type NewHabit = typeof habits.$inferInsert;
+
+export type HabitLog = typeof habitLogs.$inferSelect;
+export type NewHabitLog = typeof habitLogs.$inferInsert;
