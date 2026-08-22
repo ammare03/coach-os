@@ -15,6 +15,21 @@
 // `local/no-hand-written-row-type` rule flags the common case of the
 // latter.
 import type {
+  bodyMetrics,
+  checkinTemplates,
+  checkins,
+  comments,
+  conversations,
+  habitLogs,
+  habits,
+  liveSessionParticipants,
+  liveSessions,
+  mediaAssets,
+  messages,
+  progressPhotos,
+  reactions,
+} from './schema/coaching.ts';
+import type {
   authProviders,
   clientProfiles,
   coachClientNotes,
@@ -128,3 +143,44 @@ export type NewMealPlanAssignment = typeof mealPlanAssignments.$inferInsert;
 
 export type WaterLog = typeof waterLogs.$inferSelect;
 export type NewWaterLog = typeof waterLogs.$inferInsert;
+
+export type MediaAsset = typeof mediaAssets.$inferSelect;
+export type NewMediaAsset = typeof mediaAssets.$inferInsert;
+
+export type Comment = typeof comments.$inferSelect;
+export type NewComment = typeof comments.$inferInsert;
+
+export type Reaction = typeof reactions.$inferSelect;
+export type NewReaction = typeof reactions.$inferInsert;
+
+export type CheckinTemplate = typeof checkinTemplates.$inferSelect;
+export type NewCheckinTemplate = typeof checkinTemplates.$inferInsert;
+
+export type Checkin = typeof checkins.$inferSelect;
+export type NewCheckin = typeof checkins.$inferInsert;
+
+export type BodyMetric = typeof bodyMetrics.$inferSelect;
+export type NewBodyMetric = typeof bodyMetrics.$inferInsert;
+
+// ⚠️ HIGHEST SENSITIVITY — DATABASE.md DB§18. Never joined into any export,
+// analytics, or AI prompt.
+export type ProgressPhoto = typeof progressPhotos.$inferSelect;
+export type NewProgressPhoto = typeof progressPhotos.$inferInsert;
+
+export type Habit = typeof habits.$inferSelect;
+export type NewHabit = typeof habits.$inferInsert;
+
+export type HabitLog = typeof habitLogs.$inferSelect;
+export type NewHabitLog = typeof habitLogs.$inferInsert;
+
+export type LiveSession = typeof liveSessions.$inferSelect;
+export type NewLiveSession = typeof liveSessions.$inferInsert;
+
+export type LiveSessionParticipant = typeof liveSessionParticipants.$inferSelect;
+export type NewLiveSessionParticipant = typeof liveSessionParticipants.$inferInsert;
+
+export type Conversation = typeof conversations.$inferSelect;
+export type NewConversation = typeof conversations.$inferInsert;
+
+export type Message = typeof messages.$inferSelect;
+export type NewMessage = typeof messages.$inferInsert;

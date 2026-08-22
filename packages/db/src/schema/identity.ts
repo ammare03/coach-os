@@ -23,6 +23,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { citext, id, identitySchema, softDelete, timestamps } from './_shared.ts';
+import { mediaAssets } from './coaching.ts';
 import {
   billingPlatform,
   clientStatus,
@@ -33,15 +34,18 @@ import {
   userRole,
   weightUnit,
 } from './enums.ts';
+// `avatar_asset_id` and `brand_logo_asset_id` below reference
+// `coaching.media_assets(id)` per DB§5.1. That table didn't exist when this
+// file was first written (identity-schema/01, /03), so both were declared
+// as plain `uuid` columns with no `.references()` — "strategy 1" of that
+// task's documented options. coaching-schema/01 resolves them for real now
+// that `./coaching.ts` exists, importing it here and using the same
+// `(): AnyPgColumn => …` thunk `parentCoachId` below already uses for its
+// self-reference — safe despite the resulting circular import
+// (identity.ts ⇄ coaching.ts) because the thunk is never called until
+// Drizzle resolves the FK, by which point both modules have finished
+// loading.
 
-// `avatar_asset_id` references `coaching.media_assets(id)` per DB§5.1, but
-// that table doesn't exist until coaching-schema (a later feature in this
-// same phase) — Drizzle has nothing to import yet. Declared here as a plain
-// `uuid` column with no `.references()`; the FK constraint itself is added
-// by an ALTER TABLE migration in coaching-schema once `media_assets` exists
-// (identity-schema/01's documented forward-reference strategy 1 — strategy
-// 2, a single cross-file schema graph, needs the target table's module to
-// already exist, which it does not in this commit).
 export const users = identitySchema.table(
   'users',
   {
@@ -49,7 +53,9 @@ export const users = identitySchema.table(
     email: citext('email').notNull(),
     passwordHash: text('password_hash'), // null for social-only accounts
     name: text('name').notNull(),
-    avatarAssetId: uuid('avatar_asset_id'), // FK added later — see comment above
+    avatarAssetId: uuid('avatar_asset_id').references((): AnyPgColumn => mediaAssets.id, {
+      onDelete: 'set null',
+    }),
     role: userRole('role').notNull(),
     timezone: text('timezone').notNull().default('UTC'), // IANA, e.g. 'Asia/Kolkata'
     locale: text('locale').notNull().default('en'),
@@ -187,10 +193,6 @@ export const devices = identitySchema.table(
   }),
 );
 
-// `brand_logo_asset_id` has the same forward-reference problem as
-// `users.avatar_asset_id` (identity-schema/01): `coaching.media_assets`
-// doesn't exist yet, so this is strategy 1 again — a plain `uuid` column,
-// FK added later by coaching-schema.
 export const coachProfiles = identitySchema.table(
   'coach_profiles',
   {
@@ -215,7 +217,9 @@ export const coachProfiles = identitySchema.table(
     instagramHandle: text('instagram_handle'),
     website: text('website'),
     brandPrimaryColor: text('brand_primary_color'),
-    brandLogoAssetId: uuid('brand_logo_asset_id'), // FK added later — see comment above
+    brandLogoAssetId: uuid('brand_logo_asset_id').references((): AnyPgColumn => mediaAssets.id, {
+      onDelete: 'set null',
+    }),
 
     // Billing replica; RevenueCat is the system of record (§15.7).
     subscriptionTier: subscriptionTier('subscription_tier').notNull().default('starter'),
