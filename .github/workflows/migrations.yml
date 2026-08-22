@@ -1,0 +1,114 @@
+name: Migrations
+
+# Separate from ci.yml deliberately (db-package-scaffold/04). GitHub Actions'
+# `paths` filter is workflow-scoped, not job-scoped — putting this job inside
+# ci.yml would mean either the whole workflow (including the "check" job that
+# must run on every PR) inherits this path filter, or "check" loses it. A
+# second file with its own filter is the option that doesn't compromise
+# either job's trigger. The checkout/setup steps below are intentionally
+# small enough that duplicating them costs less than the alternative.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/db/**'
+      - 'packages/schemas/**'
+      - 'apps/api/**'
+      # A filter that can silently disable itself by being edited is a known
+      # failure mode (db-package-scaffold/04 §Approach 4) — changing this
+      # file must always re-trigger the job it guards.
+      - '.github/workflows/migrations.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/db/**'
+      - 'packages/schemas/**'
+      - 'apps/api/**'
+      - '.github/workflows/migrations.yml'
+
+concurrency:
+  group: migrations-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# No secret, no write access — this job's only credentials are the ones
+# below for the ephemeral service container, never a real environment
+# (db-package-scaffold/04 acceptance criteria).
+permissions:
+  contents: read
+
+jobs:
+  migrations:
+    name: migrations
+    runs-on: ubuntu-latest
+
+    # Postgres 16, matching CLAUDE.md §3.2. No `volumes:` entry — deliberate.
+    # Service containers are ephemeral by default; adding a volume would let
+    # state leak between runs and hide exactly the class of bug this job
+    # exists to catch (DB§12.1 point 5's idempotency check needs a genuinely
+    # empty database at the start of every run).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: coachos
+          POSTGRES_PASSWORD: coachos
+          POSTGRES_DB: coachos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U coachos -d coachos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # The `local` target (migrate-env.ts) — a throwaway credential for a
+      # container that exists only for this job's lifetime, not a secret.
+      DATABASE_URL: postgres://coachos:coachos@localhost:5432/coachos # secret-scan-ignore
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # DB§12.1 point 5's exact sequence. Each step is named so a failure
+      # identifies which of the four happened — "migrations failed to apply
+      # from empty" and "migrations are not idempotent" are different bugs
+      # and the job output must say which one this run hit.
+      - name: Apply migrations from empty
+        run: pnpm --filter @coachos/db db:migrate
+
+      - name: Seed
+        run: pnpm --filter @coachos/db db:seed
+
+      - name: Run the test suite
+        run: pnpm test
+
+      # The idempotency check DB§12.1 names explicitly. What this actually
+      # tests: `db:migrate`'s own applied-migrations bookkeeping (the
+      # `drizzle.__drizzle_migrations` table) correctly recognises every
+      # migration in this run as already applied and does nothing — the
+      # same "run it twice, nothing happens" guarantee drizzle-kit's own
+      # migrator gives. It deliberately does NOT force raw re-execution of
+      # each statement bypassing that bookkeeping: `CREATE TYPE ... AS ENUM`
+      # (task 02's migration) has no `IF NOT EXISTS` in any Postgres version,
+      # so a check that ignored tracking and blindly re-ran every statement
+      # would fail on this project's own correct, DATABASE.md-mandated DDL.
+      # (Verified manually in db-package-scaffold/04: a raw statement without
+      # a guard — e.g. `ALTER TABLE ... ADD COLUMN x ... NOT NULL DEFAULT`
+      # run twice outside this bookkeeping — does fail, confirming the
+      # tracking table is what actually prevents that class of mistake from
+      # ever reaching a real database twice.)
+      - name: Apply migrations again (must be a no-op)
+        run: pnpm --filter @coachos/db db:migrate

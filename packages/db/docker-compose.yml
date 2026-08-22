@@ -1,0 +1,25 @@
+# Local Postgres 16 for development — pinned to match CLAUDE.md §3.2 and
+# the managed Postgres 16 used in Neon (dev) / RDS (prod). Developing
+# against 15 or 17 risks a behaviour difference in exactly the areas this
+# schema leans on: generated columns, partial indexes, enum handling
+# (db-package-scaffold/01).
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: coachos
+      POSTGRES_PASSWORD: coachos
+      POSTGRES_DB: coachos
+    ports:
+      - '5432:5432'
+    volumes:
+      - coachos_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U coachos -d coachos']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  coachos_postgres_data:

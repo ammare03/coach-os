@@ -1,4 +1,6 @@
-// Barrel — empty on purpose. `phase-01-data-layer/db-package-scaffold/01`
-// fills this in; this task (shared-config/04) only creates the layout
-// DATABASE.md DB§11.1 specifies, so P01 has no structural decision to make.
-export {};
+// Barrel — the package's public surface. apps/api and the BullMQ worker
+// import from here, never reach into `src/schema/*` directly.
+export { createDbClient } from './client.ts';
+export type { DbClient, DbClientOptions } from './client.ts';
+
+export * as schema from './schema/index.ts';
