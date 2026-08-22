@@ -17,8 +17,10 @@
 import type {
   authProviders,
   clientProfiles,
+  coachClientNotes,
   coachProfiles,
   devices,
+  invites,
   refreshTokens,
   users,
 } from './schema/identity.ts';
@@ -40,3 +42,13 @@ export type NewCoachProfile = typeof coachProfiles.$inferInsert;
 
 export type ClientProfile = typeof clientProfiles.$inferSelect;
 export type NewClientProfile = typeof clientProfiles.$inferInsert;
+
+// ⚠️ NEVER exposed to the client. No tRPC procedure returns this to
+// role='client' (DATABASE.md DB§5.1's own in-line warning,
+// identity-schema/04). Restated here as a forward pointer for whoever
+// implements this table's router in P02/P03.
+export type CoachClientNote = typeof coachClientNotes.$inferSelect;
+export type NewCoachClientNote = typeof coachClientNotes.$inferInsert;
+
+export type Invite = typeof invites.$inferSelect;
+export type NewInvite = typeof invites.$inferInsert;

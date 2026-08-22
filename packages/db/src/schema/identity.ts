@@ -337,3 +337,84 @@ export const clientProfiles = identitySchema.table(
       .where(sql`${t.status} IN ('active', 'invited') AND ${t.deletedAt} IS NULL`),
   }),
 );
+
+// ⚠️ NEVER exposed to the client. No tRPC procedure returns this to
+// role='client' (DB§5.1's own in-line warning). Both FKs cascade — a note
+// is meaningless independent of its coach or client existing, unlike
+// training history, which retains value even if authorship context changes.
+export const coachClientNotes = identitySchema.table(
+  'coach_client_notes',
+  {
+    ...id,
+    coachId: uuid('coach_id')
+      .notNull()
+      .references(() => coachProfiles.id, { onDelete: 'cascade' }),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clientProfiles.id, { onDelete: 'cascade' }),
+    body: text('body').notNull(),
+    isPinned: boolean('is_pinned').notNull().default(false),
+    ...softDelete,
+    ...timestamps,
+  },
+  (t) => ({
+    // DB§7: every FK is indexed, no exceptions.
+    coachIdIdx: index('coach_client_notes_coach_id_idx').on(t.coachId),
+    clientIdIdx: index('coach_client_notes_client_id_idx').on(t.clientId),
+  }),
+);
+
+export const invites = identitySchema.table(
+  'invites',
+  {
+    ...id,
+    coachId: uuid('coach_id')
+      .notNull()
+      .references(() => coachProfiles.id, { onDelete: 'cascade' }),
+    // What accepting this invite creates: a client_profiles row, or a
+    // second coach_profiles row with parent_coach_id = this invite's
+    // coach_id (§15.2, Studio+ only — the tier gate is an application
+    // check, not a DB one). Only a root coach may create an 'assistant'
+    // invite — enforced in phase-25-white-label-and-teams, not here.
+    inviteRole: text('invite_role').notNull().default('client'), // CHECK (invite_role IN ('client','assistant')) — DB§5.1 uses text + CHECK, not an enum
+    email: citext('email').notNull(),
+    code: text('code').notNull().unique(), // 8-char base32, unambiguous alphabet
+    // Database-level default, deliberately — DB§5.1 chose this specifically
+    // so a direct insert bypassing application code (a script, a manual
+    // fix, a seed) still gets a correctly bounded invite rather than one
+    // that never expires. Never move this into application code.
+    expiresAt: timestamp('expires_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now() + interval '14 days'`),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    // The invite is a historical record of who was invited and by whom; it
+    // outlives the accepting user's account, distinguishing "accepted, then
+    // the account was later deleted" from "never accepted."
+    acceptedByUserId: uuid('accepted_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => ({
+    inviteRoleCheck: check(
+      'invites_invite_role_check',
+      sql`${t.inviteRole} IN ('client', 'assistant')`,
+    ),
+    // §15.5's seat-counting query: a pending invite counts against the seat
+    // limit. Both conditions matter — accepted invites already converted
+    // to an active client relationship (tracked separately), and revoked
+    // ones were withdrawn; neither should count as "pending."
+    pendingIdx: index('invites_pending')
+      .on(t.coachId)
+      .where(sql`${t.acceptedAt} IS NULL AND ${t.revokedAt} IS NULL`),
+    // DB§7: every FK is indexed, no exceptions — this project's stand-in
+    // for the "migration lint rule" DATABASE.md describes as auto-indexing
+    // every FK (see coach_profiles_parent's own comment, DB§5.1), which
+    // Drizzle itself doesn't provide. `pendingIdx` above is partial (scoped
+    // to pending rows only) and can't serve a general "this coach's whole
+    // invite history" query, so coach_id still needs its own plain index.
+    coachIdIdx: index('invites_coach_id_idx').on(t.coachId),
+    acceptedByIdx: index('invites_accepted_by_user_id_idx').on(t.acceptedByUserId),
+  }),
+);
