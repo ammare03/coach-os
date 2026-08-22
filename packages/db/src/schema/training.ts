@@ -309,9 +309,10 @@ export const workoutSessions = trainingSchema.table(
     // so `phase-02-api-foundation/authorization-middleware/03-owns-resource.md`
     // can check "does this coach own this session's client" in one indexed
     // lookup instead of a join. Set on INSERT only, from the parent, inside
-    // the same transaction; the trigger that blocks drift outside the
-    // documented client-transfer procedure is built in derived-data/02, not
-    // here — this column exists now without that guard (training-schema/03).
+    // the same transaction. Guarded by `workout_sessions_no_owner_change`
+    // (derived-data/02, migrations/0022_guard_triggers.sql) — an UPDATE
+    // outside a transaction with `SET LOCAL app.allow_owner_change = true`
+    // is rejected.
     coachId: uuid('coach_id')
       .notNull()
       .references(() => coachProfiles.id, { onDelete: 'cascade' }),
@@ -403,7 +404,9 @@ export const setLogs = trainingSchema.table(
       .notNull()
       .references(() => exercises.id, { onDelete: 'restrict' }),
     // Denormalised, DB§6 — same rationale and same INSERT-only/trigger-guard
-    // discipline as workout_sessions.coach_id (training-schema/03).
+    // discipline as workout_sessions.coach_id (training-schema/03). Guarded
+    // by `set_logs_no_owner_change` (derived-data/02,
+    // migrations/0022_guard_triggers.sql) — DB§8.3's own worked example.
     clientId: uuid('client_id')
       .notNull()
       .references(() => clientProfiles.id, { onDelete: 'cascade' }),

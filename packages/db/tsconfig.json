@@ -11,8 +11,8 @@
     // packages/schemas).
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
-    "types": ["node"],
+    "types": ["node", "jest"],
     "noEmit": true
   },
-  "include": ["src"]
+  "include": ["src", "scripts"]
 }

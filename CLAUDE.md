@@ -1,7 +1,7 @@
 # CLAUDE.md — CoachOS
 
-> **Single source of truth for what this repository *is* and *why*.**
-> `DATABASE.md` owns every byte of persisted state. `.claude/plan/` owns *when* each
+> **Single source of truth for what this repository _is_ and _why_.**
+> `DATABASE.md` owns every byte of persisted state. `.claude/plan/` owns _when_ each
 > thing gets built and what "done" means for it, down to PR-sized tasks. This file
 > owns the product, the stack, the money, and the decisions nothing else should own.
 > If code and this file disagree, this file is wrong — fix it in the same PR that
@@ -49,40 +49,40 @@ it, so it can be kept current without dragging the other 1,200 lines along. If a
 section number below is missing from this file, this is where it went. (Gaps in the
 numbering are intentional — a moved section's number is retired, not reused.)
 
-| Was | Now lives in |
-|---|---|
-| §5 Data model | `DATABASE.md` — the authoritative DDL, always was |
-| §6.1, 6.3–6.5 API shape, errors, validation, rate limits | `api-conventions` skill |
-| §7 Design system | `DESIGN-SYSTEM.md` (values) + `ui-conventions` skill (rules) + `.claude/plan/phase-04-design-system/` |
-| §8 Feature specifications | `.claude/plan/` — every AC preserved verbatim in its task document |
-| §9 Navigation map | `UI-UX.md` §UX1 + `.claude/plan/phase-05-app-shell/` |
-| §10 State management | `code-conventions` skill |
-| §11 Offline strategy | `offline-sync` skill |
-| §12 Media pipeline | `.claude/plan/phase-11-media-pipeline/` |
-| §13 Realtime | `.claude/plan/phase-14-messaging-and-realtime/` |
-| §14 Notifications | `.claude/plan/phase-15-notifications/` |
-| §16 Environment & configuration | `configuration` skill |
-| §17 Coding conventions | `code-conventions` + `git-workflow` skills |
-| §18 Testing | `testing` skill |
-| §23 phase-by-phase feature lists | `.claude/plan/README.md` (ship gates still live here, below) |
+| Was                                                      | Now lives in                                                                                          |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| §5 Data model                                            | `DATABASE.md` — the authoritative DDL, always was                                                     |
+| §6.1, 6.3–6.5 API shape, errors, validation, rate limits | `api-conventions` skill                                                                               |
+| §7 Design system                                         | `DESIGN-SYSTEM.md` (values) + `ui-conventions` skill (rules) + `.claude/plan/phase-04-design-system/` |
+| §8 Feature specifications                                | `.claude/plan/` — every AC preserved verbatim in its task document                                    |
+| §9 Navigation map                                        | `UI-UX.md` §UX1 + `.claude/plan/phase-05-app-shell/`                                                  |
+| §10 State management                                     | `code-conventions` skill                                                                              |
+| §11 Offline strategy                                     | `offline-sync` skill                                                                                  |
+| §12 Media pipeline                                       | `.claude/plan/phase-11-media-pipeline/`                                                               |
+| §13 Realtime                                             | `.claude/plan/phase-14-messaging-and-realtime/`                                                       |
+| §14 Notifications                                        | `.claude/plan/phase-15-notifications/`                                                                |
+| §16 Environment & configuration                          | `configuration` skill                                                                                 |
+| §17 Coding conventions                                   | `code-conventions` + `git-workflow` skills                                                            |
+| §18 Testing                                              | `testing` skill                                                                                       |
+| §23 phase-by-phase feature lists                         | `.claude/plan/README.md` (ship gates still live here, below)                                          |
 
 **The two architecture documents** are new companions rather than extractions from this
 file:
 
-| Document | Owns |
-|---|---|
-| `ARCHITECTURE.md` | The *shape* of the system — containers, topology, the seven critical flows, caching, failure modes, and the binding architecture invariants (§A14) |
-| `ARCHITECTURE-ESSENTIALS.md` | The load-bearing subset of that architecture — what breaks, and how badly, if a given mechanism is missing. Read it before deciding what to defer. |
-| `ANALYTICS.md` | The event dictionary — every event, its properties, and the type-level privacy guardrail. §20 here owns the policy; that file owns the contract. |
-| `ERRORS.md` | The closed error catalogue — machine code, transport code, user-facing copy, and recovery action for every failure a user can reach |
-| `SUPPORT.md` | How we help a user whose data we are not permitted to read — the four access tiers, the closed list of safe operations, and the trust & safety escalation path |
-| `OBSERVABILITY.md` | What we record, what has a threshold, the five things that page, and the runbook for each |
-| `COPY.md` | Every word the product says — the never-diagnose/prescribe/promise rules (§21.3 in operational form) and the no-shame rule |
-| `COMPLIANCE.md` | DPDP / GDPR / CCPA turned into a build-vs-write gap list with owners |
-| `DESIGN-SYSTEM.md` | The visual system — palette (dark + light), type scale, space, elevation, density, motion, icons |
-| `UI-UX.md` | Page composition — the navigation model, the six page patterns, the data-fetching contract, error isolation, and the performance playbook |
-| `docs/screens/` | Ten hero screens specified with wireframes and data contracts; every other route assigned to a pattern |
-| `docs/PILOT-PLAYBOOK.md` | How the §23 ship-gate-1 pilot actually gets run — recruiting, onboarding, the weekly questions, and the go/no-go |
+| Document                     | Owns                                                                                                                                                           |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ARCHITECTURE.md`            | The _shape_ of the system — containers, topology, the seven critical flows, caching, failure modes, and the binding architecture invariants (§A14)             |
+| `ARCHITECTURE-ESSENTIALS.md` | The load-bearing subset of that architecture — what breaks, and how badly, if a given mechanism is missing. Read it before deciding what to defer.             |
+| `ANALYTICS.md`               | The event dictionary — every event, its properties, and the type-level privacy guardrail. §20 here owns the policy; that file owns the contract.               |
+| `ERRORS.md`                  | The closed error catalogue — machine code, transport code, user-facing copy, and recovery action for every failure a user can reach                            |
+| `SUPPORT.md`                 | How we help a user whose data we are not permitted to read — the four access tiers, the closed list of safe operations, and the trust & safety escalation path |
+| `OBSERVABILITY.md`           | What we record, what has a threshold, the five things that page, and the runbook for each                                                                      |
+| `COPY.md`                    | Every word the product says — the never-diagnose/prescribe/promise rules (§21.3 in operational form) and the no-shame rule                                     |
+| `COMPLIANCE.md`              | DPDP / GDPR / CCPA turned into a build-vs-write gap list with owners                                                                                           |
+| `DESIGN-SYSTEM.md`           | The visual system — palette (dark + light), type scale, space, elevation, density, motion, icons                                                               |
+| `UI-UX.md`                   | Page composition — the navigation model, the six page patterns, the data-fetching contract, error isolation, and the performance playbook                      |
+| `docs/screens/`              | Ten hero screens specified with wireframes and data contracts; every other route assigned to a pattern                                                         |
+| `docs/PILOT-PLAYBOOK.md`     | How the §23 ship-gate-1 pilot actually gets run — recruiting, onboarding, the weekly questions, and the go/no-go                                               |
 
 #### 0.1.1 Retired-section redirect — read this if a `§N` reference dead-ends
 
@@ -93,28 +93,28 @@ restated inline, and 1,950 context-sensitive edits would introduce more errors t
 
 **So: when a task says `§8.4` and this file has no §8, resolve it here.**
 
-| Retired ref | Read instead |
-|---|---|
-| `§5`, `§5.1`–`§5.8` | `DATABASE.md` — the same subsection numbers, prefixed `DB§` |
-| `§7`, `§7.1`–`§7.5` | `DESIGN-SYSTEM.md` for values · `ui-conventions` skill for rules |
-| `§8.1` Dashboard · `§8.2` Adherence | `.claude/plan/phase-10-coach-review-surfaces/` |
-| `§8.3` Programs | `.claude/plan/phase-07-exercise-and-program-authoring/` |
-| `§8.4` Workout logger | `.claude/plan/phase-09-workout-logger/` |
-| `§8.5` Onboarding / clients | `.claude/plan/phase-06-onboarding/` |
-| `§8.6` Media · `§8.7` Check-ins | `phase-11-media-pipeline/` · `phase-17-structured-checkins/` |
-| `§8.8` Messaging · `§8.9` Live | `phase-14-messaging-and-realtime/` · `phase-19-live-sessions/` |
-| `§8.10` Habits/metrics · `§8.11` AI | `phase-18-habits-metrics-photos/` · `phase-23-ai-assistant/` |
-| `§8.12` (was wearables) | **Superseded.** `phase-24-health-sync/` — write-only export, §27 |
-| `§8.x` anything else | The phase that owns that feature (`.claude/plan/README.md` §5) |
-| `§9`, `§9.1`–`§9.3` | `UI-UX.md` §UX1 (navigation model) + `phase-05-app-shell/` |
-| `§10` State management | `code-conventions` skill |
-| `§11` Offline strategy | `offline-sync` skill + `DATABASE.md` DB§13–14 |
-| `§12` Media pipeline | `phase-11-media-pipeline/` |
-| `§13` Realtime | `phase-14-messaging-and-realtime/` |
-| `§14`, `§14.1`–`§14.2` | `phase-15-notifications/` |
-| `§16`, `§16.1` | `configuration` skill |
-| `§17`, `§17.1`–`§17.5` | `code-conventions` + `git-workflow` skills |
-| `§18`, `§18.3` | `testing` skill (§18.3 = the authorisation enumeration test) |
+| Retired ref                         | Read instead                                                     |
+| ----------------------------------- | ---------------------------------------------------------------- |
+| `§5`, `§5.1`–`§5.8`                 | `DATABASE.md` — the same subsection numbers, prefixed `DB§`      |
+| `§7`, `§7.1`–`§7.5`                 | `DESIGN-SYSTEM.md` for values · `ui-conventions` skill for rules |
+| `§8.1` Dashboard · `§8.2` Adherence | `.claude/plan/phase-10-coach-review-surfaces/`                   |
+| `§8.3` Programs                     | `.claude/plan/phase-07-exercise-and-program-authoring/`          |
+| `§8.4` Workout logger               | `.claude/plan/phase-09-workout-logger/`                          |
+| `§8.5` Onboarding / clients         | `.claude/plan/phase-06-onboarding/`                              |
+| `§8.6` Media · `§8.7` Check-ins     | `phase-11-media-pipeline/` · `phase-17-structured-checkins/`     |
+| `§8.8` Messaging · `§8.9` Live      | `phase-14-messaging-and-realtime/` · `phase-19-live-sessions/`   |
+| `§8.10` Habits/metrics · `§8.11` AI | `phase-18-habits-metrics-photos/` · `phase-23-ai-assistant/`     |
+| `§8.12` (was wearables)             | **Superseded.** `phase-24-health-sync/` — write-only export, §27 |
+| `§8.x` anything else                | The phase that owns that feature (`.claude/plan/README.md` §5)   |
+| `§9`, `§9.1`–`§9.3`                 | `UI-UX.md` §UX1 (navigation model) + `phase-05-app-shell/`       |
+| `§10` State management              | `code-conventions` skill                                         |
+| `§11` Offline strategy              | `offline-sync` skill + `DATABASE.md` DB§13–14                    |
+| `§12` Media pipeline                | `phase-11-media-pipeline/`                                       |
+| `§13` Realtime                      | `phase-14-messaging-and-realtime/`                               |
+| `§14`, `§14.1`–`§14.2`              | `phase-15-notifications/`                                        |
+| `§16`, `§16.1`                      | `configuration` skill                                            |
+| `§17`, `§17.1`–`§17.5`              | `code-conventions` + `git-workflow` skills                       |
+| `§18`, `§18.3`                      | `testing` skill (§18.3 = the authorisation enumeration test)     |
 
 **Sections that DO still live here** and mean what a task expects: §1–§4, §6, §15, §19–§27.
 A `DB§`, `A§`, `E§`, `UX§`, `DS§`, `CO§`, `ER§`, `AN§`, `SU§`, or `OB§` prefix always points
@@ -151,12 +151,12 @@ thing it is about (this set, this meal, this video, at this timestamp).
 
 ### 1.1 Two apps, one codebase
 
-| | Coach app | Client app |
-|---|---|---|
-| Primary job | Review, program, give feedback | Log, upload, receive feedback |
-| Session length | Long (10–30 min review blocks) | Short (30s–3 min, mid-workout) |
-| Design bias | Information density | One-thumb, gym-floor legible |
-| Network assumption | Wi-Fi / good signal | Gym basement, bad signal |
+|                    | Coach app                      | Client app                     |
+| ------------------ | ------------------------------ | ------------------------------ |
+| Primary job        | Review, program, give feedback | Log, upload, receive feedback  |
+| Session length     | Long (10–30 min review blocks) | Short (30s–3 min, mid-workout) |
+| Design bias        | Information density            | One-thumb, gym-floor legible   |
+| Network assumption | Wi-Fi / good signal            | Gym basement, bad signal       |
 
 Both ship from **one Expo project** with role-based routing
 (`.claude/plan/phase-05-app-shell/`). We do **not** maintain two apps. Divergence is
@@ -179,11 +179,13 @@ Write these down so nobody rebuilds them by accident:
 
 **Coach (primary buyer, primary user).** 5–60 online clients. Earns $1.5k–$15k/mo.
 Currently spends 2–4 hrs/day on admin. Jobs:
+
 - "Show me who is off-track this week, before my Sunday check-in block."
 - "Let me watch this squat video and tell them exactly what to fix."
 - "Let me change Tuesday's session for 12 clients without opening 12 chats."
 
 **Client (user, not buyer).** Trains 3–6×/week. Jobs:
+
 - "Tell me what to do today, in the gym, without reading a PDF."
 - "Log this set in under 5 seconds while my hands are chalked."
 - "Did my coach see my video? What did they say?"
@@ -197,6 +199,7 @@ an assistant sees only the clients directly assigned to them, never the root's o
 clients or a sibling assistant's. Assistants have no billing access and cannot
 themselves take on assistants (one level of delegation only). Full spec:
 `.claude/plan/phase-25-white-label-and-teams/team-seats-and-roles/`. Jobs:
+
 - "Run my own clients day to day, the way I would if I were the primary coach."
 - (For the root) "See what my team is doing with my clients without asking them for
   a screenshot."
@@ -210,37 +213,37 @@ themselves take on assistants (one level of delegation only). Full spec:
 
 ### 3.1 Mobile app
 
-| Concern | Choice | Why / notes |
-|---|---|---|
-| Framework | **Expo SDK 57** (managed, with CNG) | Current stable as of Aug 2026. Pin via `npx expo install --fix`; never hand-edit RN/React versions. |
-| Language | **TypeScript 6.x**, `strict: true` | The repo ships TS 6 with Expo SDK 57. Pinned to what is installed, not to 5.x. See `code-conventions` skill. |
-| Router | **expo-router** (file-based, typed routes on) | Deep links + push routing come free |
-| Native tooling | **CNG (Continuous Native Generation)** | `ios/` and `android/` are gitignored and regenerated by `npx expo prebuild`. All native config via config plugins in `app.config.ts`. |
-| Dev builds | **expo-dev-client** | Expo Go is **not** sufficient — LiveKit and RevenueCat need custom native code. |
-| Styling | **NativeWind v4** (Tailwind for RN) | Shared token vocabulary with the future web dashboard |
-| Animation | **react-native-reanimated 4.x** + `react-native-worklets` + `react-native-gesture-handler` | Required by bottom sheets, video scrubber. **v4 is a breaking change from v3** — worklets are a separate package and most tutorials online are v3. Check the version before trusting an example. |
-| Bottom sheets | `@gorhom/bottom-sheet` | The workout logger and the comment composer are sheets |
-| Lists | **FlashList v2** | Long workout histories, food diaries |
-| Server state | **TanStack Query v5** | Cache, retry, optimistic updates, offline persistence |
-| Client state | **Zustand** | Only for UI state: active rest timer, draft logger state |
-| Forms | **react-hook-form** + **Zod** resolver | Zod schemas are shared with the API |
-| Video playback | **expo-video** | `expo-av` is deprecated; do not use it |
-| Audio (voice notes) | **expo-audio** | Same reason |
-| Camera | **expo-camera** | Form-check capture + barcode scanning |
-| Media picker | **expo-image-picker** | Gallery uploads |
-| Files/uploads | **expo-file-system** (new object API) | Resumable uploads, progress, `AbortSignal` |
-| Images | **expo-image** | Built-in caching, blurhash placeholders |
-| Liquid Glass | **expo-glass-effect** | iOS 26+ only, floating chrome only — tab bar, nav bar, annotator toolbar. Falls back to the opaque elevation model on Android, on iOS < 26, and under Reduce Transparency. `DESIGN-SYSTEM.md` DS§12 is binding. |
-| Local DB | **expo-sqlite** + **Drizzle ORM** | Offline workout logging (`offline-sync` skill) |
-| Secure storage | **expo-secure-store** | Tokens only. Never PII. |
-| Notifications | **expo-notifications** | Push via EAS + APNs/FCM |
-| Health export | **expo-health** (HealthKit) / `react-native-health-connect` | Phase 3 only. **Write scopes only** — CoachOS writes completed workouts out to Apple Health / Health Connect and never reads health data back (`.claude/plan/phase-24-health-sync/`). Requesting a read scope is a §27 decision. |
-| Live video | **LiveKit React Native SDK** | WebRTC SFU |
-| Payments | **RevenueCat** | StoreKit + Play Billing + entitlements + webhooks. Coach subscriptions are IAP (§15.7). |
-| Analytics | **PostHog** | Product analytics + feature flags in one |
-| Crash/errors | **Sentry** (`@sentry/react-native`) | Source maps uploaded in EAS build hook |
-| Testing | **Jest** + **@testing-library/react-native**; **Maestro** for E2E | See `testing` skill |
-| Lint/format | **ESLint** (`eslint-config-expo`) + **Prettier** | Enforced in CI |
+| Concern             | Choice                                                                                                                                                                                         | Why / notes                                                                                                                                                                                                                      |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Framework           | **Expo SDK 57** (managed, with CNG)                                                                                                                                                            | Current stable as of Aug 2026. Pin via `npx expo install --fix`; never hand-edit RN/React versions.                                                                                                                              |
+| Language            | **TypeScript 6.x**, `strict: true`                                                                                                                                                             | The repo ships TS 6 with Expo SDK 57. Pinned to what is installed, not to 5.x. See `code-conventions` skill.                                                                                                                     |
+| Router              | **expo-router** (file-based, typed routes on)                                                                                                                                                  | Deep links + push routing come free                                                                                                                                                                                              |
+| Native tooling      | **CNG (Continuous Native Generation)**                                                                                                                                                         | `ios/` and `android/` are gitignored and regenerated by `npx expo prebuild`. All native config via config plugins in `app.config.ts`.                                                                                            |
+| Dev builds          | **expo-dev-client**                                                                                                                                                                            | Expo Go is **not** sufficient — LiveKit and RevenueCat need custom native code.                                                                                                                                                  |
+| Styling             | **NativeWind v4** (Tailwind for RN)                                                                                                                                                            | Shared token vocabulary with the future web dashboard                                                                                                                                                                            |
+| Animation           | **react-native-reanimated 4.x** + `react-native-worklets` + `react-native-gesture-handler`                                                                                                     | Required by bottom sheets, video scrubber. **v4 is a breaking change from v3** — worklets are a separate package and most tutorials online are v3. Check the version before trusting an example.                                 |
+| Bottom sheets       | `@gorhom/bottom-sheet`                                                                                                                                                                         | The workout logger and the comment composer are sheets                                                                                                                                                                           |
+| Lists               | **FlashList v2**                                                                                                                                                                               | Long workout histories, food diaries                                                                                                                                                                                             |
+| Server state        | **TanStack Query v5**                                                                                                                                                                          | Cache, retry, optimistic updates, offline persistence                                                                                                                                                                            |
+| Client state        | **Zustand**                                                                                                                                                                                    | Only for UI state: active rest timer, draft logger state                                                                                                                                                                         |
+| Forms               | **react-hook-form** + **Zod** resolver                                                                                                                                                         | Zod schemas are shared with the API                                                                                                                                                                                              |
+| Video playback      | **expo-video**                                                                                                                                                                                 | `expo-av` is deprecated; do not use it                                                                                                                                                                                           |
+| Audio (voice notes) | **expo-audio**                                                                                                                                                                                 | Same reason                                                                                                                                                                                                                      |
+| Camera              | **expo-camera**                                                                                                                                                                                | Form-check capture + barcode scanning                                                                                                                                                                                            |
+| Media picker        | **expo-image-picker**                                                                                                                                                                          | Gallery uploads                                                                                                                                                                                                                  |
+| Files/uploads       | **expo-file-system** (new object API)                                                                                                                                                          | Resumable uploads, progress, `AbortSignal`                                                                                                                                                                                       |
+| Images              | **expo-image**                                                                                                                                                                                 | Built-in caching, blurhash placeholders                                                                                                                                                                                          |
+| Liquid Glass        | **expo-glass-effect**                                                                                                                                                                          | iOS 26+ only, floating chrome only — tab bar, nav bar, annotator toolbar. Falls back to the opaque elevation model on Android, on iOS < 26, and under Reduce Transparency. `DESIGN-SYSTEM.md` DS§12 is binding.                  |
+| Local DB            | **expo-sqlite** + **Drizzle ORM**                                                                                                                                                              | Offline workout logging (`offline-sync` skill)                                                                                                                                                                                   |
+| Secure storage      | **expo-secure-store**                                                                                                                                                                          | Tokens only. Never PII.                                                                                                                                                                                                          |
+| Notifications       | **expo-notifications**                                                                                                                                                                         | Push via EAS + APNs/FCM                                                                                                                                                                                                          |
+| Health export       | **expo-health** (HealthKit) / `react-native-health-connect`                                                                                                                                    | Phase 3 only. **Write scopes only** — CoachOS writes completed workouts out to Apple Health / Health Connect and never reads health data back (`.claude/plan/phase-24-health-sync/`). Requesting a read scope is a §27 decision. |
+| Live video          | **LiveKit React Native SDK**                                                                                                                                                                   | WebRTC SFU                                                                                                                                                                                                                       |
+| Payments            | **RevenueCat**                                                                                                                                                                                 | StoreKit + Play Billing + entitlements + webhooks. Coach subscriptions are IAP (§15.7).                                                                                                                                          |
+| Analytics           | **PostHog**                                                                                                                                                                                    | Product analytics + feature flags in one                                                                                                                                                                                         |
+| Crash/errors        | **Sentry** (`@sentry/react-native`)                                                                                                                                                            | Source maps uploaded in EAS build hook                                                                                                                                                                                           |
+| Testing             | **Jest** + **@testing-library/react-native**; **Maestro** for E2E; **Testcontainers** (`testcontainers` npm pkg) for real-Postgres tests in `packages/db`/`apps/api` — added `derived-data/03` | See `testing` skill                                                                                                                                                                                                              |
+| Lint/format         | **ESLint** (`eslint-config-expo`) + **Prettier**                                                                                                                                               | Enforced in CI                                                                                                                                                                                                                   |
 
 ### 3.1.1 Template leftovers to remove
 
@@ -249,10 +252,10 @@ conflict with decisions made elsewhere in this file. **`phase-00-repository-foun
 removes them**; they are listed here so the conflict is on the record rather than discovered
 mid-build.
 
-| Installed | Conflict | Action |
-|---|---|---|
-| `@expo/ui` | §3.1 builds primitives in `packages/ui`; a second component library guarantees two ways to render a button | Remove |
-| `expo-symbols` | SF Symbols are iOS-only; `DESIGN-SYSTEM.md` DS§7 pins **Lucide** for cross-platform parity | Remove |
+| Installed      | Conflict                                                                                                   | Action |
+| -------------- | ---------------------------------------------------------------------------------------------------------- | ------ |
+| `@expo/ui`     | §3.1 builds primitives in `packages/ui`; a second component library guarantees two ways to render a button | Remove |
+| `expo-symbols` | SF Symbols are iOS-only; `DESIGN-SYSTEM.md` DS§7 pins **Lucide** for cross-platform parity                 | Remove |
 
 `expo-web-browser`, `expo-linking`, and `react-native-web` **stay** — the first two are used
 by auth and deep linking, and `react-native-web` is what lets the component gallery
@@ -260,29 +263,29 @@ by auth and deep linking, and `react-native-web` is what lets the component gall
 
 **`expo-glass-effect` also stays**, and is now a pinned dependency (§3.1). It was on this
 removal list until Liquid Glass was adopted for floating chrome; `DESIGN-SYSTEM.md` DS§12
-defines exactly where it may and may not be used, and DS§10 still rejects *emulated*
+defines exactly where it may and may not be used, and DS§10 still rejects _emulated_
 glassmorphism on content surfaces.
 
 ### 3.2 Backend
 
-| Concern | Choice | Notes |
-|---|---|---|
-| Runtime | **Node 22 LTS** | |
-| Framework | **Hono** on Node adapter | Small, fast, runs on Node and edge |
-| API layer | **tRPC v11** | End-to-end types; no OpenAPI codegen needed for our own client |
-| DB | **PostgreSQL 16** | Managed: Neon (dev) → AWS RDS (prod) |
-| ORM | **Drizzle ORM** | Same ORM on server and device — one mental model |
-| Migrations | **drizzle-kit** | Migrations are committed. Never edit an applied migration. See `db-migrations` skill. |
-| Cache / queues | **Redis** (Upstash) + **BullMQ** | Video transcode jobs, digest emails, notification fanout |
-| Object storage | **Cloudflare R2** | S3-compatible, zero egress fees — critical for video (§22) |
-| Video transcode | **`ffmpeg` worker** (BullMQ) | Free. Runs on the API host until CPU forces a split. Cloudflare Stream only if §3.4 gate is hit. |
-| Auth | **Better Auth** (self-hosted) | Email+password, Apple, Google. JWT access + rotating refresh. |
-| Email | **Resend** + React Email templates | |
-| Billing (coach subs) | **RevenueCat** → App Store / Play IAP | Stripe retained for the Phase-3 web dashboard and Agency invoicing only. See §15.7. |
-| Realtime | LiveKit (video) + WebSocket via Hono (presence, live comments) | |
-| Search | Postgres full-text (`tsvector`) | No Elasticsearch until it hurts |
-| Hosting | **Fly.io** (API) + **Vercel** (marketing/web) | |
-| CI | **GitHub Actions** + **EAS Build** | |
+| Concern              | Choice                                                         | Notes                                                                                            |
+| -------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Runtime              | **Node 22 LTS**                                                |                                                                                                  |
+| Framework            | **Hono** on Node adapter                                       | Small, fast, runs on Node and edge                                                               |
+| API layer            | **tRPC v11**                                                   | End-to-end types; no OpenAPI codegen needed for our own client                                   |
+| DB                   | **PostgreSQL 16**                                              | Managed: Neon (dev) → AWS RDS (prod)                                                             |
+| ORM                  | **Drizzle ORM**                                                | Same ORM on server and device — one mental model                                                 |
+| Migrations           | **drizzle-kit**                                                | Migrations are committed. Never edit an applied migration. See `db-migrations` skill.            |
+| Cache / queues       | **Redis** (Upstash) + **BullMQ**                               | Video transcode jobs, digest emails, notification fanout                                         |
+| Object storage       | **Cloudflare R2**                                              | S3-compatible, zero egress fees — critical for video (§22)                                       |
+| Video transcode      | **`ffmpeg` worker** (BullMQ)                                   | Free. Runs on the API host until CPU forces a split. Cloudflare Stream only if §3.4 gate is hit. |
+| Auth                 | **Better Auth** (self-hosted)                                  | Email+password, Apple, Google. JWT access + rotating refresh.                                    |
+| Email                | **Resend** + React Email templates                             |                                                                                                  |
+| Billing (coach subs) | **RevenueCat** → App Store / Play IAP                          | Stripe retained for the Phase-3 web dashboard and Agency invoicing only. See §15.7.              |
+| Realtime             | LiveKit (video) + WebSocket via Hono (presence, live comments) |                                                                                                  |
+| Search               | Postgres full-text (`tsvector`)                                | No Elasticsearch until it hurts                                                                  |
+| Hosting              | **Fly.io** (API) + **Vercel** (marketing/web)                  |                                                                                                  |
+| CI                   | **GitHub Actions** + **EAS Build**                             |                                                                                                  |
 
 ### 3.3 Explicitly rejected
 
@@ -312,7 +315,7 @@ Run this in order, every time you are about to add a dependency or a service:
    library for something Postgres, Expo, or Node already does. No `lodash`, no
    `axios`, no `moment`, no date library beyond `date-fns`.
 3. **Is there a free open-source option that covers our scope?** If yes, use it. Not
-   "the best" option — the *adequate* one. Self-hosting cost counts as cost: if
+   "the best" option — the _adequate_ one. Self-hosting cost counts as cost: if
    running it needs a second server, it is not free.
 4. **Is there a free tier that covers us to 500 coaches?** If yes, use it, and record
    the exact limit and the overage price in the table below so we are never surprised
@@ -328,11 +331,11 @@ faster setup. Those are worth hours, not dollars, at this stage.
 
 #### 3.4.2 Hard spend ceilings
 
-| Phase | Total infra + services ceiling |
-|---|---|
+| Phase                                  | Total infra + services ceiling                       |
+| -------------------------------------- | ---------------------------------------------------- |
 | Phase 1 (pre-launch, 0 paying coaches) | **$0/mo** — everything on free tiers. No exceptions. |
-| Phase 2 (1–100 paying coaches) | **$60/mo**, and only after MRR exceeds 5× that |
-| Phase 3 (100–500 coaches) | ≤ 15% of MRR |
+| Phase 2 (1–100 paying coaches)         | **$60/mo**, and only after MRR exceeds 5× that       |
+| Phase 3 (100–500 coaches)              | ≤ 15% of MRR                                         |
 
 If a build would breach the ceiling, the correct action is to **gate the feature**,
 not to raise the ceiling. Live sessions and AI are the two features designed to be
@@ -343,42 +346,42 @@ gated for exactly this reason (§15.4).
 Every service we use, what its free tier actually gives us, and what we do when we
 outgrow it. **Keep this table accurate.** It is the early-warning system for costs.
 
-| Service | Free tier | Covers us to | When exceeded |
-|---|---|---|---|
-| **Expo / React Native** | Fully free, MIT | forever | — |
-| **EAS Build** | ~30 builds/mo, low priority queue | Phase 1–2 | `eas build --local` in GitHub Actions (free minutes) before paying $19/mo |
-| **EAS Update (OTA)** | Free tier of MAU | Phase 1–2 | Self-host `expo-updates` against R2 — the protocol is open |
-| **PostgreSQL (Neon)** | 0.5GB, autosuspend | ~500 coaches | Hetzner VPS + self-hosted Postgres (~$5/mo) beats every managed tier |
-| **Redis (Upstash)** | 500k commands/mo | Phase 1–2 | Run Redis in the same container as the API. It is one process. |
-| **Cloudflare R2** | 10GB storage, **$0 egress** | ~Phase 1 | $0.015/GB/mo. Egress stays free — this is why R2 and not S3. |
-| **Video transcode (ffmpeg)** | Free, OSS | until CPU-bound | Split the worker to its own cheap VPS. Cloudflare Stream only past ~2,000 videos/mo. |
-| **LiveKit** | Cloud free tier ≈ 5k participant-min/mo | Phase 2 pilot | **Self-host the OSS SFU** on a VPS. This is the whole reason we chose LiveKit. |
-| **Better Auth** | Free, OSS, self-hosted | forever | — (this is why we rejected Auth0/Clerk, which bill per MAU) |
-| **Sentry** | 5k errors/mo, 1 user | Phase 1–2 | Self-hostable, but realistically stay on free and sample aggressively |
-| **PostHog** | 1M events/mo, cloud | Phase 1–3 | Event volume is controllable — cut low-value events before paying |
-| **Resend** | 3k emails/mo, 100/day | Phase 1–2 | Brevo (300/day free) or Amazon SES ($0.10/1k) |
-| **Open Food Facts** | Free, open data, no key | forever | — (this is why we rejected Nutritionix, which is $$$ per call) |
-| **USDA FoodData Central** | Free, key required, 1k req/hr | forever | — |
-| **Maestro / Jest / ESLint** | Free, OSS | forever | — |
-| **Inter / Inter Tight fonts** | SIL Open Font License | forever | — (never use a licensed font here) |
-| **GitHub Actions** | 2,000 min/mo private | Phase 1–2 | Make the repo public, or self-hosted runner |
-| **Fly.io / Railway / Render** | Small free allowances | Phase 1 | **Hetzner CX22 VPS, ~€4/mo**, is cheaper than every PaaS free-tier upgrade |
-| **RevenueCat** | Free under $2.5k monthly tracked revenue | Phase 1–2 | 1% of tracked revenue — only pay once it is earning. Note this is *on top of* the store's 15% (§15.7). |
+| Service                       | Free tier                                | Covers us to    | When exceeded                                                                                          |
+| ----------------------------- | ---------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------ |
+| **Expo / React Native**       | Fully free, MIT                          | forever         | —                                                                                                      |
+| **EAS Build**                 | ~30 builds/mo, low priority queue        | Phase 1–2       | `eas build --local` in GitHub Actions (free minutes) before paying $19/mo                              |
+| **EAS Update (OTA)**          | Free tier of MAU                         | Phase 1–2       | Self-host `expo-updates` against R2 — the protocol is open                                             |
+| **PostgreSQL (Neon)**         | 0.5GB, autosuspend                       | ~500 coaches    | Hetzner VPS + self-hosted Postgres (~$5/mo) beats every managed tier                                   |
+| **Redis (Upstash)**           | 500k commands/mo                         | Phase 1–2       | Run Redis in the same container as the API. It is one process.                                         |
+| **Cloudflare R2**             | 10GB storage, **$0 egress**              | ~Phase 1        | $0.015/GB/mo. Egress stays free — this is why R2 and not S3.                                           |
+| **Video transcode (ffmpeg)**  | Free, OSS                                | until CPU-bound | Split the worker to its own cheap VPS. Cloudflare Stream only past ~2,000 videos/mo.                   |
+| **LiveKit**                   | Cloud free tier ≈ 5k participant-min/mo  | Phase 2 pilot   | **Self-host the OSS SFU** on a VPS. This is the whole reason we chose LiveKit.                         |
+| **Better Auth**               | Free, OSS, self-hosted                   | forever         | — (this is why we rejected Auth0/Clerk, which bill per MAU)                                            |
+| **Sentry**                    | 5k errors/mo, 1 user                     | Phase 1–2       | Self-hostable, but realistically stay on free and sample aggressively                                  |
+| **PostHog**                   | 1M events/mo, cloud                      | Phase 1–3       | Event volume is controllable — cut low-value events before paying                                      |
+| **Resend**                    | 3k emails/mo, 100/day                    | Phase 1–2       | Brevo (300/day free) or Amazon SES ($0.10/1k)                                                          |
+| **Open Food Facts**           | Free, open data, no key                  | forever         | — (this is why we rejected Nutritionix, which is $$$ per call)                                         |
+| **USDA FoodData Central**     | Free, key required, 1k req/hr            | forever         | —                                                                                                      |
+| **Maestro / Jest / ESLint**   | Free, OSS                                | forever         | —                                                                                                      |
+| **Inter / Inter Tight fonts** | SIL Open Font License                    | forever         | — (never use a licensed font here)                                                                     |
+| **GitHub Actions**            | 2,000 min/mo private                     | Phase 1–2       | Make the repo public, or self-hosted runner                                                            |
+| **Fly.io / Railway / Render** | Small free allowances                    | Phase 1         | **Hetzner CX22 VPS, ~€4/mo**, is cheaper than every PaaS free-tier upgrade                             |
+| **RevenueCat**                | Free under $2.5k monthly tracked revenue | Phase 1–2       | 1% of tracked revenue — only pay once it is earning. Note this is _on top of_ the store's 15% (§15.7). |
 
 #### 3.4.4 Unavoidable costs
 
 These have no free substitute. Budget for them; do not spend engineering time hunting
 alternatives.
 
-| Item | Cost | Note |
-|---|---|---|
-| Apple Developer Program | **$99/year** | Required to ship to iOS at all. Non-negotiable. |
-| Google Play Developer | **$25 one-time** | Non-negotiable. |
-| Domain + email | ~$15/year | Cloudflare Registrar sells at cost. |
-| **App Store / Play commission** | **15%** (Small Business Program / first $1M) | The largest single cost in the business. Apple's 15% rate requires **applying** — do it before first revenue (§15.7). |
-| Stripe | 2.9% + $0.30 per transaction | Phase-3 web dashboard and Agency invoices only. For India, compare **Razorpay** (2% domestic). |
-| Anthropic API (Phase 3 only) | usage-based, ~$0.01–0.05/summary | Gated to Pro+ with a hard per-coach generation cap (§15.2), so it is revenue-covered by definition. Cache per client-week. |
-| Push notifications | **$0** via Expo/FCM/APNs | Listed here only so nobody "solves" it with OneSignal. |
+| Item                            | Cost                                         | Note                                                                                                                       |
+| ------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Apple Developer Program         | **$99/year**                                 | Required to ship to iOS at all. Non-negotiable.                                                                            |
+| Google Play Developer           | **$25 one-time**                             | Non-negotiable.                                                                                                            |
+| Domain + email                  | ~$15/year                                    | Cloudflare Registrar sells at cost.                                                                                        |
+| **App Store / Play commission** | **15%** (Small Business Program / first $1M) | The largest single cost in the business. Apple's 15% rate requires **applying** — do it before first revenue (§15.7).      |
+| Stripe                          | 2.9% + $0.30 per transaction                 | Phase-3 web dashboard and Agency invoices only. For India, compare **Razorpay** (2% domestic).                             |
+| Anthropic API (Phase 3 only)    | usage-based, ~$0.01–0.05/summary             | Gated to Pro+ with a hard per-coach generation cap (§15.2), so it is revenue-covered by definition. Cache per client-week. |
+| Push notifications              | **$0** via Expo/FCM/APNs                     | Listed here only so nobody "solves" it with OneSignal.                                                                     |
 
 #### 3.4.5 Anti-patterns
 
@@ -449,7 +452,7 @@ procedure**:
 
 **Assistant coaches (Phase 3, §2) extend rule 3, not replace it.** A root coach's
 ownership additionally reaches any client whose direct `coach_id` belongs to one of
-*their* assistants; an assistant's ownership never reaches the root's own clients or
+_their_ assistants; an assistant's ownership never reaches the root's own clients or
 a sibling assistant's. This is resolved by checking `coach_id = me OR coach_id IN
 (coaches where parent_coach_id = me)` — one extra indexed lookup, not a walk up the
 hierarchy — and it is implemented as an amendment to `ownsResource`'s existing
@@ -474,7 +477,7 @@ depends on this extension existing.
 Read these before changing a number. The prices are provisional; the principles are not.
 
 1. **The free tier must demonstrate the differentiator, not withhold it.** Video
-   annotation and in-context feedback are the *reason* a coach leaves WhatsApp.
+   annotation and in-context feedback are the _reason_ a coach leaves WhatsApp.
    Gating them behind payment means a trialling coach never feels the thing they'd be
    paying for. **Free is limited by volume, not by capability.**
 2. **Price on active clients.** It is the metric that correlates with both the
@@ -502,32 +505,32 @@ is decided by their App Store / Play account country, not by us (§15.6).
 All prices are **App Store / Play price points, per month, billed to the coach.**
 Annual = **10× monthly** (2 months free).
 
-| | **Starter** | **Coach** | **Pro** | **Studio** | **Agency** |
-|---|---|---|---|---|---|
-| **Monthly — global (USD)** | Free | **$19.99** | **$49.99** | **$99.99** | Contact us |
-| **Monthly — India (INR)** | Free | **₹799** | **₹1,999** | **₹3,999** | Contact us |
-| **Annual — global (USD)** | — | $199.99 | $499.99 | $999.99 | Custom |
-| **Annual — India (INR)** | — | ₹7,999 | ₹19,999 | ₹39,999 | Custom |
-| **Active clients** | 2 | 10 | 30 | 75 | Unlimited |
-| Extra seats | ✗ | +5 seats | +5 seats | +5 seats | included |
-| Storage | 3 GB | 25 GB | 100 GB | 250 GB | 1 TB |
-| Video retention | 30 days | 12 months | 12 months | 24 months | 24 months |
-| Live minutes/mo | 60 | 300 | 1,000 | 3,000 | custom |
-| Programs & logging | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Nutrition & diary review | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **Video annotation** | **✓** | ✓ | ✓ | ✓ | ✓ |
-| **In-context comments** | **✓** | ✓ | ✓ | ✓ | ✓ |
-| Structured check-ins | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Health sync (Apple Health / Health Connect) | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Live 1:1 sessions | ✓ (capped) | ✓ | ✓ | ✓ | ✓ |
-| Live Workout Mode | ✗ | ✓ | ✓ | ✓ | ✓ |
-| Group live rooms | ✗ | ✗ | ✓ | ✓ | ✓ |
-| AI assistant | ✗ | ✗ | 100 gen/mo | 400 gen/mo | custom |
-| White-label branding | ✗ | ✗ | ✗ | ✓ | ✓ |
-| Additional coach seats | ✗ | ✗ | ✗ | 2 | unlimited |
-| Assistant/junior roles | ✗ | ✗ | ✗ | ✓ | ✓ |
-| CoachOS badge on client app | shown | shown | removable | removed | removed |
-| Support | community | email | email, 48h | priority, 24h | dedicated |
+|                                             | **Starter** | **Coach**  | **Pro**    | **Studio**    | **Agency** |
+| ------------------------------------------- | ----------- | ---------- | ---------- | ------------- | ---------- |
+| **Monthly — global (USD)**                  | Free        | **$19.99** | **$49.99** | **$99.99**    | Contact us |
+| **Monthly — India (INR)**                   | Free        | **₹799**   | **₹1,999** | **₹3,999**    | Contact us |
+| **Annual — global (USD)**                   | —           | $199.99    | $499.99    | $999.99       | Custom     |
+| **Annual — India (INR)**                    | —           | ₹7,999     | ₹19,999    | ₹39,999       | Custom     |
+| **Active clients**                          | 2           | 10         | 30         | 75            | Unlimited  |
+| Extra seats                                 | ✗           | +5 seats   | +5 seats   | +5 seats      | included   |
+| Storage                                     | 3 GB        | 25 GB      | 100 GB     | 250 GB        | 1 TB       |
+| Video retention                             | 30 days     | 12 months  | 12 months  | 24 months     | 24 months  |
+| Live minutes/mo                             | 60          | 300        | 1,000      | 3,000         | custom     |
+| Programs & logging                          | ✓           | ✓          | ✓          | ✓             | ✓          |
+| Nutrition & diary review                    | ✓           | ✓          | ✓          | ✓             | ✓          |
+| **Video annotation**                        | **✓**       | ✓          | ✓          | ✓             | ✓          |
+| **In-context comments**                     | **✓**       | ✓          | ✓          | ✓             | ✓          |
+| Structured check-ins                        | ✓           | ✓          | ✓          | ✓             | ✓          |
+| Health sync (Apple Health / Health Connect) | ✓           | ✓          | ✓          | ✓             | ✓          |
+| Live 1:1 sessions                           | ✓ (capped)  | ✓          | ✓          | ✓             | ✓          |
+| Live Workout Mode                           | ✗           | ✓          | ✓          | ✓             | ✓          |
+| Group live rooms                            | ✗           | ✗          | ✓          | ✓             | ✓          |
+| AI assistant                                | ✗           | ✗          | 100 gen/mo | 400 gen/mo    | custom     |
+| White-label branding                        | ✗           | ✗          | ✗          | ✓             | ✓          |
+| Additional coach seats                      | ✗           | ✗          | ✗          | 2             | unlimited  |
+| Assistant/junior roles                      | ✗           | ✗          | ✗          | ✓             | ✓          |
+| CoachOS badge on client app                 | shown       | shown      | removable  | removed       | removed    |
+| Support                                     | community   | email      | email, 48h | priority, 24h | dedicated  |
 
 > **"Additional coach seats" and "Assistant/junior roles" together are one feature**
 > (§2's assistant-coach persona, fully specified in
@@ -560,9 +563,9 @@ account drops to Starter — it never locks the coach out of their own data.
 
 Any paid tier can add **+5 active clients**, stackable up to 3 packs:
 
-| | Global (USD) | India (INR) |
-|---|---|---|
-| **Seat pack, +5 clients/mo** | **$9.99** | **₹399** |
+|                              | Global (USD) | India (INR) |
+| ---------------------------- | ------------ | ----------- |
+| **Seat pack, +5 clients/mo** | **$9.99**    | **₹399**    |
 
 This exists to remove the cliff. A Coach-tier user at 13 clients pays $19.99 + $9.99
 = $29.98 rather than jumping to $49.99 — or ₹799 + ₹399 = ₹1,198 rather than jumping
@@ -576,24 +579,24 @@ products.
 
 ### 15.4 What we gate, and why
 
-| Gated | Reason |
-|---|---|
-| Active client count | Correlates with coach revenue and our cost. The primary lever. |
-| Storage & retention | Direct, unavoidable marginal cost (§22). |
-| Live minutes | Direct marginal cost; also the easiest thing to abuse. |
-| AI generations | Real per-call cost that architecture alone cannot cap (§3.4.5). |
+| Gated                   | Reason                                                                  |
+| ----------------------- | ----------------------------------------------------------------------- |
+| Active client count     | Correlates with coach revenue and our cost. The primary lever.          |
+| Storage & retention     | Direct, unavoidable marginal cost (§22).                                |
+| Live minutes            | Direct marginal cost; also the easiest thing to abuse.                  |
+| AI generations          | Real per-call cost that architecture alone cannot cap (§3.4.5).         |
 | White-label, team seats | Genuine enterprise features; no marginal cost, high willingness to pay. |
 
-| **Never gated** | **Reason** |
-|---|---|
-| Video annotation | It is the product. Gating it hides the wedge. |
-| In-context comments | Same. This is the core loop. |
-| Structured check-ins | Cheap to serve, and it is what makes a coach's week work. |
-| Offline logging | A client's ability to train is not a billing lever. |
+| **Never gated**                              | **Reason**                                                                                                     |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Video annotation                             | It is the product. Gating it hides the wedge.                                                                  |
+| In-context comments                          | Same. This is the core loop.                                                                                   |
+| Structured check-ins                         | Cheap to serve, and it is what makes a coach's week work.                                                      |
+| Offline logging                              | A client's ability to train is not a billing lever.                                                            |
 | Health sync to Apple Health / Health Connect | Purely client-experienced, and it costs us nothing — the export is device-local and never touches our servers. |
-| Data export | Ethically non-negotiable (§21.3). |
+| Data export                                  | Ethically non-negotiable (§21.3).                                                                              |
 
-**Rule:** never gate anything the *client* experiences. The client is not the buyer
+**Rule:** never gate anything the _client_ experiences. The client is not the buyer
 and must never have a worse workout because their coach is on a cheaper plan. The
 only client-visible tier difference is the CoachOS badge.
 
@@ -623,20 +626,20 @@ not hold client data hostage. Ever.
 
 **The decision.** CoachOS ships exactly two price tracks:
 
-| Track | Who gets it | Currency | Set where |
-|---|---|---|---|
-| **India** | Coaches whose App Store / Play account country is **India** | **INR (₹)** | India territory price point |
-| **Global** | Every other coach, in every other territory | **USD ($)** as the base price | Base price + store conversion per territory |
+| Track      | Who gets it                                                 | Currency                      | Set where                                   |
+| ---------- | ----------------------------------------------------------- | ----------------------------- | ------------------------------------------- |
+| **India**  | Coaches whose App Store / Play account country is **India** | **INR (₹)**                   | India territory price point                 |
+| **Global** | Every other coach, in every other territory                 | **USD ($)** as the base price | Base price + store conversion per territory |
 
-| Product | Global (USD) | India (INR) |
-|---|---|---|
-| Coach, monthly | $19.99 | ₹799 |
-| Coach, annual | $199.99 | ₹7,999 |
-| Pro, monthly | $49.99 | ₹1,999 |
-| Pro, annual | $499.99 | ₹19,999 |
-| Studio, monthly | $99.99 | ₹3,999 |
-| Studio, annual | $999.99 | ₹39,999 |
-| Seat pack (+5 clients), monthly | $9.99 | ₹399 |
+| Product                         | Global (USD) | India (INR) |
+| ------------------------------- | ------------ | ----------- |
+| Coach, monthly                  | $19.99       | ₹799        |
+| Coach, annual                   | $199.99      | ₹7,999      |
+| Pro, monthly                    | $49.99       | ₹1,999      |
+| Pro, annual                     | $499.99      | ₹19,999     |
+| Studio, monthly                 | $99.99       | ₹3,999      |
+| Studio, annual                  | $999.99      | ₹39,999     |
+| Seat pack (+5 clients), monthly | $9.99        | ₹399        |
 
 **Why only two.** The previous plan had a third "~50% of USD" band for SEA, LatAm,
 Africa, and Eastern Europe. It was dropped: three bands is three sets of price points
@@ -691,6 +694,7 @@ checkout, tax, dunning, and currency handling, and it gets to revenue faster. Th
 commission is the price of that, and it is affordable at this stage.
 
 **Commission — apply for the reduced rates on day one:**
+
 - **Apple Small Business Program:** 15% instead of 30% for developers under $1M/year.
   Enrolment is not automatic — **you must apply**, and it is a real, recurring
   deadline. This is worth roughly $4.50 per Pro coach per month.
@@ -699,6 +703,7 @@ commission is the price of that, and it is affordable at this stage.
   another reason annual plans matter (§15.1.6).
 
 **Product configuration**
+
 - One **subscription group** for base tiers (Coach / Pro / Studio) so the store handles
   upgrades, downgrades, and proration natively. Never build proration ourselves.
 - A **second group** for seat packs so they stack additively.
@@ -709,14 +714,16 @@ commission is the price of that, and it is affordable at this stage.
   a failed card silently churns a paying coach.
 
 **Client-side requirements (all are review blockers if missing)**
+
 - [ ] A visible **Restore Purchases** action in settings.
-- [ ] Price, billing period, and renewal terms shown *on the paywall itself* before purchase, pulled live from StoreKit — never hardcoded.
+- [ ] Price, billing period, and renewal terms shown _on the paywall itself_ before purchase, pulled live from StoreKit — never hardcoded.
 - [ ] Links to Terms and Privacy Policy on the paywall.
 - [ ] Manage-subscription deep link to the native store UI.
 - [ ] No mention of external/web purchasing anywhere in the app while on IAP. Not in copy, not in a support article linked from the app.
 - [ ] Paywall must be dismissible. The app must be usable on Starter without ever purchasing.
 
 **Server-side (the source of truth)**
+
 - RevenueCat **webhooks** → our API → update `coach_profiles`. Handle at minimum:
   `INITIAL_PURCHASE`, `RENEWAL`, `CANCELLATION`, `EXPIRATION`, `BILLING_ISSUE`,
   `PRODUCT_CHANGE`, `REFUND`, `SUBSCRIPTION_PAUSED` (Play only).
@@ -766,18 +773,18 @@ tracked as an open decision (§27), not a permanent no.
 
 ## 19. Performance budgets
 
-| Metric | Budget |
-|---|---|
+| Metric                              | Budget                                    |
+| ----------------------------------- | ----------------------------------------- |
 | Cold start → first meaningful paint | < 2.0s (mid-range Android, e.g. Pixel 6a) |
-| JS bundle (initial) | < 3.5MB |
-| Set log → visual confirmation | < 100ms (optimistic, local) |
-| Dashboard load (cached) | < 200ms |
-| Dashboard load (network) | < 800ms p75 |
-| Food search keystroke → results | < 400ms |
-| Video first frame | < 1.5s |
-| Live session join | < 3s on 4G |
-| Scroll fps, all lists | ≥ 55fps |
-| Memory during logger | < 250MB |
+| JS bundle (initial)                 | < 3.5MB                                   |
+| Set log → visual confirmation       | < 100ms (optimistic, local)               |
+| Dashboard load (cached)             | < 200ms                                   |
+| Dashboard load (network)            | < 800ms p75                               |
+| Food search keystroke → results     | < 400ms                                   |
+| Video first frame                   | < 1.5s                                    |
+| Live session join                   | < 3s on 4G                                |
+| Scroll fps, all lists               | ≥ 55fps                                   |
+| Memory during logger                | < 250MB                                   |
 
 Enforce with: FlashList everywhere, `expo-image` with `recyclingKey`, lazy routes,
 Reanimated worklets for anything that animates on scroll, and Expo Atlas to inspect
@@ -798,11 +805,12 @@ PostHog. Event naming: `object_action`, snake_case, past tense.
 `client_activated`, `subscription_started`, `subscription_cancelled`,
 `seat_limit_hit`, `paywall_viewed`.
 
-**North star metric:** *weekly reviewed client-weeks* — the number of client-weeks in
+**North star metric:** _weekly reviewed client-weeks_ — the number of client-weeks in
 which the coach left at least one piece of feedback. It captures both sides of the
 marketplace of attention and predicts retention better than DAU.
 
 **Guardrails**
+
 - Never send PII, health values, food names, body metrics, or media URLs to PostHog. IDs and counts only.
 - Respect the OS "limit ad tracking" flag and an in-app analytics opt-out.
 - No session recording in the mobile app. Ever.
@@ -813,11 +821,11 @@ marketplace of attention and predicts retention better than DAU.
 
 ### 21.1 Data classification
 
-| Class | Examples | Handling |
-|---|---|---|
+| Class         | Examples                                                        | Handling                                                                                                    |
+| ------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | **Sensitive** | progress photos, body metrics, injuries, food logs, form videos | Encrypted at rest, signed URLs only, never in logs, never in analytics, never in AI prompts without consent |
-| Personal | name, email, DOB, timezone | Standard protection, exportable, deletable |
-| Operational | session counts, app version | Freely loggable |
+| Personal      | name, email, DOB, timezone                                      | Standard protection, exportable, deletable                                                                  |
+| Operational   | session counts, app version                                     | Freely loggable                                                                                             |
 
 ### 21.2 Baseline controls
 
@@ -855,11 +863,11 @@ client. But a coach gives health-adjacent advice to other people for money, and 
 adult responsibility. The constraint is enforced in the schema
 (`users_minor_is_client`), not by application politeness.
 
-| Age | Coach / assistant | Client |
-|---|---|---|
-| Under 13 | Refused | Refused |
-| 13–17 | **Refused** | Allowed, with **guardian consent required before the account activates** |
-| 18+ | Allowed | Allowed |
+| Age      | Coach / assistant | Client                                                                   |
+| -------- | ----------------- | ------------------------------------------------------------------------ |
+| Under 13 | Refused           | Refused                                                                  |
+| 13–17    | **Refused**       | Allowed, with **guardian consent required before the account activates** |
+| 18+      | Allowed           | Allowed                                                                  |
 
 What differs for a minor client: progress photos are **absent, not gated**; live recording
 is disabled regardless of dual consent; analytics and AI processing are forced off and
@@ -898,18 +906,18 @@ Two rules that follow from §21.1 and are easy to lose under pressure:
 
 ## 22. Cost model (watch these)
 
-| Driver | Estimate | Mitigation |
-|---|---|---|
-| Video storage (R2) | 10GB free, then ~$0.015/GB/mo | Retention limits (`phase-11-media-pipeline`), tier quotas, 720p default |
-| Video egress | **$0** on R2 | The reason we chose R2 over S3 |
-| Transcoding | **$0** (self-hosted ffmpeg) | Own worker; only revisit managed transcode past ~2,000 videos/mo (§3.4.3) |
-| LiveKit | $0 self-hosted (VPS cost only) | Gate live behind Pro+; hard cap free-tier minutes |
-| Postgres | $0 on Neon free → ~$5/mo self-hosted | Materialised summaries, aggressive indexing (`DATABASE.md` DB§5.8) |
-| Claude API | ~$0.01–0.05/summary | Cache per client-week; Pro+ only; hard generation cap per §15.2 |
-| Push (Expo) | free | — |
-| Apple + Google developer accounts | $99/yr + $25 once | Unavoidable (§3.4.4) |
+| Driver                            | Estimate                             | Mitigation                                                                |
+| --------------------------------- | ------------------------------------ | ------------------------------------------------------------------------- |
+| Video storage (R2)                | 10GB free, then ~$0.015/GB/mo        | Retention limits (`phase-11-media-pipeline`), tier quotas, 720p default   |
+| Video egress                      | **$0** on R2                         | The reason we chose R2 over S3                                            |
+| Transcoding                       | **$0** (self-hosted ffmpeg)          | Own worker; only revisit managed transcode past ~2,000 videos/mo (§3.4.3) |
+| LiveKit                           | $0 self-hosted (VPS cost only)       | Gate live behind Pro+; hard cap free-tier minutes                         |
+| Postgres                          | $0 on Neon free → ~$5/mo self-hosted | Materialised summaries, aggressive indexing (`DATABASE.md` DB§5.8)        |
+| Claude API                        | ~$0.01–0.05/summary                  | Cache per client-week; Pro+ only; hard generation cap per §15.2           |
+| Push (Expo)                       | free                                 | —                                                                         |
+| Apple + Google developer accounts | $99/yr + $25 once                    | Unavoidable (§3.4.4)                                                      |
 
-**Unit economics target:** blended infra cost per paying coach < 12% of *net* revenue
+**Unit economics target:** blended infra cost per paying coach < 12% of _net_ revenue
 (i.e. after the 15% store commission). At Coach tier that is ~$2 against ~$17 net; at
 Pro, ~$5 against ~$42 net. If video or live pushes past that, gate harder (§15.4)
 before raising prices.
@@ -923,11 +931,11 @@ feature-by-feature build order that gets each phase there lives in
 `.claude/plan/README.md`'s 27-phase dependency-ordered plan tree; this section keeps
 only the gate each phase must clear.
 
-| Product phase | What it covers | Ship gate |
-|---|---|---|
-| **1 — MVP** | Auth, coach dashboard, client detail, program builder, offline workout logger, nutrition logging, comments, messaging, basic video upload + playback, **trust & safety (report/block/filter) and support tooling** | 10 real coaches, 3+ real clients each, running 2 weeks with **no WhatsApp fallback** for workout feedback — run per `docs/PILOT-PLAYBOOK.md` |
-| **2 — Differentiators** | Video annotation, side-by-side compare, structured check-ins, live 1:1 check-in calls, Live Workout Mode, progress reports, habits | 50 paying coaches; annotation used on **>40%** of uploaded videos |
-| **3 — Scale** | AI assistant, health sync, white-label, group live, web dashboard, agency/team accounts | **$10k MRR**; **< 5%** monthly coach churn |
+| Product phase           | What it covers                                                                                                                                                                                                     | Ship gate                                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1 — MVP**             | Auth, coach dashboard, client detail, program builder, offline workout logger, nutrition logging, comments, messaging, basic video upload + playback, **trust & safety (report/block/filter) and support tooling** | 10 real coaches, 3+ real clients each, running 2 weeks with **no WhatsApp fallback** for workout feedback — run per `docs/PILOT-PLAYBOOK.md` |
+| **2 — Differentiators** | Video annotation, side-by-side compare, structured check-ins, live 1:1 check-in calls, Live Workout Mode, progress reports, habits                                                                                 | 50 paying coaches; annotation used on **>40%** of uploaded videos                                                                            |
+| **3 — Scale**           | AI assistant, health sync, white-label, group live, web dashboard, agency/team accounts                                                                                                                            | **$10k MRR**; **< 5%** monthly coach churn                                                                                                   |
 
 ### Definition of done (every ticket)
 
@@ -993,19 +1001,19 @@ Written down because each of these has cost someone a day:
 
 ## 26. Glossary
 
-| Term | Meaning |
-|---|---|
-| **RPE** | Rate of Perceived Exertion, 1–10 |
-| **RIR** | Reps In Reserve |
-| **1RM** | One-rep max; estimated via Epley: `w × (1 + r/30)` |
-| **Tempo** | 4-digit eccentric/pause/concentric/pause, e.g. `3010` |
-| **Superset** | Two+ exercises performed back to back |
-| **Check-in** | Structured periodic client report |
-| **Form check** | Client video reviewed by the coach |
-| **Adherence** | Computed compliance score, `packages/utils`, `.claude/plan/phase-10-coach-review-surfaces/adherence-engine/` |
-| **Seat** | One active client slot against a coach's tier limit |
-| **Client-week** | One client, one week — the unit of the north star metric |
-| **Root coach** | A coach with `parent_coach_id IS NULL` — bills directly, can hold assistant coaches (§2, Studio+) |
+| Term                | Meaning                                                                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **RPE**             | Rate of Perceived Exertion, 1–10                                                                                         |
+| **RIR**             | Reps In Reserve                                                                                                          |
+| **1RM**             | One-rep max; estimated via Epley: `w × (1 + r/30)`                                                                       |
+| **Tempo**           | 4-digit eccentric/pause/concentric/pause, e.g. `3010`                                                                    |
+| **Superset**        | Two+ exercises performed back to back                                                                                    |
+| **Check-in**        | Structured periodic client report                                                                                        |
+| **Form check**      | Client video reviewed by the coach                                                                                       |
+| **Adherence**       | Computed compliance score, `packages/utils`, `.claude/plan/phase-10-coach-review-surfaces/adherence-engine/`             |
+| **Seat**            | One active client slot against a coach's tier limit                                                                      |
+| **Client-week**     | One client, one week — the unit of the north star metric                                                                 |
+| **Root coach**      | A coach with `parent_coach_id IS NULL` — bills directly, can hold assistant coaches (§2, Studio+)                        |
 | **Assistant coach** | A coach with `parent_coach_id` set — delegated by, and billed under, a root; single level of delegation only (§2, §15.2) |
 
 ---
@@ -1025,7 +1033,7 @@ Track these here; move them into the body of the file when decided.
 - [ ] Whether seat packs are used at all, or whether coaches simply upgrade. If unused after 100 paying coaches, delete them — they add real billing complexity.
 - [ ] Whether to add a $9.99 / ₹399 "Solo" tier at 3–5 seats for very small coaches, or leave that to the seat-pack mechanism (§15.3).
 - [ ] Whether a third price track is ever worth it (SEA / LatAm / Africa / E. Europe). Deliberately dropped from §15.6 in favour of two tracks; revisit only with revenue from those territories, never speculatively.
-- [ ] Whether to reinstate any *read* direction on health data — Apple Health / Health Connect metrics, or OAuth wearables (Whoop, Garmin, Fitbit). The wearables phase was removed in favour of write-only export (`.claude/plan/phase-24-health-sync/`). Reinstating a read direction means restoring `wearable_data`, `wearable_connections`, per-metric consent, encrypted token columns, the sensitive-data classification, and the purge-order entries — deliberately, as a decision, never by feature creep.
+- [ ] Whether to reinstate any _read_ direction on health data — Apple Health / Health Connect metrics, or OAuth wearables (Whoop, Garmin, Fitbit). The wearables phase was removed in favour of write-only export (`.claude/plan/phase-24-health-sync/`). Reinstating a read direction means restoring `wearable_data`, `wearable_connections`, per-metric consent, encrypted token columns, the sensitive-data classification, and the purge-order entries — deliberately, as a decision, never by feature creep.
 - [ ] When to revisit web checkout: the 15% commission becomes worth engineering around somewhere north of ~$20k MRR.
 
 ### 27.1 Deferred to future scope
@@ -1041,4 +1049,4 @@ should bring it back — none of them is "when we get around to it."
 
 ---
 
-*Last updated: 16 August 2026 · Owner: Ammar · Update this file in the same PR as the code it describes.*
+_Last updated: 16 August 2026 · Owner: Ammar · Update this file in the same PR as the code it describes._

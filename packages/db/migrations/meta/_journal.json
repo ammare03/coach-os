@@ -148,6 +148,27 @@
       "when": 1787390450207,
       "tag": "0020_usage_webhooks",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1787391581789,
+      "tag": "0021_updated_at_trigger",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1787391947210,
+      "tag": "0022_guard_triggers",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1787393408595,
+      "tag": "0023_v_client_overview",
+      "breakpoints": true
     }
   ]
 }
