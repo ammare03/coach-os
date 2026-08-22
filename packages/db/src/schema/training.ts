@@ -8,8 +8,10 @@ import {
   boolean,
   check,
   customType,
+  date,
   index,
   integer,
+  jsonb,
   numeric,
   smallint,
   text,
@@ -19,8 +21,8 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { id, timestamps, trainingSchema } from './_shared.ts';
-import { movementPattern } from './enums.ts';
-import { coachProfiles } from './identity.ts';
+import { assignmentStatus, movementPattern, sessionStatus } from './enums.ts';
+import { clientProfiles, coachProfiles } from './identity.ts';
 
 // `tsvector` has no built-in Drizzle column type — this is `customType`'s
 // documented use case (identity-schema/01's `citext`, same pattern).
@@ -248,5 +250,134 @@ export const programExercises = trainingSchema.table(
     // DB§7: every FK is indexed, no exceptions — dayOrderUnique above
     // covers program_day_id but not this one.
     exerciseIdIdx: index('program_exercises_exercise_id_idx').on(t.exerciseId),
+  }),
+);
+
+export const assignments = trainingSchema.table(
+  'assignments',
+  {
+    ...id,
+    // An assigned program cannot be deleted while the assignment references
+    // it (DB§5.2).
+    programId: uuid('program_id')
+      .notNull()
+      .references(() => programs.id, { onDelete: 'restrict' }),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clientProfiles.id, { onDelete: 'cascade' }),
+    coachId: uuid('coach_id')
+      .notNull()
+      .references(() => coachProfiles.id, { onDelete: 'cascade' }),
+    startDate: date('start_date').notNull(),
+    currentWeek: smallint('current_week').notNull().default(1),
+    status: assignmentStatus('status').notNull().default('active'),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => ({
+    // Only one active assignment per client at a time. A client with a
+    // 'paused' assignment and a newly created 'active' one is valid and
+    // common (pausing one program to start another) — this index places no
+    // restriction on how many paused or completed assignments exist, only
+    // that at most one may be 'active'.
+    oneActive: uniqueIndex('assignments_one_active')
+      .on(t.clientId)
+      .where(sql`${t.status} = 'active'`),
+    // DB§7: every FK is indexed, no exceptions — none of these three share a
+    // leading column with oneActive above (a different column, and partial).
+    programIdIdx: index('assignments_program_id_idx').on(t.programId),
+    clientIdIdx: index('assignments_client_id_idx').on(t.clientId),
+    coachIdIdx: index('assignments_coach_id_idx').on(t.coachId),
+  }),
+);
+
+export const workoutSessions = trainingSchema.table(
+  'workout_sessions',
+  {
+    ...id,
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clientProfiles.id, { onDelete: 'cascade' }),
+    // Denormalised, DB§6 — duplicates client_id -> client_profiles.coach_id
+    // so `phase-02-api-foundation/authorization-middleware/03-owns-resource.md`
+    // can check "does this coach own this session's client" in one indexed
+    // lookup instead of a join. Set on INSERT only, from the parent, inside
+    // the same transaction; the trigger that blocks drift outside the
+    // documented client-transfer procedure is built in derived-data/02, not
+    // here — this column exists now without that guard (training-schema/03).
+    coachId: uuid('coach_id')
+      .notNull()
+      .references(() => coachProfiles.id, { onDelete: 'cascade' }),
+    // A session survives its assignment being removed; ad-hoc sessions (no
+    // assignment at all) are allowed per §8.4.
+    assignmentId: uuid('assignment_id').references(() => assignments.id, { onDelete: 'set null' }),
+    programDayId: uuid('program_day_id').references(() => programDays.id, {
+      onDelete: 'set null',
+    }),
+    name: text('name'),
+    // CLIENT-LOCAL calendar day — deliberately `date`, never `timestamptz`.
+    // CLAUDE.md §17.4 and §25.5 both flag this as the number-one source of
+    // bugs in every fitness app ever built: a workout logged at 00:30 in a
+    // positive-UTC-offset timezone belongs to the client's local day, and a
+    // timestamp invites naive UTC-boundary math that gets that day wrong.
+    scheduledDate: date('scheduled_date').notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    durationSeconds: integer('duration_seconds'),
+    perceivedExertion: smallint('perceived_exertion'),
+    clientNotes: text('client_notes'),
+    status: sessionStatus('status').notNull().default('scheduled'),
+    skipReason: text('skip_reason'),
+    // Denormalised aggregate, DB§8.3 — maintained by application code inside
+    // the same transaction as the write that changes it, never by trigger
+    // (DB§8.2: needs business logic — which sets count, how warmups are
+    // excluded — that doesn't belong in plpgsql).
+    totalVolumeKg: numeric('total_volume_kg', { precision: 10, scale: 2 }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }), // coach opened it
+    // Offline idempotency, DB§14. Nullable here (unlike set_logs' NOT NULL
+    // counterpart, task 04) — DETERMINISTIC for scheduled sessions:
+    // uuidv5(client_id, assignment_id, scheduled_date), so two devices
+    // produce the SAME key and upsert one row (DB§14.5).
+    clientLocalId: text('client_local_id'),
+    activeDeviceId: text('active_device_id'), // session claim, DB§14.5
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    // The prescription frozen at start. A coach's mid-session edit lands on
+    // the NEXT session, never this one (DB§14.6).
+    programSnapshot: jsonb('program_snapshot'),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => ({
+    sessionCompletion: check(
+      'session_completion',
+      sql`${t.status} <> 'completed' OR (${t.startedAt} IS NOT NULL AND ${t.completedAt} IS NOT NULL)`,
+    ),
+    sessionSkipReason: check(
+      'session_skip_reason',
+      sql`${t.status} <> 'skipped' OR ${t.skipReason} IS NOT NULL`,
+    ),
+    // DB§14's exact idempotency mechanism: the server's write path does
+    // INSERT ... ON CONFLICT (client_id, client_local_id) DO UPDATE, which
+    // only works because this index exists to conflict against. Compound on
+    // BOTH columns, not client_local_id alone — the value is only unique
+    // within one client's own mutation stream, since it's generated
+    // independently on each device.
+    clientLocalUnique: uniqueIndex('sessions_client_local')
+      .on(t.clientId, t.clientLocalId)
+      .where(sql`${t.clientLocalId} IS NOT NULL`),
+    // Second line of defence for the two-device case (DB§14.5): even if a
+    // device somehow generates a non-deterministic key, one scheduled
+    // program day per client per date can only ever produce one session row.
+    clientDayUnique: uniqueIndex('sessions_client_day_unique')
+      .on(t.clientId, t.programDayId, t.scheduledDate)
+      .where(sql`${t.programDayId} IS NOT NULL AND ${t.deletedAt} IS NULL`),
+    // DB§7: every FK is indexed, no exceptions. Both unique indexes above
+    // are PARTIAL, so neither one satisfies this rule on its own (matching
+    // identity.ts's invites_pending precedent) — every FK here gets its own
+    // plain index.
+    clientIdIdx: index('workout_sessions_client_id_idx').on(t.clientId),
+    coachIdIdx: index('workout_sessions_coach_id_idx').on(t.coachId),
+    assignmentIdIdx: index('workout_sessions_assignment_id_idx').on(t.assignmentId),
+    programDayIdIdx: index('workout_sessions_program_day_id_idx').on(t.programDayId),
   }),
 );

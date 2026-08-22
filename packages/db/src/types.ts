@@ -25,11 +25,13 @@ import type {
   users,
 } from './schema/identity.ts';
 import type {
+  assignments,
   exercises,
   programDays,
   programExercises,
   programs,
   programWeeks,
+  workoutSessions,
 } from './schema/training.ts';
 
 export type User = typeof users.$inferSelect;
@@ -74,3 +76,9 @@ export type NewProgramDay = typeof programDays.$inferInsert;
 
 export type ProgramExercise = typeof programExercises.$inferSelect;
 export type NewProgramExercise = typeof programExercises.$inferInsert;
+
+export type Assignment = typeof assignments.$inferSelect;
+export type NewAssignment = typeof assignments.$inferInsert;
+
+export type WorkoutSession = typeof workoutSessions.$inferSelect;
+export type NewWorkoutSession = typeof workoutSessions.$inferInsert;

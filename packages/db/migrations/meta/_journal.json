@@ -57,6 +57,13 @@
       "when": 1787372437258,
       "tag": "0007_programs_structure",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787372719375,
+      "tag": "0008_assignments_sessions",
+      "breakpoints": true
     }
   ]
 }
