@@ -114,9 +114,13 @@ function exerciseIdByName(exercises: SeededExercise[], name: string): string {
   return found.exerciseId;
 }
 
-async function seed(): Promise<void> {
+async function seed(demo: boolean): Promise<void> {
   // Step 1 of the determinism contract — before ANY other faker call.
-  faker.seed(42);
+  // Demo uses a different fixed seed value (43, not 42) — seed-and-fixtures/
+  // 02's own interface note: still fully deterministic within its own
+  // variant, but visibly distinct if the two datasets are ever compared
+  // side by side.
+  faker.seed(demo ? 43 : 42);
 
   const db = createDbClient({ connectionString: resolveConnectionString('local'), sslMode: false });
 
@@ -126,7 +130,7 @@ async function seed(): Promise<void> {
       const coach = await seedCoach(tx);
       const exercises = await seedExercises(tx);
       const exercisesByName = new Map(exercises.map((e) => [e.name, e]));
-      const clients = await seedClients(tx, coach.coachProfileId);
+      const clients = await seedClients(tx, coach.coachProfileId, demo);
       const clientIdByKey = new Map(clients.map((c) => [c.key, c.clientProfileId]));
       const clientUserIdByKey = new Map(clients.map((c) => [c.key, c.userId]));
 
@@ -145,6 +149,7 @@ async function seed(): Promise<void> {
         coach.coachProfileId,
         clientIdByKey,
         assignmentsByClientKey,
+        demo,
       );
 
       const foods = await seedFoods(tx);
@@ -154,6 +159,7 @@ async function seed(): Promise<void> {
         HISTORY_CLIENT_KEYS,
         clientIdByKey,
         foods,
+        demo,
       );
 
       const formChecks = await seedFormChecks(
@@ -187,8 +193,8 @@ async function seed(): Promise<void> {
         if (userId) await recomputeStorageUsage(tx, userId);
       }
 
-      await seedCheckins(tx, coach.coachProfileId, clientIdByKey);
-      await seedBodyMetrics(tx, clientIdByKey);
+      await seedCheckins(tx, coach.coachProfileId, clientIdByKey, demo);
+      await seedBodyMetrics(tx, clientIdByKey, demo);
 
       return {
         exercises: exercises.length,
@@ -204,7 +210,7 @@ async function seed(): Promise<void> {
       };
     });
 
-    console.log('[db:seed] done:', summary);
+    console.log(`[db:seed${demo ? ' --demo' : ''}] done:`, summary);
   } finally {
     await db.$client.end();
   }
@@ -212,7 +218,8 @@ async function seed(): Promise<void> {
 
 const isMainModule = process.argv[1] === fileURLToPath(import.meta.url);
 if (isMainModule) {
-  seed().catch((error: unknown) => {
+  const demo = process.argv.slice(2).includes('--demo');
+  seed(demo).catch((error: unknown) => {
     console.error(error instanceof Error ? (error.stack ?? error.message) : error);
     process.exitCode = 1;
   });

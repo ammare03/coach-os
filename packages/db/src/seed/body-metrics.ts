@@ -53,12 +53,23 @@ const TRENDS: ClientTrend[] = [
   }, // other
 ];
 
-/** Must run after `clients.ts`. */
+/**
+ * Must run after `clients.ts`.
+ *
+ * `demo` (seed-and-fixtures/02): a cleaner, closer-to-monotonic trend line
+ * — minimal week-to-week noise, since a screenshot's weight-trend chart
+ * looks best as a clear line rather than the realistic daily fluctuation
+ * the standard seed includes. Not zero noise — this task's own Risks
+ * section warns against a dataset polished enough to look staged.
+ */
 export async function seedBodyMetrics(
   tx: Transaction,
   clientIdByKey: Map<string, string>,
+  demo = false,
 ): Promise<void> {
   const rows: (typeof bodyMetrics.$inferInsert)[] = [];
+  const noiseBound = demo ? 0.1 : 0.3;
+  const bodyFatNoiseBound = demo ? 0.05 : 0.2;
 
   for (const trend of TRENDS) {
     const clientId = clientIdByKey.get(trend.clientKey);
@@ -68,12 +79,16 @@ export async function seedBodyMetrics(
       const weightKg =
         trend.startWeightKg +
         weekIndex * trend.weeklyDeltaKg +
-        faker.number.float({ min: -0.3, max: 0.3, fractionDigits: 2 });
+        faker.number.float({ min: -noiseBound, max: noiseBound, fractionDigits: 2 });
       const bodyFatPct = Math.max(
         1,
         trend.startBodyFatPct +
           weekIndex * trend.weeklyBodyFatDelta +
-          faker.number.float({ min: -0.2, max: 0.2, fractionDigits: 2 }),
+          faker.number.float({
+            min: -bodyFatNoiseBound,
+            max: bodyFatNoiseBound,
+            fractionDigits: 2,
+          }),
       );
       const recordedAt = timestampFromAnchor(offset, 7, 30);
 

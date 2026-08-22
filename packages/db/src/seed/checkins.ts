@@ -76,11 +76,19 @@ const CHECKIN_DEFS: CheckinDef[] = [
   },
 ];
 
-/** Must run after `clients.ts` and `coach.ts`. */
+/**
+ * Must run after `clients.ts` and `coach.ts`.
+ *
+ * `demo` (seed-and-fixtures/02): every check-in submitted AND reviewed,
+ * none pending or missed — a demo screenshot of the check-in review flow
+ * should never show the "missed" state that exists purely to prove the
+ * realistic seed exercises that code path.
+ */
 export async function seedCheckins(
   tx: Transaction,
   coachProfileId: string,
   clientIdByKey: Map<string, string>,
+  demo = false,
 ): Promise<void> {
   const templateId = seedId('checkin_template:weekly-default');
 
@@ -107,7 +115,17 @@ export async function seedCheckins(
 
     const periodStart = dateStringFromAnchor(def.periodStartOffset);
     const periodEnd = dateStringFromAnchor(def.periodStartOffset + def.periodLengthDays);
-    const submitted = def.status === 'submitted';
+    // Demo collapses every status to 'reviewed' — stronger than merely
+    // 'submitted', and the one state a polished screenshot should show.
+    const status = demo ? 'reviewed' : def.status;
+    const submitted = status === 'submitted' || status === 'reviewed';
+    const submittedAt = submitted
+      ? timestampFromAnchor(def.periodStartOffset + def.periodLengthDays, 20)
+      : null;
+    const reviewedAt =
+      status === 'reviewed'
+        ? timestampFromAnchor(def.periodStartOffset + def.periodLengthDays, 20, 30)
+        : null;
 
     rows.push({
       id: seedId(def.key),
@@ -117,7 +135,7 @@ export async function seedCheckins(
       templateSnapshot: TEMPLATE_FIELDS,
       periodStart,
       periodEnd,
-      status: def.status,
+      status,
       responses: submitted
         ? {
             weight: 78.4,
@@ -126,18 +144,15 @@ export async function seedCheckins(
             notes: 'Feeling strong this week, sleep has been consistent.',
           }
         : {},
-      draftResponses: def.status === 'pending' ? { weight: 77.9 } : null,
-      submittedAt: submitted
-        ? timestampFromAnchor(def.periodStartOffset + def.periodLengthDays, 20)
-        : null,
+      draftResponses: status === 'pending' ? { weight: 77.9 } : null,
+      submittedAt,
+      reviewedAt,
       coachSummary: submitted
         ? 'On track — keep the current split, small bump in calories next block.'
         : null,
       // Explicit — see coach.ts's comment on the same pair.
       createdAt: timestampFromAnchor(def.periodStartOffset, 9),
-      updatedAt: submitted
-        ? timestampFromAnchor(def.periodStartOffset + def.periodLengthDays, 20)
-        : timestampFromAnchor(def.periodStartOffset, 9),
+      updatedAt: reviewedAt ?? submittedAt ?? timestampFromAnchor(def.periodStartOffset, 9),
     });
   }
 

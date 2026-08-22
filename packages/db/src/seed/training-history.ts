@@ -40,12 +40,20 @@ export type TrainingHistoryResult = {
   skippedSessionId: string;
 };
 
-/** Must run after `seedAssignments` (programs.ts). */
+/**
+ * Must run after `seedAssignments` (programs.ts).
+ *
+ * `demo` (seed-and-fixtures/02): no skipped sessions, consistent
+ * completion, every number reading as a success story — the realistic
+ * seed's whole point is the occasional missed day; a screenshot's whole
+ * point is that it never shows one.
+ */
 export async function seedTrainingHistory(
   tx: Transaction,
   coachProfileId: string,
   clientIdByKey: Map<string, string>,
   assignmentsByClientKey: Map<string, SeededAssignment>,
+  demo = false,
 ): Promise<TrainingHistoryResult> {
   let sessionsCreated = 0;
   let setLogsCreated = 0;
@@ -90,6 +98,7 @@ export async function seedTrainingHistory(
         const sessionId = seedId(sessionKey);
 
         const isSkipped =
+          !demo &&
           clientKey === SKIPPED_SESSION_CLIENT_KEY &&
           realWeekIndex === firstRealWeekIndex &&
           dayIndex === 0;
@@ -157,7 +166,15 @@ export async function seedTrainingHistory(
 
           for (let setNumber = 1; setNumber <= exercise.targetSets; setNumber += 1) {
             const isWarmup = exercise.targetSets >= 4 && setNumber === 1;
-            const weightVariance = faker.number.float({ min: -1.5, max: 1.5, fractionDigits: 2 });
+            // Demo mode halves the noise band — "the best realistic week,"
+            // per this task's own Risks section, not a flat line (a flat
+            // line would look staged, not authentic).
+            const varianceBound = demo ? 0.75 : 1.5;
+            const weightVariance = faker.number.float({
+              min: -varianceBound,
+              max: varianceBound,
+              fractionDigits: 2,
+            });
             const weightKg = isWarmup
               ? Math.max(0, exercise.targetWeightKg * 0.5)
               : Math.max(0, exercise.targetWeightKg + weightVariance);

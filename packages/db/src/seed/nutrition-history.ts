@@ -33,13 +33,23 @@ export type NutritionHistoryResult = {
   mealItemsCreated: number;
 };
 
-/** Must run after `foods.ts` and `clients.ts`; may run any time relative to `training-history.ts`. */
+/**
+ * Must run after `foods.ts` and `clients.ts`; may run any time relative to
+ * `training-history.ts`.
+ *
+ * `demo` (seed-and-fixtures/02): logging on every day rather than ~80% —
+ * a nutrition-adherence visual should read as strongly consistent for a
+ * screenshot, not the realistic gaps the standard seed deliberately leaves
+ * for `phase-13-nutrition`'s empty-state and streak logic to develop
+ * against.
+ */
 export async function seedNutritionHistory(
   tx: Transaction,
   coachProfileId: string,
   clientKeys: string[],
   clientIdByKey: Map<string, string>,
   seededFoods: SeededFood[],
+  demo = false,
 ): Promise<NutritionHistoryResult> {
   let mealsCreated = 0;
   let mealItemsCreated = 0;
@@ -50,7 +60,7 @@ export async function seedNutritionHistory(
 
     for (const dayOffset of HISTORY_DAY_OFFSETS) {
       const loggedThisDay =
-        faker.number.float({ min: 0, max: 1, fractionDigits: 2 }) < LOGGING_RATE;
+        demo || faker.number.float({ min: 0, max: 1, fractionDigits: 2 }) < LOGGING_RATE;
       if (!loggedThisDay) continue;
 
       const loggedDate = dateStringFromAnchor(dayOffset);

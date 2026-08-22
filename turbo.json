@@ -37,6 +37,9 @@
     },
     "db:seed": {
       "cache": false
+    },
+    "db:seed:demo": {
+      "cache": false
     }
   }
 }

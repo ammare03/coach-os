@@ -134,22 +134,34 @@ export type SeededClient = {
   name: string;
 };
 
-/** Must run after `coach.ts` — every client belongs to the seeded coach. */
+/**
+ * Must run after `coach.ts` — every client belongs to the seeded coach.
+ *
+ * `demo` (seed-and-fixtures/02) weights every client toward `active` with a
+ * complete-looking profile — a screenshot of the coach dashboard should
+ * show engaged clients, not the realistic invited/paused/archived mix the
+ * standard dataset deliberately includes. The task-01 status distribution
+ * (`CLIENT_DEFS`) is unchanged either way; only the EFFECTIVE status this
+ * function writes differs, so the two variants stay the same shape and
+ * only their parameters diverge (seed-and-fixtures/02's own scope note).
+ */
 export async function seedClients(
   tx: Transaction,
   coachProfileId: string,
+  demo = false,
 ): Promise<SeededClient[]> {
   const seeded: SeededClient[] = [];
 
   for (const def of CLIENT_DEFS) {
+    const status: ClientStatus = demo ? 'active' : def.status;
     const userId = seedId(`user:${def.key}`);
     const clientProfileId = seedId(`client_profile:${def.key}`);
     const dob = dateStringFromAnchor(-365 * faker.number.int({ min: 22, max: 42 }));
 
     const invitedAt = timestampFromAnchor(-90, 9);
-    const activatedAt = def.status === 'invited' ? null : timestampFromAnchor(-88, 10);
-    const pausedAt = def.status === 'paused' ? timestampFromAnchor(-14, 8) : null;
-    const archivedAt = def.status === 'archived' ? timestampFromAnchor(-7, 8) : null;
+    const activatedAt = status === 'invited' ? null : timestampFromAnchor(-88, 10);
+    const pausedAt = status === 'paused' ? timestampFromAnchor(-14, 8) : null;
+    const archivedAt = status === 'archived' ? timestampFromAnchor(-7, 8) : null;
 
     await tx.insert(users).values({
       id: userId,
@@ -159,16 +171,16 @@ export async function seedClients(
       role: 'client',
       timezone: def.timezone,
       locale: 'en',
-      emailVerifiedAt: def.status === 'invited' ? null : timestampFromAnchor(-89, 9),
-      onboardingCompletedAt: def.status === 'invited' ? null : timestampFromAnchor(-88, 11),
+      emailVerifiedAt: status === 'invited' ? null : timestampFromAnchor(-89, 9),
+      onboardingCompletedAt: status === 'invited' ? null : timestampFromAnchor(-88, 11),
       lastActiveAt:
-        def.status === 'archived' ? timestampFromAnchor(-8, 19) : timestampFromAnchor(-1, 20),
+        status === 'archived' ? timestampFromAnchor(-8, 19) : timestampFromAnchor(-1, 20),
       weightUnit: def.timezone === 'Asia/Kolkata' ? 'kg' : 'lb',
       dateOfBirth: dob,
       // An invited user has no verified email yet, so the users_email_or_social
       // CHECK needs a password hash instead — a fixed inert placeholder, never
       // a real credential.
-      ...(def.status === 'invited' ? { passwordHash: 'seed-placeholder-unusable' } : {}),
+      ...(status === 'invited' ? { passwordHash: 'seed-placeholder-unusable' } : {}),
       // Explicit — see coach.ts's comment on the same pair for why this
       // can never be left to the column's `.defaultNow()`.
       createdAt: invitedAt,
@@ -179,7 +191,7 @@ export async function seedClients(
       id: clientProfileId,
       userId,
       coachId: coachProfileId,
-      status: def.status,
+      status,
       invitedAt,
       activatedAt,
       pausedAt,
@@ -215,7 +227,7 @@ export async function seedClients(
       key: def.key,
       userId,
       clientProfileId,
-      status: def.status,
+      status,
       goal: def.goal,
       name: def.name,
     });
