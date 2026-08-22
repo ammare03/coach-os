@@ -26,6 +26,7 @@ import {
   checkinCadence,
   checkinStatus,
   commentTarget,
+  liveSessionKind,
   mediaKind,
   mediaStatus,
   mediaVisibility,
@@ -392,5 +393,141 @@ export const habitLogs = coachingSchema.table(
   },
   (t) => ({
     habitDateUnique: uniqueIndex('habit_logs_habit_date_unique').on(t.habitId, t.date),
+  }),
+);
+
+// `live_sessions` is a REPLICA, not the system of record — LiveKit owns
+// live room/participant state (DB§17); this table is populated by egress
+// webhooks. Nothing here enforces staying in sync with LiveKit's actual
+// state; that reconciliation is phase-19-live-sessions/livekit-
+// integration/03's reaper-job responsibility.
+export const liveSessions = coachingSchema.table(
+  'live_sessions',
+  {
+    ...id,
+    coachId: uuid('coach_id')
+      .notNull()
+      .references(() => coachProfiles.id, { onDelete: 'cascade' }),
+    clientId: uuid('client_id').references(() => clientProfiles.id, { onDelete: 'cascade' }), // null for group
+    roomName: text('room_name').notNull().unique(),
+    kind: liveSessionKind('kind').notNull(),
+    scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    durationSeconds: integer('duration_seconds'),
+    participantMinutes: integer('participant_minutes').notNull().default(0), // billing meter, §15.8
+    recordingAssetId: uuid('recording_asset_id').references(() => mediaAssets.id, {
+      onDelete: 'set null',
+    }),
+    coachConsentAt: timestamp('coach_consent_at', { withTimezone: true }),
+    clientConsentAt: timestamp('client_consent_at', { withTimezone: true }),
+    workoutSessionId: uuid('workout_session_id').references(() => workoutSessions.id, {
+      onDelete: 'set null',
+    }),
+    notes: text('notes'),
+    ...timestamps,
+  },
+  (t) => ({
+    // Recording without dual consent is structurally impossible (§8.9 AC).
+    // This is an OR between "no recording at all" and "both consents
+    // present" — NOT "at least one consent," which would be a materially
+    // weaker and incorrect guarantee. The single highest-consequence
+    // constraint in this entire phase: it is the literal mechanism behind
+    // a user-facing trust and legal guarantee, not just data integrity.
+    dualConsentRequired: check(
+      'recording_requires_dual_consent',
+      sql`${t.recordingAssetId} IS NULL OR (${t.coachConsentAt} IS NOT NULL AND ${t.clientConsentAt} IS NOT NULL)`,
+    ),
+  }),
+);
+
+export const liveSessionParticipants = coachingSchema.table(
+  'live_session_participants',
+  {
+    ...id,
+    liveSessionId: uuid('live_session_id')
+      .notNull()
+      .references(() => liveSessions.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+    leftAt: timestamp('left_at', { withTimezone: true }),
+  },
+  (t) => ({
+    // Three-column uniqueness, not just (live_session_id, user_id) — a
+    // participant can leave and rejoin the same session, producing
+    // multiple rows; joined_at in the key is what lets each rejoin be a
+    // distinct row rather than colliding with the first.
+    rejoinUnique: uniqueIndex('live_session_participants_unique').on(
+      t.liveSessionId,
+      t.userId,
+      t.joinedAt,
+    ),
+  }),
+);
+
+export const conversations = coachingSchema.table(
+  'conversations',
+  {
+    ...id,
+    coachId: uuid('coach_id')
+      .notNull()
+      .references(() => coachProfiles.id, { onDelete: 'cascade' }),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clientProfiles.id, { onDelete: 'cascade' }),
+    lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
+    createdAt: timestamps.createdAt, // no updated_at
+  },
+  (t) => ({
+    // Exactly one conversation thread per coach-client pair — §8.8's model
+    // of the chat as one continuous thread, not per-topic channels.
+    coachClientUnique: uniqueIndex('conversations_coach_client_unique').on(t.coachId, t.clientId),
+  }),
+);
+
+export const messages = coachingSchema.table(
+  'messages',
+  {
+    ...id,
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    senderUserId: uuid('sender_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    body: text('body'),
+    attachmentAssetId: uuid('attachment_asset_id').references(() => mediaAssets.id, {
+      onDelete: 'set null',
+    }),
+    // Reuses the SAME comment_target enum `comments` uses (task 02) — not a
+    // new declaration — for the "re: Tuesday's Squat set 3" deep-link
+    // feature (§8.8). No FK on linked_target_id, same reasoning as
+    // comments.target_id.
+    linkedTargetType: commentTarget('linked_target_type'),
+    linkedTargetId: uuid('linked_target_id'),
+    // NOT NULL, unlike comments — a sent message always has offline
+    // provenance (§8.8).
+    clientLocalId: text('client_local_id').notNull(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    createdAt: timestamps.createdAt, // no updated_at — a sent message is not edited in place
+  },
+  (t) => ({
+    hasContent: check(
+      'message_has_content',
+      sql`${t.body} IS NOT NULL OR ${t.attachmentAssetId} IS NOT NULL`,
+    ),
+    // Loading a conversation's history.
+    conversationIdx: index('messages_conversation')
+      .on(t.conversationId, t.createdAt.desc())
+      .where(sql`${t.deletedAt} IS NULL`),
+    // Scoped by SENDER, not conversation — the offline-idempotency key is
+    // unique per sending user's mutation stream (whose device actually
+    // generated client_local_id), consistent with this column's meaning
+    // elsewhere in this phase, not "unique per conversation."
+    localUnique: uniqueIndex('messages_local').on(t.senderUserId, t.clientLocalId),
   }),
 );

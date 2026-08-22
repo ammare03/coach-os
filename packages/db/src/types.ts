@@ -19,9 +19,13 @@ import type {
   checkinTemplates,
   checkins,
   comments,
+  conversations,
   habitLogs,
   habits,
+  liveSessionParticipants,
+  liveSessions,
   mediaAssets,
+  messages,
   progressPhotos,
   reactions,
 } from './schema/coaching.ts';
@@ -168,3 +172,15 @@ export type NewHabit = typeof habits.$inferInsert;
 
 export type HabitLog = typeof habitLogs.$inferSelect;
 export type NewHabitLog = typeof habitLogs.$inferInsert;
+
+export type LiveSession = typeof liveSessions.$inferSelect;
+export type NewLiveSession = typeof liveSessions.$inferInsert;
+
+export type LiveSessionParticipant = typeof liveSessionParticipants.$inferSelect;
+export type NewLiveSessionParticipant = typeof liveSessionParticipants.$inferInsert;
+
+export type Conversation = typeof conversations.$inferSelect;
+export type NewConversation = typeof conversations.$inferInsert;
+
+export type Message = typeof messages.$inferSelect;
+export type NewMessage = typeof messages.$inferInsert;
