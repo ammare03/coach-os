@@ -43,6 +43,34 @@
       "when": 1787369136899,
       "tag": "0005_coach_hierarchy",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787372145057,
+      "tag": "0006_exercises",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787372437258,
+      "tag": "0007_programs_structure",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787372719375,
+      "tag": "0008_assignments_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787372951606,
+      "tag": "0009_set_logs_records",
+      "breakpoints": true
     }
   ]
 }

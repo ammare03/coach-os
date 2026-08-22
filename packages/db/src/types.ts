@@ -24,6 +24,17 @@ import type {
   refreshTokens,
   users,
 } from './schema/identity.ts';
+import type {
+  assignments,
+  exercises,
+  personalRecords,
+  programDays,
+  programExercises,
+  programs,
+  programWeeks,
+  setLogs,
+  workoutSessions,
+} from './schema/training.ts';
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -52,3 +63,30 @@ export type NewCoachClientNote = typeof coachClientNotes.$inferInsert;
 
 export type Invite = typeof invites.$inferSelect;
 export type NewInvite = typeof invites.$inferInsert;
+
+export type Exercise = typeof exercises.$inferSelect;
+export type NewExercise = typeof exercises.$inferInsert;
+
+export type Program = typeof programs.$inferSelect;
+export type NewProgram = typeof programs.$inferInsert;
+
+export type ProgramWeek = typeof programWeeks.$inferSelect;
+export type NewProgramWeek = typeof programWeeks.$inferInsert;
+
+export type ProgramDay = typeof programDays.$inferSelect;
+export type NewProgramDay = typeof programDays.$inferInsert;
+
+export type ProgramExercise = typeof programExercises.$inferSelect;
+export type NewProgramExercise = typeof programExercises.$inferInsert;
+
+export type Assignment = typeof assignments.$inferSelect;
+export type NewAssignment = typeof assignments.$inferInsert;
+
+export type WorkoutSession = typeof workoutSessions.$inferSelect;
+export type NewWorkoutSession = typeof workoutSessions.$inferInsert;
+
+export type SetLog = typeof setLogs.$inferSelect;
+export type NewSetLog = typeof setLogs.$inferInsert;
+
+export type PersonalRecord = typeof personalRecords.$inferSelect;
+export type NewPersonalRecord = typeof personalRecords.$inferInsert;
