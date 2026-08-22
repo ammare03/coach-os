@@ -50,7 +50,14 @@ import type {
   meals,
   waterLogs,
 } from './schema/nutrition.ts';
-import type { auditLog, notificationPreferences, notifications } from './schema/platform.ts';
+import type {
+  auditLog,
+  featureUsage,
+  notificationPreferences,
+  notifications,
+  storageUsage,
+  webhookEvents,
+} from './schema/platform.ts';
 import type {
   assignments,
   exercises,
@@ -196,3 +203,12 @@ export type NewNotificationPreference = typeof notificationPreferences.$inferIns
 // in schema/platform.ts.
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type NewAuditLogEntry = typeof auditLog.$inferInsert;
+
+export type StorageUsage = typeof storageUsage.$inferSelect;
+export type NewStorageUsage = typeof storageUsage.$inferInsert;
+
+export type FeatureUsage = typeof featureUsage.$inferSelect;
+export type NewFeatureUsage = typeof featureUsage.$inferInsert;
+
+export type WebhookEvent = typeof webhookEvents.$inferSelect;
+export type NewWebhookEvent = typeof webhookEvents.$inferInsert;

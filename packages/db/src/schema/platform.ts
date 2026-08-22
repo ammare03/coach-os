@@ -6,20 +6,24 @@
 // phase-01-data-layer/README.md).
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   bigserial,
   boolean,
   check,
+  date,
   index,
   inet,
+  integer,
   jsonb,
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 
 import { id, platformSchema, timestamps } from './_shared.ts';
-import { users } from './identity.ts';
+import { coachProfiles, users } from './identity.ts';
 
 // `type` is deliberately bare `text`, not an enum — DB§5.5 transcribes it
 // this way even though CLAUDE.md §14.1 lists ten known values today. A
@@ -129,5 +133,70 @@ export const auditLog = platformSchema.table(
   },
   (t) => ({
     actorTimeIdx: index('audit_actor_time').on(t.actorUserId, t.createdAt.desc()),
+  }),
+);
+
+// Counter table, not SUM(). A quota check runs on EVERY upload; scanning
+// media_assets each time would be the first thing to fall over at scale
+// (DB§5.5's own comment). `user_id` is the primary key directly — this
+// table has exactly one row per user by construction, no surrogate id.
+export const storageUsage = platformSchema.table('storage_usage', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  bytesUsed: bigint('bytes_used', { mode: 'number' }).notNull().default(0),
+  assetCount: integer('asset_count').notNull().default(0),
+  updatedAt: timestamps.updatedAt, // no created_at — the row's insert IS its first update
+});
+
+// Composite primary key, no surrogate id — the third table in P01 to break
+// the implicit id/created_at/updated_at pattern, alongside
+// nutrition.daily_nutrition_summary and notification_preferences.
+//
+// `period_start` is a BILLING-ANNIVERSARY date, not a calendar-month
+// boundary — a subtly different semantics from every other `date` column
+// in this schema, which represent a client-local calendar day. CLAUDE.md
+// §15.8 is explicit that entitlement counters reset on the billing
+// anniversary. Computing and resetting that date is entirely
+// phase-20-billing-and-entitlements/entitlement-service/04's job; this
+// table only names the column correctly.
+export const featureUsage = platformSchema.table(
+  'feature_usage',
+  {
+    coachId: uuid('coach_id')
+      .notNull()
+      .references(() => coachProfiles.id, { onDelete: 'cascade' }),
+    periodStart: date('period_start').notNull(), // billing anniversary, NOT calendar month
+    liveMinutes: integer('live_minutes').notNull().default(0),
+    aiGenerations: integer('ai_generations').notNull().default(0),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.coachId, t.periodStart] }),
+  }),
+);
+
+// Unique on (provider, event_id) — the entire mechanism behind DB§17's
+// statement that at-least-once, unordered webhook delivery can be handled
+// safely (§15.7). A handler attempts an insert (or an ON CONFLICT-guarded
+// one) keyed on this pair; a genuine duplicate delivery simply fails to
+// insert a second time rather than double-processing a refund or a
+// subscription change.
+export const webhookEvents = platformSchema.table(
+  'webhook_events',
+  {
+    ...id,
+    provider: text('provider').notNull(), // 'revenuecat', 'stripe', 'livekit'
+    eventId: text('event_id').notNull(),
+    eventType: text('event_type').notNull(),
+    payload: jsonb('payload').notNull(),
+    processedAt: timestamp('processed_at', { withTimezone: true }),
+    error: text('error'),
+    receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    providerEventUnique: uniqueIndex('webhook_events_provider_event_unique').on(
+      t.provider,
+      t.eventId,
+    ),
   }),
 );
