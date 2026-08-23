@@ -78,6 +78,22 @@ const utilsPurityRules = {
   ],
 };
 
+// CLAUDE.md §6.4: input schemas live in packages/schemas, never inline in a
+// router or a feature file — error-and-validation/01. Exported so apps/api
+// and apps/mobile can apply it scoped to their own cwd (a path-scoped copy
+// in this file's own array alone would silently never fire when ESLint's
+// cwd is already that app's directory — the normal case; same reasoning as
+// `utilsPurityRules` above).
+const noInlineInputSchemaRules = {
+  'no-restricted-syntax': [
+    'error',
+    {
+      selector: "CallExpression[callee.object.name='z'][callee.property.name='object']",
+      message: 'Input schemas live in packages/schemas (CLAUDE.md §6.4) — move this and import it.',
+    },
+  ],
+};
+
 /** @type {import('eslint').Linter.Config[]} */
 const config = tseslint.config(
   js.configs.recommended,
@@ -139,6 +155,10 @@ const config = tseslint.config(
     rules: utilsPurityRules,
   },
   {
+    files: ['apps/api/src/routers/**/*.{ts,tsx}', 'apps/mobile/src/features/**/*.{ts,tsx}'],
+    rules: noInlineInputSchemaRules,
+  },
+  {
     // db-package-scaffold/05: flags a hand-written row type outside
     // packages/db, where the real `typeof someTable.$inferSelect`
     // declarations legitimately live (and where this rule would never
@@ -169,3 +189,4 @@ const config = tseslint.config(
 
 module.exports = config;
 module.exports.utilsPurityRules = utilsPurityRules;
+module.exports.noInlineInputSchemaRules = noInlineInputSchemaRules;

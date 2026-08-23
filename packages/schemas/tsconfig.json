@@ -10,7 +10,10 @@
     // relative imports (same convention as apps/api and packages/utils).
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
-    "types": ["jest"],
+    // "node" is test-only (the layout test reads the filesystem); the
+    // package's own runtime source still imports nothing but zod (§6.4) —
+    // types don't affect what ships.
+    "types": ["jest", "node"],
     "noEmit": true
   },
   "include": ["src"]
