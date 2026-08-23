@@ -39,7 +39,7 @@ const envSchema = z.object({
   SENTRY_AUTH_TOKEN: z.string().min(1),
 });
 
-function loadEnv() {
+function loadEnv(): z.infer<typeof envSchema> {
   const parsed = envSchema.safeParse(process.env);
   if (!parsed.success) {
     const missing = parsed.error.issues.map((issue) => issue.path.join('.')).join(', ');
@@ -48,6 +48,13 @@ function loadEnv() {
     // normal pipeline either.
     console.error(`API failed to start — missing or invalid environment variable(s): ${missing}`);
     process.exit(1);
+    // `throw`, not just `process.exit(1)` above: narrowing `parsed` past
+    // this point depends on TS seeing this branch as unreachable, and a
+    // `throw` is recognised as such under any project's `lib`/`types`
+    // config — `process.exit`'s `never` return type is not (apps/mobile's
+    // `AppRouter` type-only import walks this file too, under its own
+    // tsconfig; `03-mobile-trpc-client.md`).
+    throw new Error('unreachable — process.exit(1) already terminated the process');
   }
   return parsed.data;
 }

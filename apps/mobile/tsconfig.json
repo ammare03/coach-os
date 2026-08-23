@@ -3,19 +3,16 @@
   "compilerOptions": {
     // Needed for src/app/*.test.tsx to typecheck (quality-gates/01).
     "types": ["jest"],
+    // `AppRouter`'s type-only import (src/lib/trpc.ts) pulls tsc into
+    // apps/api and packages/db, both of which write the real `.ts`
+    // extension on relative imports (Node's --experimental-strip-types
+    // needs the literal file on disk) — without this, tsc can't parse
+    // those files at all (03-mobile-trpc-client.md).
+    "allowImportingTsExtensions": true,
     "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@/assets/*": [
-        "./assets/*"
-      ]
+      "@/*": ["./src/*"],
+      "@/assets/*": ["./assets/*"]
     }
   },
-  "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
-  ]
+  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"]
 }

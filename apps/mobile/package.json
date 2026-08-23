@@ -16,6 +16,9 @@
   "dependencies": {
     "@coachos/schemas": "workspace:*",
     "@coachos/utils": "workspace:*",
+    "@tanstack/react-query": "5.102.0",
+    "@trpc/client": "11.18.0",
+    "@trpc/react-query": "11.18.0",
     "expo": "~57.0.12",
     "expo-constants": "~57.0.10",
     "expo-device": "~57.0.1",
@@ -36,7 +39,8 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-web": "~0.21.0",
-    "react-native-worklets": "0.10.1"
+    "react-native-worklets": "0.10.1",
+    "superjson": "1.13.3"
   },
   "devDependencies": {
     "@coachos/config": "workspace:*",
@@ -44,6 +48,7 @@
     "@types/jest": "30.0.0",
     "@types/react": "~19.2.2",
     "@types/react-test-renderer": "19.1.0",
+    "api": "workspace:*",
     "jest": "30.4.2",
     "react-test-renderer": "19.2.3",
     "typescript": "~6.0.3"
