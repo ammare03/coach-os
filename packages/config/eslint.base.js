@@ -78,6 +78,55 @@ const utilsPurityRules = {
   ],
 };
 
+// CLAUDE.md §6.4: input schemas live in packages/schemas, never inline in a
+// router or a feature file — error-and-validation/01. Exported so apps/api
+// and apps/mobile can apply it scoped to their own cwd (a path-scoped copy
+// in this file's own array alone would silently never fire when ESLint's
+// cwd is already that app's directory — the normal case; same reasoning as
+// `utilsPurityRules` above).
+const noInlineInputSchemaRules = {
+  'no-restricted-syntax': [
+    'error',
+    {
+      selector: "CallExpression[callee.object.name='z'][callee.property.name='object']",
+      message: 'Input schemas live in packages/schemas (CLAUDE.md §6.4) — move this and import it.',
+    },
+  ],
+};
+
+// CLAUDE.md §6.3 step 3 (`error-and-validation/02`): `appError()` in
+// apps/api/src/lib/app-error.ts is the only sanctioned way to construct a
+// thrown error. A bare `new TRPCError({ code })` carries no catalogued
+// `cause.code`, which the formatter then has to treat as uncaught. Exported
+// for the same cwd reason `noInlineInputSchemaRules` is — see that
+// comment.
+const noBareTrpcErrorRules = {
+  'no-restricted-syntax': [
+    'error',
+    {
+      selector: "NewExpression[callee.name='TRPCError']",
+      message:
+        'Construct errors via appError() in apps/api/src/lib/app-error.ts (CLAUDE.md §6.3) — a bare TRPCError carries no catalogued cause.code.',
+    },
+  ],
+};
+
+// error-and-validation/03 step 1: strictObject() (packages/schemas/src/strict.ts)
+// is the one constructor every input-schema module calls — a bare `z.object`
+// defaults to silently stripping unknown keys, which is exactly the failure
+// this task exists to close. `conventions.test.ts` catches it at runtime by
+// walking the exported tree; this rule catches it at write time. Exported
+// for the same cwd reason `noInlineInputSchemaRules` is.
+const noBareZodObjectRules = {
+  'no-restricted-syntax': [
+    'error',
+    {
+      selector: "CallExpression[callee.object.name='z'][callee.property.name='object']",
+      message: 'Use strictObject() from ./strict.ts instead of bare z.object (CLAUDE.md §6.4).',
+    },
+  ],
+};
+
 /** @type {import('eslint').Linter.Config[]} */
 const config = tseslint.config(
   js.configs.recommended,
@@ -139,6 +188,20 @@ const config = tseslint.config(
     rules: utilsPurityRules,
   },
   {
+    files: ['apps/api/src/routers/**/*.{ts,tsx}', 'apps/mobile/src/features/**/*.{ts,tsx}'],
+    rules: noInlineInputSchemaRules,
+  },
+  {
+    files: ['apps/api/src/**/*.{ts,tsx}'],
+    ignores: ['apps/api/src/lib/app-error.ts'],
+    rules: noBareTrpcErrorRules,
+  },
+  {
+    files: ['packages/schemas/src/**/*.{ts,tsx}'],
+    ignores: ['packages/schemas/src/strict.ts', 'packages/schemas/src/pagination.ts'],
+    rules: noBareZodObjectRules,
+  },
+  {
     // db-package-scaffold/05: flags a hand-written row type outside
     // packages/db, where the real `typeof someTable.$inferSelect`
     // declarations legitimately live (and where this rule would never
@@ -169,3 +232,6 @@ const config = tseslint.config(
 
 module.exports = config;
 module.exports.utilsPurityRules = utilsPurityRules;
+module.exports.noInlineInputSchemaRules = noInlineInputSchemaRules;
+module.exports.noBareTrpcErrorRules = noBareTrpcErrorRules;
+module.exports.noBareZodObjectRules = noBareZodObjectRules;

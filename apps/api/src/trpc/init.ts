@@ -1,7 +1,10 @@
 import { initTRPC } from '@trpc/server';
 import superjson from 'superjson';
 
+import { env } from '../env.ts';
+
 import type { Context } from './context.ts';
+import { createErrorFormatter } from './error-formatter.ts';
 
 // The single `initTRPC` call in the codebase — a second one produces
 // incompatible builders and errors that point at the procedure, not here.
@@ -13,10 +16,12 @@ import type { Context } from './context.ts';
 // `main` entry, which ts-jest's CommonJS transpile (jest.node.js) can't
 // load. 1.x still ships a CJS build and the transformer API is unchanged.
 //
-// Error formatter: tRPC's default for now. `../error-and-validation/02-error-formatter-and-codes.md`
-// replaces this argument without touching the rest of this file.
+// `isDevelopment` is the one switch `02-error-formatter-and-codes.md` step 5
+// requires: exactly `'development'` opens the verbose branch, anything else
+// — including an unset or misspelled NODE_ENV — defaults to production.
 const t = initTRPC.context<Context>().create({
   transformer: superjson,
+  errorFormatter: createErrorFormatter({ isDevelopment: env.NODE_ENV === 'development' }),
 });
 
 export const router = t.router;

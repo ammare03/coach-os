@@ -86,7 +86,10 @@ export type CalendarDate = z.infer<typeof calendarDate>;
  * input and yields a `number` after parsing.
  */
 function boundedNumeric(min: number, max: number) {
-  return z.preprocess((value) => (typeof value === 'string' ? Number(value) : value), z.number().min(min).max(max));
+  return z.preprocess(
+    (value) => (typeof value === 'string' ? Number(value) : value),
+    z.number().min(min).max(max),
+  );
 }
 
 function boundedInt(min: number, max?: number) {
@@ -141,13 +144,11 @@ export const rir = boundedInt(0, 10);
 // ---------------------------------------------------------------------------
 
 /**
- * Keyset pagination input — DB§22 bans `OFFSET` on any list that grows, so
- * every list procedure takes a cursor instead. `cursor` is the last item's
- * `created_at`; `limit` defaults to 20 and caps at 50, matching the
- * `api-conventions` skill's convention.
+ * The keyset pagination cursor — the last item's `created_at`, opaque to
+ * the caller. DB§22 bans `OFFSET` on any list that grows, so every list
+ * procedure passes this instead. This validates the cursor's *shape* only;
+ * `./pagination.ts`'s `paginationInput` composes it with the caller-facing
+ * `limit` field and its cap, which is why the full input schema lives there
+ * and not here — this file is primitives, not policy.
  */
-export const paginationInput = z.object({
-  cursor: z.iso.datetime().optional(),
-  limit: z.number().int().min(1).max(50).default(20),
-});
-export type PaginationInput = z.infer<typeof paginationInput>;
+export const paginationCursor = z.iso.datetime();

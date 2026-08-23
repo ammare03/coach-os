@@ -10,7 +10,7 @@ import {
   email,
   heightCm,
   id,
-  paginationInput,
+  paginationCursor,
   rir,
   rpe,
   timezone,
@@ -189,21 +189,12 @@ describe('rir', () => {
   });
 });
 
-describe('paginationInput', () => {
-  it('defaults limit to 20 when omitted', () => {
-    expect(paginationInput.parse({})).toMatchObject({ limit: 20 });
+describe('paginationCursor', () => {
+  it('accepts an ISO datetime string', () => {
+    expect(paginationCursor.safeParse('2026-08-21T00:00:00.000Z').success).toBe(true);
   });
 
-  it('accepts an explicit cursor and limit', () => {
-    const result = paginationInput.parse({ cursor: '2026-08-21T00:00:00.000Z', limit: 50 });
-    expect(result.limit).toBe(50);
-  });
-
-  it('rejects a limit above the cap of 50', () => {
-    expect(paginationInput.safeParse({ limit: 51 }).success).toBe(false);
-  });
-
-  it('rejects a limit below 1', () => {
-    expect(paginationInput.safeParse({ limit: 0 }).success).toBe(false);
+  it('rejects a bare calendar date — a cursor is a timestamp, not a day', () => {
+    expect(paginationCursor.safeParse('2026-08-21').success).toBe(false);
   });
 });
