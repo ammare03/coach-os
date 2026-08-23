@@ -15,7 +15,9 @@
     "@coachos/schemas": "workspace:*",
     "@coachos/utils": "workspace:*",
     "@hono/node-server": "2.1.1",
+    "@trpc/server": "11.18.0",
     "hono": "4.13.3",
+    "superjson": "1.13.3",
     "zod": "4.4.3"
   },
   "devDependencies": {
