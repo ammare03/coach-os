@@ -38,6 +38,13 @@ middleware's `input` can — TypeScript happily accepts the unannotated form wit
 compiler error to catch a missing annotation; this is a review-time rule
 (`authorization-middleware/03-owns-resource.md`'s own doc comment carries the same note).
 
+## A public procedure needs an allowlist entry
+
+A `publicProcedure` not on `../__tests__/authz-allowlist.ts` fails `authz.test.ts`. Adding a
+row there is a security change — it needs a real, falsifiable reason and a second reviewer
+(see the PR template checkbox). See that file's own header for the shape and the two checks
+that keep it honest.
+
 ## When a procedure needs `.output()`
 
 > A procedure needs an `.output()` schema when the row it reads from contains a column the

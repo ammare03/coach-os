@@ -186,7 +186,7 @@ async function probeOneProcedure(procedure: WalkedProcedure): Promise<void> {
 
   // Branch 1/2: public vs protected.
   if (!(await isProtectedByAuth(procedure))) {
-    if (!PUBLIC_ALLOWLIST.includes(dottedPath)) {
+    if (!PUBLIC_ALLOWLIST.some((entry) => entry.path === dottedPath)) {
       failures.push(
         `${dottedPath}: reachable with no token and not on the allowlist (authz-allowlist.ts) — ` +
           'public and unjustified',
@@ -264,5 +264,28 @@ describe('authorization enumeration', () => {
     const paths = WALKED_PROCEDURES.map((p) => p.path);
     expect(paths).toContain('health.ping');
     expect(paths).toContain('coach.clients.list');
+  });
+
+  // `05-public-allowlist.md` step 3/4 — the two checks that keep the
+  // allowlist honest. Both run over every entry in one assertion each,
+  // rather than per-entry `it.each`, since a stale or redundant entry is a
+  // property of the *list*, not of any one procedure the walk found.
+  it('has no stale entry — every allowlisted path exists in the walk', () => {
+    const walkedPaths = new Set(WALKED_PROCEDURES.map((p) => p.path));
+    const stale = PUBLIC_ALLOWLIST.filter((entry) => !walkedPaths.has(entry.path));
+
+    expect(stale.map((entry) => entry.path)).toEqual([]);
+  });
+
+  it('has no redundant entry — no allowlisted path is already guarded by isAuthed', async () => {
+    const redundant: string[] = [];
+    for (const entry of PUBLIC_ALLOWLIST) {
+      const procedure = WALKED_PROCEDURES.find((p) => p.path === entry.path);
+      if (procedure && (await isProtectedByAuth(procedure))) {
+        redundant.push(entry.path);
+      }
+    }
+
+    expect(redundant).toEqual([]);
   });
 });
