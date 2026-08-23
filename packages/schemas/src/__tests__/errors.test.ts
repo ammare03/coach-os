@@ -47,6 +47,7 @@ function describeCode(code: AppErrorCode): string {
     case 'RATE_LIMITED':
     case 'PAYLOAD_TOO_LARGE':
     case 'INTERNAL_ERROR':
+    case 'UNKNOWN_CONFLICT':
       return code;
     default:
       return assertNever(code);

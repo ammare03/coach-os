@@ -4,10 +4,10 @@
 // `pnpm check`'s typecheck, which is the whole reason it's shaped this way.
 //
 // Seeded from `api-conventions` §5's thirteen product codes, plus five
-// infrastructure codes this feature itself throws — no product feature sits
-// behind them, which is why they weren't already in the skill (see
-// `error-and-validation/02-error-formatter-and-codes.md` step 1). Any code
-// added here must be added to that table in the same PR, or the two drift.
+// infrastructure codes `02-error-formatter-and-codes.md` throws and one more
+// `04-no-raw-db-errors.md` throws — no product feature sits behind either
+// group, which is why they weren't already in the skill. Any code added
+// here must be added to that table in the same PR, or the two drift.
 export const APP_ERROR_CODES = [
   // api-conventions §5 — product codes
   'SEAT_LIMIT_REACHED',
@@ -23,12 +23,17 @@ export const APP_ERROR_CODES = [
   'RECORDING_CONSENT_REQUIRED',
   'SYNC_CONFLICT',
   'VALIDATION_FAILED',
-  // infrastructure codes — added by this task, no feature behind them yet
+  // infrastructure codes — 02
   'AUTH_REQUIRED',
   'ROLE_REQUIRED',
   'RATE_LIMITED',
   'PAYLOAD_TOO_LARGE',
   'INTERNAL_ERROR',
+  // infrastructure code — 04: a unique violation the constraint map has no
+  // specific product code for. Distinct from SYNC_CONFLICT, which means
+  // "refetch, a write raced you" — this means "a duplicate the server
+  // refused", a different recovery action the client can't merge into.
+  'UNKNOWN_CONFLICT',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -70,6 +75,7 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   RATE_LIMITED: 'TOO_MANY_REQUESTS',
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   INTERNAL_ERROR: 'INTERNAL_SERVER_ERROR',
+  UNKNOWN_CONFLICT: 'CONFLICT',
 };
 
 /**
@@ -106,6 +112,9 @@ export interface AppErrorPayloads {
   RATE_LIMITED: { retryAfterSeconds: number };
   PAYLOAD_TOO_LARGE: { maxBytes: number };
   INTERNAL_ERROR: EmptyErrorPayload;
+  // No constraint name, table, or column — DB§18: that's exactly the
+  // disclosure this code exists to avoid (04's step 7).
+  UNKNOWN_CONFLICT: EmptyErrorPayload;
 }
 
 /**
