@@ -1,12 +1,21 @@
 import { app } from '../index.ts';
 import { appRouter } from '../routers/index.ts';
+import type { Context } from '../trpc/context.ts';
 
 // Uses `createCaller`, not a running server — this is the one API test in
 // the phase that doesn't need a Postgres container, so it stays a fast
 // smoke test for the whole toolchain (01-trpc-server-mount.md verification).
+// `health.ping` never touches `ctx.db`/`ctx.redis`, so a real connection
+// isn't needed here — `context.test.ts` covers the context factory itself.
+const stubContext = {
+  user: null,
+  requestId: 'test',
+  request: { ip: null, userAgent: null, receivedAt: new Date() },
+} as unknown as Context;
+
 describe('health.ping', () => {
   it('returns status, serverTime as a Date, and version', async () => {
-    const caller = appRouter.createCaller({ user: null });
+    const caller = appRouter.createCaller(stubContext);
 
     const result = await caller.health.ping();
 

@@ -1,7 +1,9 @@
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
-import type { Context } from 'hono';
+import type { Context as HonoContext } from 'hono';
 
 import { appRouter } from '../routers/index.ts';
+
+import { createContext } from './context.ts';
 
 // The mount path is fixed at `/trpc` — `EXPO_PUBLIC_API_URL` plus this path
 // is what the mobile client concatenates (03-mobile-trpc-client.md), and
@@ -14,13 +16,11 @@ export const TRPC_ENDPOINT = '/trpc';
 // Hono's `Request` is a standard Fetch `Request`, so the Fetch adapter
 // mounts directly — no separate Hono-specific tRPC adapter package needed
 // (CLAUDE.md §3.4.1 step 2).
-export function handleTrpcRequest(c: Context) {
+export function handleTrpcRequest(c: HonoContext) {
   return fetchRequestHandler({
     endpoint: TRPC_ENDPOINT,
     req: c.req.raw,
     router: appRouter,
-    // 02-request-context.md replaces this stub with the real factory
-    // (user resolution, db/redis singletons, requestId).
-    createContext: () => ({ user: null }),
+    createContext: ({ req }) => createContext(req),
   });
 }
