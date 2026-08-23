@@ -1,7 +1,11 @@
 import { createDbClient, schema, type DbClient, type User } from '@coachos/db';
 import { and, eq, isNull } from 'drizzle-orm';
+import type { Redis } from 'ioredis';
 
 import { env } from '../env.ts';
+import { keys } from '../lib/redis-keys.ts';
+import { safeRedis } from '../lib/redis-safe.ts';
+import { redis } from '../lib/redis.ts';
 import { resolveRequestId } from '../lib/request-id.ts';
 
 import { defaultAuthVerifier, type AuthVerifier } from './auth-verifier.ts';
@@ -36,7 +40,7 @@ export interface RequestMeta {
 export interface Context {
   user: ContextUser | null;
   db: DbClient;
-  redis: RedisLike;
+  redis: Redis;
   requestId: string;
   request: RequestMeta;
   // `../authz/owns-resource.ts`'s per-request memo, keyed `kind:id`. Never
@@ -60,27 +64,6 @@ const db = createDbClient({
   connectionString: env.DATABASE_URL,
   sslMode: env.NODE_ENV === 'production' ? 'verify-full' : false,
 });
-
-// Placeholder until `../rate-limiting/01-redis-connection-and-keyspace.md`
-// swaps in the real ioredis client (its Modify list names this file for
-// that swap). Throwing instead of silently no-opping means a forgotten
-// call site fails loudly rather than being mistaken for a cache miss.
-export interface RedisLike {
-  get(key: string): Promise<string | null>;
-}
-function createUnavailableRedisClient(): RedisLike {
-  return {
-    // Rejects rather than throwing synchronously — matches the `Promise`
-    // return type, so a caller awaiting (or `.catch`-ing) it behaves the
-    // same as it will once the real client lands.
-    async get() {
-      throw new Error(
-        'Redis is not wired up yet — see phase-02-api-foundation/rate-limiting/01-redis-connection-and-keyspace.md',
-      );
-    },
-  };
-}
-const redis = createUnavailableRedisClient();
 
 async function resolveUser(claims: { userId: string }): Promise<ContextUser | null> {
   // `client_profiles.coach_id` is what `ownsResource` compares against, not
@@ -167,16 +150,12 @@ export function createContextFactory(verifier: AuthVerifier = defaultAuthVerifie
     if (token) {
       const claims = await verifier(token);
       if (claims && claims.expiresAt > new Date()) {
-        // The session cache (`sess:{userId}:{deviceId}`, DB§15, 15 min TTL)
-        // is a read-through optimisation P03 populates. Redis is ephemeral
-        // by definition — a miss, a malformed entry, or the unavailable
-        // stub above must all fall through to Postgres silently, never
-        // take the request down.
-        try {
-          await redis.get(`sess:${claims.userId}:${claims.deviceId}`);
-        } catch {
-          // fall through to Postgres
-        }
+        // The session cache (DB§15, 15 min TTL) is a read-through
+        // optimisation P03 populates. Redis is ephemeral by definition — a
+        // miss, a malformed entry, or an outage must all fall through to
+        // Postgres silently, never take the request down. `safeRedis`'s
+        // `null` fallback is exactly that miss.
+        await safeRedis(() => redis.get(keys.session(claims.userId, claims.deviceId).key), null);
         user = await resolveUser(claims);
       }
     }

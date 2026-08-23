@@ -1,9 +1,10 @@
 // Real Postgres via Testcontainers, not mocked Drizzle — `testing` skill §4.
-// `env.ts` freezes `DATABASE_URL` at module load, so the container's
-// connection string must be in `process.env` *before* `../trpc/context.ts`
-// (and its transitive `../env.ts` import) is ever imported — hence the
-// dynamic `import()` inside `beforeAll`, after the container starts.
-// `@coachos/db` itself doesn't gate on env, so it's imported normally.
+// `env.ts` freezes `DATABASE_URL` and `REDIS_URL` at module load, so both
+// must be in `process.env` *before* `../trpc/context.ts` (and its
+// transitive `../env.ts` and `../lib/redis.ts` imports) is ever imported —
+// hence the dynamic `import()` inside `beforeAll`, after the container
+// starts. `@coachos/db` itself doesn't gate on env, so it's imported
+// normally.
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
@@ -11,6 +12,7 @@ import { schema, type DbClient } from '@coachos/db';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 import { uuidv7 } from 'uuidv7';
 
+import type { redis as Redis } from '../lib/redis.ts';
 import type {
   createContext as CreateContext,
   createContextFactory as CreateContextFactory,
@@ -19,6 +21,7 @@ import type {
 let container: StartedTestContainer;
 let createContext: typeof CreateContext;
 let createContextFactory: typeof CreateContextFactory;
+let redis: typeof Redis;
 let db: DbClient;
 
 beforeAll(async () => {
@@ -33,6 +36,14 @@ beforeAll(async () => {
     .start();
 
   process.env.DATABASE_URL = `postgres://coachos:coachos@${container.getHost()}:${container.getMappedPort(5432)}/coachos`; // secret-scan-ignore — well-known local dev credential
+
+  // Deliberately unreachable — 127.0.0.1:1 is a reserved low port nothing
+  // binds to (matches `redis-fail-open.test.ts`). This suite's fail-open
+  // assertions must not depend on whether a developer happens to have
+  // `docker compose up -d`'s Redis running locally: with it up, a real
+  // `redis.get()` below would resolve `null` instead of rejecting, which is
+  // not what "the session-cache read fails" is testing for.
+  process.env.REDIS_URL = 'redis://127.0.0.1:1';
 
   const migrateScript = path.join(
     __dirname,
@@ -51,11 +62,31 @@ beforeAll(async () => {
   });
 
   ({ createContext, createContextFactory } = await import('../trpc/context.ts'));
+  ({ redis } = await import('../lib/redis.ts'));
+  // `lib/redis.ts`'s real `retryStrategy` reconnects forever, by design
+  // (that's what makes production survive a Redis outage) — every failed
+  // attempt against the unreachable address above schedules another timer.
+  // `afterAll`'s `disconnect()` only cancels one that's pending at the
+  // exact moment it runs, which is a race, not a guarantee. Giving up
+  // after the first attempt, for this suite's client only, removes the
+  // race instead of trying to win it.
+  redis.options.retryStrategy = () => null;
   db = (await createContext(makeRequest())).db;
 }, 60_000);
 
 afterAll(async () => {
   await db.$client.end();
+  // `disconnect()`, not `quit()` — the connection never succeeded, and
+  // `quit()` requires a live one. Without this the singleton's capped
+  // exponential `retryStrategy` (`lib/redis.ts`, overridden above) keeps a
+  // reconnect timer alive past this file's teardown, which Jest reports as
+  // a leaked handle. The socket's own teardown can still fire one more
+  // `'error'` asynchronously — dropping the listener first, rather than
+  // trusting the timing of `disconnect()`, is what stops that from logging
+  // through a `console.warn` Jest has already torn down for this file.
+  redis.removeAllListeners('error');
+  redis.on('error', () => {});
+  redis.disconnect();
   await container.stop();
 });
 
@@ -164,9 +195,9 @@ describe('createContext', () => {
   });
 
   it('still resolves a live user from Postgres when the Redis session-cache read fails', async () => {
-    // The stub client injected until `../rate-limiting/01` lands always
-    // throws (see `trpc/context.ts`); the "live coach" test above already
-    // proves the fall-through works, since it could not otherwise succeed.
+    // `REDIS_URL` points at an unreachable address for this whole suite
+    // (see `beforeAll`); the "live coach" test above already proves the
+    // fall-through works, since it could not otherwise succeed.
     const ctx = await createContext(makeRequest());
     await expect(ctx.redis.get('anything')).rejects.toThrow();
   });

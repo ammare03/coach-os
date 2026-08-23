@@ -15,6 +15,7 @@ process.env.PORT = '3000';
 
 process.env.DATABASE_URL = 'postgres://test:test@localhost:5432/coachos_test';
 process.env.REDIS_URL = 'redis://localhost:6379/1';
+process.env.REDIS_KEY_PREFIX = 'coachos:test:';
 
 process.env.JWT_SECRET = 'test-jwt-secret';
 process.env.REFRESH_TOKEN_SECRET = 'test-refresh-token-secret';
