@@ -1,5 +1,6 @@
 import type { DbClient } from '@coachos/db';
 
+import { createOwnershipCache } from '../trpc/authz/ownership-cache.ts';
 import type { Context, ContextUser, RedisLike } from '../trpc/context.ts';
 
 // The shared helper every procedure test imports (`testing` skill §4):
@@ -23,6 +24,7 @@ export function createTestContext(opts: {
     redis: unavailableRedis,
     requestId: opts.requestId ?? '00000000-0000-7000-8000-000000000000',
     request: { ip: null, userAgent: null, receivedAt: new Date('2026-01-01T00:00:00Z') },
+    ownershipCache: createOwnershipCache(),
   };
 }
 

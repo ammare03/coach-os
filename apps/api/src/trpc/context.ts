@@ -5,6 +5,7 @@ import { env } from '../env.ts';
 import { resolveRequestId } from '../lib/request-id.ts';
 
 import { defaultAuthVerifier, type AuthVerifier } from './auth-verifier.ts';
+import { createOwnershipCache, type OwnershipCache } from './authz/ownership-cache.ts';
 
 // The closed field list from `02-request-context.md` step 1: identity, the
 // profile id authorization keys on, and the two display-layer values
@@ -27,8 +28,9 @@ export interface RequestMeta {
   receivedAt: Date;
 }
 
-// Five fields, closed list — adding a sixth needs a note in
-// `02-request-context.md`. `user` is `null` or `ContextUser`, never
+// Five fields per `02-request-context.md`, plus the one addition
+// `03-owns-resource.md` step 9 asks for by name: "cache the answer in a Map
+// created by the context factory". `user` is `null` or `ContextUser`, never
 // `undefined`: that distinction is what lets `isAuthed` narrow it away at
 // the type level.
 export interface Context {
@@ -37,6 +39,10 @@ export interface Context {
   redis: RedisLike;
   requestId: string;
   request: RequestMeta;
+  // `../authz/owns-resource.ts`'s per-request memo, keyed `kind:id`. Never
+  // Redis, never anything durable (step 9) — created fresh per request
+  // below, discarded when it ends.
+  ownershipCache: OwnershipCache;
 }
 
 export type AuthenticatedContext = Context & { user: ContextUser };
@@ -175,7 +181,7 @@ export function createContextFactory(verifier: AuthVerifier = defaultAuthVerifie
       }
     }
 
-    return { user, db, redis, requestId, request };
+    return { user, db, redis, requestId, request, ownershipCache: createOwnershipCache() };
   };
 }
 

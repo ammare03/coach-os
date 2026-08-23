@@ -28,3 +28,10 @@ export const protectedProcedure = publicProcedure.use(isAuthed);
 export const coachProcedure = protectedProcedure.use(hasRole('coach'));
 export const clientProcedure = protectedProcedure.use(hasRole('client'));
 export const coachOrClientProcedure = protectedProcedure.use(coachOrClientRole);
+
+// `03-owns-resource.md`: re-exported here so a router file imports every
+// guard from the same module as its procedure builders, never from
+// `./middleware/owns-resource.ts` directly. Must be chained after
+// `.input(schema)` — chained before, the selector receives `unknown`
+// (`api-scaffold/04`'s router README documents the required order).
+export { ownsResource } from './middleware/owns-resource.ts';
