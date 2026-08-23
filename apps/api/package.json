@@ -20,17 +20,17 @@
     "drizzle-orm": "0.45.2",
     "hono": "4.13.3",
     "postgres": "3.4.9",
-    "superjson": "1.13.3",
+    "superjson": "2.2.6",
     "uuidv7": "1.2.1",
     "zod": "4.4.3"
   },
   "devDependencies": {
     "@coachos/config": "workspace:*",
     "@types/jest": "30.0.0",
-    "@types/node": "22.20.1",
+    "@types/node": "26.2.0",
     "jest": "30.4.2",
     "testcontainers": "12.1.0",
     "ts-jest": "29.4.12",
-    "typescript": "~6.0.3"
+    "typescript": "~7.0.2"
   }
 }
