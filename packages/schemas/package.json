@@ -16,6 +16,7 @@
     "./errors": "./src/errors.ts",
     "./exercises": "./src/exercises.ts",
     "./habits": "./src/habits.ts",
+    "./limits": "./src/limits.ts",
     "./live": "./src/live.ts",
     "./me": "./src/me.ts",
     "./media": "./src/media.ts",
@@ -23,8 +24,10 @@
     "./metrics": "./src/metrics.ts",
     "./notifications": "./src/notifications.ts",
     "./nutrition": "./src/nutrition.ts",
+    "./pagination": "./src/pagination.ts",
     "./primitives": "./src/primitives.ts",
     "./programs": "./src/programs.ts",
+    "./strict": "./src/strict.ts",
     "./workouts": "./src/workouts.ts"
   },
   "scripts": {

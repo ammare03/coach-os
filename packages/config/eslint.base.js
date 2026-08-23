@@ -111,6 +111,22 @@ const noBareTrpcErrorRules = {
   ],
 };
 
+// error-and-validation/03 step 1: strictObject() (packages/schemas/src/strict.ts)
+// is the one constructor every input-schema module calls — a bare `z.object`
+// defaults to silently stripping unknown keys, which is exactly the failure
+// this task exists to close. `conventions.test.ts` catches it at runtime by
+// walking the exported tree; this rule catches it at write time. Exported
+// for the same cwd reason `noInlineInputSchemaRules` is.
+const noBareZodObjectRules = {
+  'no-restricted-syntax': [
+    'error',
+    {
+      selector: "CallExpression[callee.object.name='z'][callee.property.name='object']",
+      message: 'Use strictObject() from ./strict.ts instead of bare z.object (CLAUDE.md §6.4).',
+    },
+  ],
+};
+
 /** @type {import('eslint').Linter.Config[]} */
 const config = tseslint.config(
   js.configs.recommended,
@@ -181,6 +197,11 @@ const config = tseslint.config(
     rules: noBareTrpcErrorRules,
   },
   {
+    files: ['packages/schemas/src/**/*.{ts,tsx}'],
+    ignores: ['packages/schemas/src/strict.ts', 'packages/schemas/src/pagination.ts'],
+    rules: noBareZodObjectRules,
+  },
+  {
     // db-package-scaffold/05: flags a hand-written row type outside
     // packages/db, where the real `typeof someTable.$inferSelect`
     // declarations legitimately live (and where this rule would never
@@ -213,3 +234,4 @@ module.exports = config;
 module.exports.utilsPurityRules = utilsPurityRules;
 module.exports.noInlineInputSchemaRules = noInlineInputSchemaRules;
 module.exports.noBareTrpcErrorRules = noBareTrpcErrorRules;
+module.exports.noBareZodObjectRules = noBareZodObjectRules;

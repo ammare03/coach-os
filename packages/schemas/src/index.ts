@@ -5,7 +5,10 @@
 // same reasoning `api-scaffold/04`'s router registry gives for its own
 // list applies here.
 export * from './errors.ts';
+export * from './limits.ts';
+export * from './pagination.ts';
 export * from './primitives.ts';
+export * from './strict.ts';
 
 export * as auth from './auth.ts';
 export * as billing from './billing.ts';
