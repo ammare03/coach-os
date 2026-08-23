@@ -13,6 +13,7 @@
     "./client": "./src/client.ts",
     "./coach": "./src/coach.ts",
     "./comments": "./src/comments.ts",
+    "./errors": "./src/errors.ts",
     "./exercises": "./src/exercises.ts",
     "./habits": "./src/habits.ts",
     "./live": "./src/live.ts",

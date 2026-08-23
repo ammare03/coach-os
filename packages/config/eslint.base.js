@@ -94,6 +94,23 @@ const noInlineInputSchemaRules = {
   ],
 };
 
+// CLAUDE.md §6.3 step 3 (`error-and-validation/02`): `appError()` in
+// apps/api/src/lib/app-error.ts is the only sanctioned way to construct a
+// thrown error. A bare `new TRPCError({ code })` carries no catalogued
+// `cause.code`, which the formatter then has to treat as uncaught. Exported
+// for the same cwd reason `noInlineInputSchemaRules` is — see that
+// comment.
+const noBareTrpcErrorRules = {
+  'no-restricted-syntax': [
+    'error',
+    {
+      selector: "NewExpression[callee.name='TRPCError']",
+      message:
+        'Construct errors via appError() in apps/api/src/lib/app-error.ts (CLAUDE.md §6.3) — a bare TRPCError carries no catalogued cause.code.',
+    },
+  ],
+};
+
 /** @type {import('eslint').Linter.Config[]} */
 const config = tseslint.config(
   js.configs.recommended,
@@ -159,6 +176,11 @@ const config = tseslint.config(
     rules: noInlineInputSchemaRules,
   },
   {
+    files: ['apps/api/src/**/*.{ts,tsx}'],
+    ignores: ['apps/api/src/lib/app-error.ts'],
+    rules: noBareTrpcErrorRules,
+  },
+  {
     // db-package-scaffold/05: flags a hand-written row type outside
     // packages/db, where the real `typeof someTable.$inferSelect`
     // declarations legitimately live (and where this rule would never
@@ -190,3 +212,4 @@ const config = tseslint.config(
 module.exports = config;
 module.exports.utilsPurityRules = utilsPurityRules;
 module.exports.noInlineInputSchemaRules = noInlineInputSchemaRules;
+module.exports.noBareTrpcErrorRules = noBareTrpcErrorRules;
