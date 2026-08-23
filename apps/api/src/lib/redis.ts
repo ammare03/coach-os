@@ -2,6 +2,16 @@ import { Redis, type RedisOptions } from 'ioredis';
 
 import { env } from '../env.ts';
 
+// No test legitimately needs "reconnect forever" — only production does.
+// `jest.setup-env.ts` sets this for every test file, unconditionally, so a
+// client that fails to connect (most of them: `REDIS_URL` in a test run
+// points nowhere real) gives up rather than scheduling another attempt —
+// otherwise a scheduled reconnect can still be in flight when whichever
+// test file happened to trigger it finishes, which Jest reports as a
+// leaked timer. Read once, at module load: this can never be toggled
+// mid-suite by design. Never set in production.
+const giveUpAfterFirstFailure = process.env.REDIS_TEST_GIVE_UP_AFTER_FIRST_FAILURE === 'true';
+
 /**
  * Tuned for a request path, not a worker (`01-redis-connection-and-keyspace.md`
  * step 2). `../background-jobs/01-bullmq-setup.md` constructs its own client
@@ -36,8 +46,12 @@ export const REQUEST_PATH_REDIS_OPTIONS: RedisOptions = {
   // fail-open path) calls `.connect()` and waits for `'ready'` itself.
   lazyConnect: true,
   // Capped exponential — reconnect forever, but never faster than the
-  // outage.
+  // outage. `giveUpAfterFirstFailure` (above) is the one, test-only
+  // exception.
   retryStrategy(times: number) {
+    if (giveUpAfterFirstFailure) {
+      return null;
+    }
     return Math.min(times * 200, 10_000);
   },
 };

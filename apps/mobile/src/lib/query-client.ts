@@ -1,11 +1,19 @@
 import { QueryClient } from '@tanstack/react-query';
 import { TRPCClientError } from '@trpc/client';
 
+import { rateLimitCaches } from './rate-limit-handling.ts';
+
 // The single instance — P08 attaches its persister to *this* one.
 // Constructing a second `QueryClient` anywhere is the most common cache bug
 // in this stack: "the mutation succeeded but the list didn't update", and it
 // survives review because both caches are individually correct.
 export const queryClient = new QueryClient({
+  // `rate-limit-handling.ts`'s `onError` hooks — every query and mutation
+  // passes through these caches, so a `RATE_LIMITED` rejection surfaces
+  // centrally (`03-per-route-config-and-429-handling.md`) rather than
+  // requiring each feature to check `getErrorCode` itself.
+  queryCache: rateLimitCaches.queryCache,
+  mutationCache: rateLimitCaches.mutationCache,
   defaultOptions: {
     queries: {
       staleTime: 60 * 1000, // CLAUDE.md §8.2 — dashboard renders from cache instantly, revalidates behind it

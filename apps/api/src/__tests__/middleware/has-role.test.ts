@@ -65,14 +65,6 @@ async function setup() {
     await import('../../trpc/procedures.ts');
   const { redis } = await import('../../lib/redis.ts');
 
-  // The real `retryStrategy` (`lib/redis.ts`) reconnects forever, by
-  // design — correct in production, but against the unreachable address
-  // above it schedules a new backoff timer after every one of this file's
-  // cases. Giving up after the first attempt removes the resulting
-  // leaked-timer race with `afterAll`'s `disconnect()` below, instead of
-  // trying to win it (`context.test.ts` does the same).
-  redis.options.retryStrategy = () => null;
-
   const db = (await createContextFactory()(new Request('http://localhost/trpc/health.ping'))).db;
 
   const scratchRouter = router({
@@ -98,11 +90,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await world.db.$client.end();
-  // See `context.test.ts`'s `afterAll` for why the listener is dropped
-  // before disconnecting rather than after.
+  // See `context.test.ts`'s `afterAll` for why there's no `.disconnect()`
+  // and why the listener is dropped anyway.
   world.redis.removeAllListeners('error');
   world.redis.on('error', () => {});
-  world.redis.disconnect();
   await container.stop();
 });
 

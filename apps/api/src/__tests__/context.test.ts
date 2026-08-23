@@ -63,30 +63,21 @@ beforeAll(async () => {
 
   ({ createContext, createContextFactory } = await import('../trpc/context.ts'));
   ({ redis } = await import('../lib/redis.ts'));
-  // `lib/redis.ts`'s real `retryStrategy` reconnects forever, by design
-  // (that's what makes production survive a Redis outage) — every failed
-  // attempt against the unreachable address above schedules another timer.
-  // `afterAll`'s `disconnect()` only cancels one that's pending at the
-  // exact moment it runs, which is a race, not a guarantee. Giving up
-  // after the first attempt, for this suite's client only, removes the
-  // race instead of trying to win it.
-  redis.options.retryStrategy = () => null;
   db = (await createContext(makeRequest())).db;
 }, 60_000);
 
 afterAll(async () => {
   await db.$client.end();
-  // `disconnect()`, not `quit()` — the connection never succeeded, and
-  // `quit()` requires a live one. Without this the singleton's capped
-  // exponential `retryStrategy` (`lib/redis.ts`, overridden above) keeps a
-  // reconnect timer alive past this file's teardown, which Jest reports as
-  // a leaked handle. The socket's own teardown can still fire one more
-  // `'error'` asynchronously — dropping the listener first, rather than
-  // trusting the timing of `disconnect()`, is what stops that from logging
-  // through a `console.warn` Jest has already torn down for this file.
+  // No `redis.disconnect()` here — `REDIS_TEST_GIVE_UP_AFTER_FIRST_FAILURE`
+  // (`jest.setup-env.ts`) means the singleton already gave up permanently
+  // after its one failed attempt against the unreachable address above,
+  // long before this runs: no pending reconnect timer, nothing to tear
+  // down. Dropping the listener is the one thing still worth doing — the
+  // client can emit a final stray `'error'` on its own even from a fully
+  // idle, already-`'end'` state, and this stops it from logging through a
+  // `console.warn` Jest has already torn down for this file.
   redis.removeAllListeners('error');
   redis.on('error', () => {});
-  redis.disconnect();
   await container.stop();
 });
 

@@ -23,18 +23,15 @@ describe('safeRedis against a dead connection', () => {
 
   beforeAll(() => {
     deadClient = createRedisClient(DEAD_REDIS_URL);
-    // The real `retryStrategy` (`lib/redis.ts`) reconnects forever, by
-    // design — correct in production, but it schedules a new backoff timer
-    // after every failed attempt, and `afterAll`'s `disconnect()` below can
-    // only cancel one that happens to be pending at that exact moment. Giving
-    // up after the first attempt, for this client only, removes that race
-    // instead of trying to win it (`context.test.ts` does the same).
-    deadClient.options.retryStrategy = () => null;
   });
 
   afterAll(() => {
-    // See `context.test.ts`'s `afterAll` for why the listener is dropped
-    // before disconnecting rather than after.
+    // `jest.setup-env.ts`'s `REDIS_TEST_GIVE_UP_AFTER_FIRST_FAILURE` means
+    // this client already gave up after its first failed attempt, but the
+    // socket's own teardown can still fire one more `'error'` asynchronously
+    // — dropping the listener before disconnecting is what stops that from
+    // logging through a `console.warn` Jest has already torn down for this
+    // file.
     deadClient.removeAllListeners('error');
     deadClient.on('error', () => {});
     deadClient.disconnect();
