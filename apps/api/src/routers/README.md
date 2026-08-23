@@ -30,6 +30,21 @@ publicProcedure / coachProcedure / clientProcedure
 guard's selector receives `unknown`, returns `undefined`, and rejects every request — which
 gets "fixed" by deleting the guard instead of the chain order.
 
+**Annotate the selector's parameter explicitly**, e.g. `ownsResource('workoutSession',
+(i: { workoutSessionId: string }) => i.workoutSessionId)`. `ownsResource`'s generic input
+type can't be inferred backward through the standalone call the way an _inline_ `.use()`
+middleware's `input` can — TypeScript happily accepts the unannotated form with
+`input: unknown` and no error, which silently defeats the guard's type safety. There is no
+compiler error to catch a missing annotation; this is a review-time rule
+(`authorization-middleware/03-owns-resource.md`'s own doc comment carries the same note).
+
+## A public procedure needs an allowlist entry
+
+A `publicProcedure` not on `../__tests__/authz-allowlist.ts` fails `authz.test.ts`. Adding a
+row there is a security change — it needs a real, falsifiable reason and a second reviewer
+(see the PR template checkbox). See that file's own header for the shape and the two checks
+that keep it honest.
+
 ## When a procedure needs `.output()`
 
 > A procedure needs an `.output()` schema when the row it reads from contains a column the

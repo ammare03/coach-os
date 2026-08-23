@@ -29,3 +29,4 @@ CI (`check`) verifies `pnpm check` and `pnpm audit`; everything below needs a hu
 - [ ] User-facing copy passes `COPY.md` §CO6
 - [ ] `CLAUDE.md` / `DATABASE.md` updated in this PR if a decision changed
 - [ ] No secrets committed; nothing new behind `EXPO_PUBLIC_`
+- [ ] This PR adds an entry to `authz-allowlist.ts` — the reason is written and a second reviewer approved it. (if it doesn't, leave unchecked)
