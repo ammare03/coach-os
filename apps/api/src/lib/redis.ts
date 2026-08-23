@@ -25,7 +25,15 @@ export const REQUEST_PATH_REDIS_OPTIONS: RedisOptions = {
   enableOfflineQueue: false,
   // The API must boot with Redis down; readiness reports the outage
   // (`observability/04-health-and-readiness.md`), the process does not
-  // crash-loop trying to connect before it can serve a single request.
+  // crash-loop trying to connect before it can serve a single request. A
+  // side effect worth naming: the very first real command anywhere in the
+  // process is what *establishes* the connection, so — like every other
+  // Redis failure — it can race an unfinished handshake and reject with
+  // "Stream isn't writeable" (`enableOfflineQueue: false` doesn't wait for
+  // one). `safeRedis` already treats that identically to any other Redis
+  // outage: fail open. A caller that needs a guaranteed-ready client (e.g.
+  // `rate-limit.test.ts`, which is testing real enforcement, not the
+  // fail-open path) calls `.connect()` and waits for `'ready'` itself.
   lazyConnect: true,
   // Capped exponential — reconnect forever, but never faster than the
   // outage.

@@ -26,7 +26,12 @@ export function createTestContext(opts: {
     // not this one).
     redis,
     requestId: opts.requestId ?? '00000000-0000-7000-8000-000000000000',
-    request: { ip: null, userAgent: null, receivedAt: new Date('2026-01-01T00:00:00Z') },
+    request: {
+      ip: null,
+      trustedIp: null,
+      userAgent: null,
+      receivedAt: new Date('2026-01-01T00:00:00Z'),
+    },
     ownershipCache: createOwnershipCache(),
   };
 }

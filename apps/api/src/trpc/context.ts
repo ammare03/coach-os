@@ -28,6 +28,12 @@ export type ContextUser = Pick<User, 'id' | 'email' | 'role' | 'timezone' | 'loc
 
 export interface RequestMeta {
   ip: string | null;
+  // Only ever `fly-client-ip` — Fly's edge overwrites that header on every
+  // hop, so a client cannot forge it, unlike `x-forwarded-for` (`ip`
+  // above, best-effort). `rate-limit.ts`'s `auth.*` throttle is the one
+  // place that needs an identity an attacker cannot choose; nothing else
+  // should read this field.
+  trustedIp: string | null;
   userAgent: string | null;
   receivedAt: Date;
 }
@@ -121,14 +127,15 @@ function parseBearerToken(header: string | null): string | null {
 
 function readRequestMeta(req: Request): RequestMeta {
   // Fly's edge sets `fly-client-ip`; `x-forwarded-for`'s first entry is the
-  // fallback for local/dev proxies. Neither is trusted for anything beyond
-  // an `audit_log` metadata field (DB§5.5).
-  const ip =
-    req.headers.get('fly-client-ip') ??
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    null;
+  // fallback for local/dev proxies. `ip` (this combined value) is not
+  // trusted for anything beyond an `audit_log` metadata field (DB§5.5) —
+  // `x-forwarded-for` is client-suppliable. `trustedIp` below is the
+  // narrower, verifiable one.
+  const trustedIp = req.headers.get('fly-client-ip');
+  const ip = trustedIp ?? req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
   return {
     ip,
+    trustedIp,
     userAgent: req.headers.get('user-agent'),
     receivedAt: new Date(),
   };
