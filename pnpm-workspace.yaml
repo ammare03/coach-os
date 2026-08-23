@@ -28,6 +28,10 @@ auditConfig:
     - GHSA-w3rx-r6r6-pgpr
     - GHSA-5p2g-fcmc-qvqq
 
+minimumReleaseAgeExclude:
+  - '@tanstack/query-core@5.102.0'
+  - '@tanstack/react-query@5.102.0'
+
 # Metro (React Native's bundler) does not reliably follow pnpm's default
 # symlinked node_modules layout. A flat, hoisted tree avoids resolution
 # failures that otherwise look like missing modules. See CLAUDE.md §3.1.
