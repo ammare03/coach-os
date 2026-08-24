@@ -11,7 +11,10 @@ type SingleRole = 'coach' | 'client';
 
 const ROLE_REQUIRED_MESSAGE = 'This action is not available for your account type.';
 
-// Sentry attaches here once `../observability/02-sentry-server.md` lands.
+// Sentry sees this too, downstream — the `INTERNAL_ERROR` this function
+// precedes reaches `../error-formatter.ts`'s catalogued-error branch, which
+// reports every `INTERNAL_ERROR` to Sentry regardless of call site
+// (`observability/02-sentry-integration.md`).
 function logProfileIntegrityFailure(requestId: string, userId: string, role: SingleRole): void {
   logger.error('data_integrity.role_missing_profile', { requestId, userId, role });
 }

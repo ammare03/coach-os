@@ -42,6 +42,15 @@ const envSchema = z.object({
   OPEN_FOOD_FACTS_USER_AGENT: z.string().min(1),
 
   SENTRY_AUTH_TOKEN: z.string().min(1),
+  // The one exception to "everything here is required" — unlike
+  // `SENTRY_AUTH_TOKEN` above (a build-time source-map upload secret),
+  // `SENTRY_DSN` gates a runtime integration that isn't load-bearing for
+  // the app to function (`observability/02-sentry-integration.md`). Left
+  // `undefined`, `../lib/sentry.ts`'s `Sentry.init` documents itself as a
+  // no-op on every capture call — the correct behaviour for local
+  // development and CI, which have no reason to require a real Sentry
+  // account just to boot the server.
+  SENTRY_DSN: z.string().min(1).optional(),
 });
 
 function loadEnv(): z.infer<typeof envSchema> {

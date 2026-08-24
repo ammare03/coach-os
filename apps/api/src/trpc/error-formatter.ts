@@ -5,6 +5,7 @@ import { ZodError } from 'zod';
 import { isCatalogedError } from '../lib/app-error.ts';
 
 import type { Context } from './context.ts';
+import { reportUncaughtError } from './error-capture.ts';
 
 /**
  * The fixed wire shape (02's Interfaces section): every error's `data`
@@ -35,7 +36,7 @@ export function createErrorFormatter(opts: {
 }): TRPCErrorFormatter<Context, AppErrorShape> {
   const { isDevelopment } = opts;
 
-  return ({ shape, error, ctx }) => {
+  return ({ shape, error, ctx, path }) => {
     const requestId = ctx?.requestId ?? null;
 
     // 1. A Zod input-validation failure. Flatten to one message per field —
@@ -67,7 +68,19 @@ export function createErrorFormatter(opts: {
     // message is product copy the caller chose — pass it through
     // unmodified in every environment (step 5's diagram: "catalogued: code
     // + typed payload + copy").
+    //
+    // `INTERNAL_ERROR` is the one catalogued code that is never expected —
+    // every call site throwing it (`has-role.ts`'s profile-integrity check,
+    // the db-error boundary's unmapped-treatment fallbacks) is a broken
+    // invariant, not a refusal the product designed for. It still reports
+    // to Sentry for exactly that reason: the client-visible boundary
+    // between "catalogued" and "uncaught" isn't the same boundary as
+    // "expected" versus "a bug", and only the second one should decide
+    // whether this counts against CLAUDE.md §3.4.3's free-tier cap.
     if (isCatalogedError(error)) {
+      if (error.cause.appCode === 'INTERNAL_ERROR') {
+        reportUncaughtError(error, { requestId, procedure: path, userId: ctx?.user?.id ?? null });
+      }
       return {
         ...shape,
         message: error.message,
@@ -80,12 +93,13 @@ export function createErrorFormatter(opts: {
       };
     }
 
-    // 3. Uncaught. Always log the full error under the requestId — the
+    // 3. Uncaught. Always report the full error under the requestId — the
     // Verification section is explicit that a production response without
     // a matching log line means "the formatter swallowed it and production
-    // failures are now invisible."
-    // console.error is the one sanctioned sink until ../observability/01-structured-logger.md lands
-    console.error(`[${requestId ?? 'no-request-id'}] uncaught error`, error);
+    // failures are now invisible." `reportUncaughtError`
+    // (`observability/02-sentry-integration.md`) is both a structured log
+    // line and the Sentry event this class of error is actually for.
+    reportUncaughtError(error, { requestId, procedure: path, userId: ctx?.user?.id ?? null });
 
     if (isDevelopment) {
       return {
