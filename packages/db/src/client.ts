@@ -7,6 +7,7 @@
 // supplied by the caller, which for apps/api is always `env.DATABASE_URL`
 // from `apps/api/src/env.ts` — the one place server env is read
 // (`configuration` skill, CLAUDE.md §16.1).
+import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
@@ -47,3 +48,26 @@ export function createDbClient(options: DbClientOptions) {
 }
 
 export type DbClient = ReturnType<typeof createDbClient>;
+
+const PING_TIMEOUT_MS = 250;
+
+/**
+ * Bounded-timeout connectivity probe for `apps/api`'s `/ready` endpoint
+ * (`observability/04-health-and-readiness.md`) — mirrors
+ * `apps/api/src/lib/redis.ts`'s `pingRedis`: a fast, cheap query with a
+ * short timeout, so a hung connection degrades readiness rather than
+ * hanging the readiness check itself. Never throws.
+ */
+export async function pingDb(db: DbClient): Promise<'ok' | 'degraded'> {
+  try {
+    await Promise.race([
+      db.execute(sql`SELECT 1`),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('db ping timed out')), PING_TIMEOUT_MS);
+      }),
+    ]);
+    return 'ok';
+  } catch {
+    return 'degraded';
+  }
+}

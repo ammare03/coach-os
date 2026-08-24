@@ -1,6 +1,6 @@
 // Barrel — the package's public surface. apps/api and the BullMQ worker
 // import from here, never reach into `src/schema/*` directly.
-export { createDbClient } from './client.ts';
+export { createDbClient, pingDb } from './client.ts';
 export type { DbClient, DbClientOptions } from './client.ts';
 
 // The one shared transaction-handle type (`aggregates/types.ts`'s own doc
