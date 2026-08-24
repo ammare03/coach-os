@@ -1,7 +1,8 @@
 import type { DbClient } from '@coachos/db';
 
+import { redis } from '../lib/redis.ts';
 import { createOwnershipCache } from '../trpc/authz/ownership-cache.ts';
-import type { Context, ContextUser, RedisLike } from '../trpc/context.ts';
+import type { Context, ContextUser } from '../trpc/context.ts';
 
 // The shared helper every procedure test imports (`testing` skill §4):
 // `const ctx = await createTestContext({ db, user: coachA })`. `db` is
@@ -18,20 +19,19 @@ export function createTestContext(opts: {
   return {
     user: opts.user ?? null,
     db: opts.db,
-    // No test in this feature exercises Redis directly — see
-    // `context.test.ts`'s fail-open coverage. A test that does needs a
-    // real client, not this throwing placeholder.
-    redis: unavailableRedis,
+    // The real singleton (`lib/redis.ts`), `lazyConnect`-ed — importing it
+    // does not open a connection, so this stays safe for every test in this
+    // suite that never touches Redis. A test that does needs Redis running
+    // (`redis-fail-open.test.ts`'s dead-port client is a separate instance,
+    // not this one).
+    redis,
     requestId: opts.requestId ?? '00000000-0000-7000-8000-000000000000',
-    request: { ip: null, userAgent: null, receivedAt: new Date('2026-01-01T00:00:00Z') },
+    request: {
+      ip: null,
+      trustedIp: null,
+      userAgent: null,
+      receivedAt: new Date('2026-01-01T00:00:00Z'),
+    },
     ownershipCache: createOwnershipCache(),
   };
 }
-
-const unavailableRedis: RedisLike = {
-  async get() {
-    throw new Error(
-      'createTestContext does not wire up Redis — pass a real client via the test itself',
-    );
-  },
-};

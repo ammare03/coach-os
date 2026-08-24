@@ -1,9 +1,10 @@
 // Real Postgres via Testcontainers, not mocked Drizzle — `testing` skill §4.
-// `env.ts` freezes `DATABASE_URL` at module load, so the container's
-// connection string must be in `process.env` *before* `../trpc/context.ts`
-// (and its transitive `../env.ts` import) is ever imported — hence the
-// dynamic `import()` inside `beforeAll`, after the container starts.
-// `@coachos/db` itself doesn't gate on env, so it's imported normally.
+// `env.ts` freezes `DATABASE_URL` and `REDIS_URL` at module load, so both
+// must be in `process.env` *before* `../trpc/context.ts` (and its
+// transitive `../env.ts` and `../lib/redis.ts` imports) is ever imported —
+// hence the dynamic `import()` inside `beforeAll`, after the container
+// starts. `@coachos/db` itself doesn't gate on env, so it's imported
+// normally.
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
@@ -11,6 +12,7 @@ import { schema, type DbClient } from '@coachos/db';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 import { uuidv7 } from 'uuidv7';
 
+import type { redis as Redis } from '../lib/redis.ts';
 import type {
   createContext as CreateContext,
   createContextFactory as CreateContextFactory,
@@ -19,6 +21,7 @@ import type {
 let container: StartedTestContainer;
 let createContext: typeof CreateContext;
 let createContextFactory: typeof CreateContextFactory;
+let redis: typeof Redis;
 let db: DbClient;
 
 beforeAll(async () => {
@@ -33,6 +36,14 @@ beforeAll(async () => {
     .start();
 
   process.env.DATABASE_URL = `postgres://coachos:coachos@${container.getHost()}:${container.getMappedPort(5432)}/coachos`; // secret-scan-ignore — well-known local dev credential
+
+  // Deliberately unreachable — 127.0.0.1:1 is a reserved low port nothing
+  // binds to (matches `redis-fail-open.test.ts`). This suite's fail-open
+  // assertions must not depend on whether a developer happens to have
+  // `docker compose up -d`'s Redis running locally: with it up, a real
+  // `redis.get()` below would resolve `null` instead of rejecting, which is
+  // not what "the session-cache read fails" is testing for.
+  process.env.REDIS_URL = 'redis://127.0.0.1:1';
 
   const migrateScript = path.join(
     __dirname,
@@ -51,11 +62,22 @@ beforeAll(async () => {
   });
 
   ({ createContext, createContextFactory } = await import('../trpc/context.ts'));
+  ({ redis } = await import('../lib/redis.ts'));
   db = (await createContext(makeRequest())).db;
 }, 60_000);
 
 afterAll(async () => {
   await db.$client.end();
+  // No `redis.disconnect()` here — `REDIS_TEST_GIVE_UP_AFTER_FIRST_FAILURE`
+  // (`jest.setup-env.ts`) means the singleton already gave up permanently
+  // after its one failed attempt against the unreachable address above,
+  // long before this runs: no pending reconnect timer, nothing to tear
+  // down. Dropping the listener is the one thing still worth doing — the
+  // client can emit a final stray `'error'` on its own even from a fully
+  // idle, already-`'end'` state, and this stops it from logging through a
+  // `console.warn` Jest has already torn down for this file.
+  redis.removeAllListeners('error');
+  redis.on('error', () => {});
   await container.stop();
 });
 
@@ -164,9 +186,9 @@ describe('createContext', () => {
   });
 
   it('still resolves a live user from Postgres when the Redis session-cache read fails', async () => {
-    // The stub client injected until `../rate-limiting/01` lands always
-    // throws (see `trpc/context.ts`); the "live coach" test above already
-    // proves the fall-through works, since it could not otherwise succeed.
+    // `REDIS_URL` points at an unreachable address for this whole suite
+    // (see `beforeAll`); the "live coach" test above already proves the
+    // fall-through works, since it could not otherwise succeed.
     const ctx = await createContext(makeRequest());
     await expect(ctx.redis.get('anything')).rejects.toThrow();
   });

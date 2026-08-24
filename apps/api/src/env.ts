@@ -12,6 +12,11 @@ const envSchema = z.object({
 
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1),
+  // Prepended to every key `redis-keys.ts` builds (`coachos:dev:`,
+  // `coachos:preview:`, `coachos:prod:`) — Phase 1 runs every environment on
+  // one free-tier Redis instance, and without this a developer's local run
+  // shares a rate-limit counter and a session cache with production.
+  REDIS_KEY_PREFIX: z.string().min(1),
 
   JWT_SECRET: z.string().min(1),
   REFRESH_TOKEN_SECRET: z.string().min(1),

@@ -15,6 +15,17 @@ process.env.PORT = '3000';
 
 process.env.DATABASE_URL = 'postgres://test:test@localhost:5432/coachos_test';
 process.env.REDIS_URL = 'redis://localhost:6379/1';
+process.env.REDIS_KEY_PREFIX = 'coachos:test:';
+// No test legitimately needs "reconnect forever" — only production does
+// (`lib/redis.ts`'s `giveUpAfterFirstFailure` doc comment). Set globally,
+// once, here: the alternative is every test file that happens to import
+// the singleton (`test-context.ts`, most of `__tests__/`) needing to know
+// and opt in individually, and one that forgets leaks a real reconnect
+// loop against `REDIS_URL` above, which nothing is listening on in a test
+// run. A file pointed at a genuinely live Redis (`middleware/rate-limit.test.ts`)
+// is unaffected — this only changes what happens *after* a connection
+// fails, and theirs doesn't.
+process.env.REDIS_TEST_GIVE_UP_AFTER_FIRST_FAILURE = 'true';
 
 process.env.JWT_SECRET = 'test-jwt-secret';
 process.env.REFRESH_TOKEN_SECRET = 'test-refresh-token-secret';

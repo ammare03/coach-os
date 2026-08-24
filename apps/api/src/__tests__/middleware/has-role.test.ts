@@ -33,6 +33,15 @@ async function setup() {
 
   process.env.DATABASE_URL = `postgres://coachos:coachos@${container.getHost()}:${container.getMappedPort(5432)}/coachos`; // secret-scan-ignore — well-known local dev credential
 
+  // `callerContextFor` below drives every case through the real
+  // `createContextFactory`, each with a live-looking token — which means
+  // each one exercises `createContext`'s Redis session-cache read
+  // (`../../trpc/context.ts`). Deliberately unreachable so those reads
+  // fail-open deterministically instead of depending on whether a
+  // developer has `docker compose up -d`'s Redis running locally
+  // (`context.test.ts` does the same, for the same reason).
+  process.env.REDIS_URL = 'redis://127.0.0.1:1';
+
   const migrateScript = path.join(
     __dirname,
     '..',
@@ -54,6 +63,7 @@ async function setup() {
   const { router } = await import('../../trpc/init.ts');
   const { clientProcedure, coachOrClientProcedure, coachProcedure } =
     await import('../../trpc/procedures.ts');
+  const { redis } = await import('../../lib/redis.ts');
 
   const db = (await createContextFactory()(new Request('http://localhost/trpc/health.ping'))).db;
 
@@ -69,7 +79,7 @@ async function setup() {
     either: coachOrClientProcedure.query(({ ctx }) => ({ role: ctx.user.role })),
   });
 
-  return { db, createContextFactory, scratchRouter };
+  return { db, redis, createContextFactory, scratchRouter };
 }
 
 let world: Awaited<ReturnType<typeof setup>>;
@@ -80,6 +90,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await world.db.$client.end();
+  // See `context.test.ts`'s `afterAll` for why there's no `.disconnect()`
+  // and why the listener is dropped anyway.
+  world.redis.removeAllListeners('error');
+  world.redis.on('error', () => {});
   await container.stop();
 });
 
