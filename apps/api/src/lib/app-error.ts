@@ -11,6 +11,8 @@ import {
 import { unwrapDatabaseError } from '../db/is-database-error.ts';
 import { isConnectionException, SQLSTATE_TREATMENTS } from '../db/sqlstate.ts';
 
+import { logger } from './logger.ts';
+
 /**
  * The shape every catalogued error's `cause` carries. `../trpc/error-formatter.ts`
  * reads it to fill `error.data.appCode` and `error.data.details` — the fixed
@@ -64,12 +66,10 @@ const UNIQUE_VIOLATION = '23505';
 
 // The safe fields (`04-no-raw-db-errors.md` step 7) — never `detail`,
 // `where`, or `internal_query`, which can quote a caller's value (DB§18).
-// `console.error` is the same sanctioned sink `../trpc/error-formatter.ts`
-// uses until `../observability/01-structured-logger.md` lands.
 function logDatabaseError(error: postgres.PostgresError, requestId: string): void {
-  console.error('[db-error]', {
+  logger.error('db.error', {
     requestId,
-    code: error.code,
+    dbErrorCode: error.code,
     constraint: error.constraint_name ?? null,
     table: error.table_name ?? null,
     schema: error.schema_name ?? null,

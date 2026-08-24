@@ -6,17 +6,24 @@ import { coachOrClientRole, hasRole } from './middleware/has-role.ts';
 import { isAuthed } from './middleware/is-authed.ts';
 import { RATE_LIMIT_TIERS } from './middleware/rate-limit-config.ts';
 import { authRateLimit, rateLimit } from './middleware/rate-limit.ts';
+import { requestLogging } from './middleware/request-logging.ts';
 
-// `04-no-raw-db-errors.md` step 1: outermost, before auth and rate
-// limiting, attached here — the one place every procedure builder derives
-// from — so no procedure can be written without it, structurally rather
-// than by habit. `rateLimit` with no `route` keys by the current tRPC path
-// (`rate-limit.ts`'s `RateLimitConfig.route` doc comment) — CLAUDE.md
-// §6.5's 600/min "everything else" row, applied to every procedure in the
-// tree by construction rather than by an author remembering to opt in
-// (`03-per-route-config-and-429-handling.md`'s whole point: an unconfigured
-// procedure must never be silently unlimited).
+// `01-structured-logging.md`: the true outermost middleware, ahead of
+// `databaseErrorBoundary` — its `durationMs` and `statusCode` are only
+// meaningful if they cover a database retry and a rate-limit rejection too,
+// not just whatever ran after it.
+//
+// `04-no-raw-db-errors.md` step 1: `databaseErrorBoundary` next, before auth
+// and rate limiting, attached here — the one place every procedure builder
+// derives from — so no procedure can be written without it, structurally
+// rather than by habit. `rateLimit` with no `route` keys by the current
+// tRPC path (`rate-limit.ts`'s `RateLimitConfig.route` doc comment) —
+// CLAUDE.md §6.5's 600/min "everything else" row, applied to every
+// procedure in the tree by construction rather than by an author
+// remembering to opt in (`03-per-route-config-and-429-handling.md`'s whole
+// point: an unconfigured procedure must never be silently unlimited).
 export const publicProcedure = basePublicProcedure
+  .use(requestLogging)
   .use(databaseErrorBoundary)
   .use(rateLimit(RATE_LIMIT_TIERS.default));
 

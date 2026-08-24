@@ -1,4 +1,5 @@
 import { appError } from '../../lib/app-error.ts';
+import { logger } from '../../lib/logger.ts';
 import type { ContextUser } from '../context.ts';
 import { middleware } from '../init.ts';
 
@@ -10,10 +11,9 @@ type SingleRole = 'coach' | 'client';
 
 const ROLE_REQUIRED_MESSAGE = 'This action is not available for your account type.';
 
-// Sentry attaches here once `../observability/02-sentry-server.md` lands;
-// `console.error` is the sanctioned sink until then (`../lib/app-error.ts`).
+// Sentry attaches here once `../observability/02-sentry-server.md` lands.
 function logProfileIntegrityFailure(requestId: string, userId: string, role: SingleRole): void {
-  console.error('[data-integrity] role has no matching profile row', { requestId, userId, role });
+  logger.error('data_integrity.role_missing_profile', { requestId, userId, role });
 }
 
 // Takes an already-non-null `user`, never `ctx` — narrowing `ctx.user`
