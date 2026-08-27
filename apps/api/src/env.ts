@@ -51,6 +51,30 @@ const envSchema = z.object({
   // development and CI, which have no reason to require a real Sentry
   // account just to boot the server.
   SENTRY_DSN: z.string().min(1).optional(),
+
+  // `observability/06-metrics-and-alerts.md` — the shared secret the
+  // scheduled collector/evaluator trigger (`.github/workflows/metrics-cron.yml`)
+  // presents on `POST /internal/metrics/collect`. Required, unlike the three
+  // below: an unprotected trigger for a job that writes to the DB and can
+  // fire alerts is a real hole, not a degraded-but-safe default.
+  INTERNAL_JOB_SECRET: z.string().min(1),
+
+  // Alert delivery destinations (`../lib/alerts.ts`). Both optional, same
+  // reasoning as `SENTRY_DSN` above: a solo/two-person team in local dev or
+  // CI has no working destination for either, and `dispatchAlert` documents
+  // itself as a structured-log-only no-op for whichever one is unset, rather
+  // than failing startup over an integration that isn't load-bearing for the
+  // app to function.
+  ALERTS_EMAIL_TO: z.string().min(1).optional(),
+  ALERTS_EXPO_PUSH_TOKEN: z.string().min(1).optional(),
+
+  // OB§4.4 / PI§4.1 — tightens alert thresholds during the pilot (any crash
+  // affecting a pilot user, any `sync_failed`, same-day). One flag, removed
+  // after the ship-gate-1 pilot ends.
+  PILOT_MODE: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true'),
 });
 
 function loadEnv(): z.infer<typeof envSchema> {

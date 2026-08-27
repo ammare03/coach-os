@@ -6,6 +6,8 @@ import packageJson from '../package.json' with { type: 'json' };
 import { env } from './env.ts';
 import { checkReadiness } from './lib/readiness.ts';
 import { initSentry } from './lib/sentry.ts';
+import { internalCollectRoute } from './routes/internal/collect.ts';
+import { internalMetricsRoute } from './routes/internal/metrics.ts';
 import { TRPC_ENDPOINT, handleTrpcRequest } from './trpc/handler.ts';
 
 // Before anything else in the process (`02-sentry-integration.md`'s
@@ -44,6 +46,13 @@ app.get('/ready', async (c) => {
 // Mounted alongside `/health` and `/ready`, not instead of them — the three
 // serve different consumers (see `apps/api/src/routers/health.ts`).
 app.all(`${TRPC_ENDPOINT}/*`, (c) => handleTrpcRequest(c));
+
+// `observability/06-metrics-and-alerts.md`. Two different gates on
+// purpose: `/internal/metrics` is a human, operator-gated read;
+// `/internal/metrics/collect` is the scheduled trigger, gated by a shared
+// secret instead (see each route's own doc comment).
+app.route('/internal/metrics', internalMetricsRoute);
+app.route('/internal/metrics/collect', internalCollectRoute);
 
 // Guarded so importing this module under test (to get `app`) never opens a
 // real port — Jest would otherwise leave every test file with an open

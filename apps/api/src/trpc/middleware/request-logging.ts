@@ -1,6 +1,7 @@
 import { getHTTPStatusCodeFromError } from '@trpc/server/http';
 
 import { logger } from '../../lib/logger.ts';
+import { recordRequestOutcome } from '../../lib/metrics-counters.ts';
 import { middleware } from '../init.ts';
 
 // Placed alongside `is-authed.ts` / `has-role.ts` / `rate-limit.ts` rather
@@ -26,16 +27,25 @@ export const requestLogging = middleware(async ({ ctx, next, path }) => {
   const startedAt = Date.now();
   const result = await next();
   const durationMs = Date.now() - startedAt;
+  const statusCode = result.ok ? 200 : getHTTPStatusCodeFromError(result.error);
 
   logger.info('request.completed', {
     requestId: ctx.requestId,
     procedure: path,
     durationMs,
-    statusCode: result.ok ? 200 : getHTTPStatusCodeFromError(result.error),
+    statusCode,
     userId: ctx.user?.id ?? null,
     ...(ctx.user ? { role: ctx.user.role } : {}),
     ...(result.ok ? {} : { errorCode: result.error.code }),
   });
+
+  // OB§4.3: "never alert on an individual 4xx" — a routine `BAD_REQUEST` or
+  // `UNAUTHORIZED` is not the P2 signal, only a genuine 5xx is
+  // (`observability/06-metrics-and-alerts.md`'s error-rate metric).
+  // Awaited, not fire-and-forget: `safeRedis` already bounds it to a single
+  // fast, fail-open round trip, and every other Redis write in this chain
+  // (`rate-limit.ts`) is awaited the same way.
+  await recordRequestOutcome(ctx.redis, statusCode >= 500 ? 'error' : 'ok');
 
   return result;
 });

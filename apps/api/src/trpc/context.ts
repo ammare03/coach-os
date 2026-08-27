@@ -3,6 +3,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import type { Redis } from 'ioredis';
 
 import { env } from '../env.ts';
+import { parseBearerToken } from '../lib/bearer-token.ts';
 import { keys } from '../lib/redis-keys.ts';
 import { safeRedis } from '../lib/redis-safe.ts';
 import { redis } from '../lib/redis.ts';
@@ -118,14 +119,6 @@ async function resolveUser(claims: { userId: string }): Promise<ContextUser | nu
     clientProfileId: row.clientProfileId,
     deletedAt: null,
   };
-}
-
-function parseBearerToken(header: string | null): string | null {
-  if (!header?.startsWith('Bearer ')) {
-    return null;
-  }
-  const token = header.slice('Bearer '.length).trim();
-  return token.length > 0 ? token : null;
 }
 
 function readRequestMeta(req: Request): RequestMeta {

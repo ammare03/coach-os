@@ -51,3 +51,5 @@ process.env.ANTHROPIC_API_KEY = 'test-anthropic-api-key';
 process.env.OPEN_FOOD_FACTS_USER_AGENT = 'CoachOS/1.0 (test)';
 
 process.env.SENTRY_AUTH_TOKEN = 'test-sentry-auth-token';
+
+process.env.INTERNAL_JOB_SECRET = 'test-internal-job-secret';

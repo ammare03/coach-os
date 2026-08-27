@@ -15,6 +15,7 @@ import {
   inet,
   integer,
   jsonb,
+  numeric,
   primaryKey,
   text,
   timestamp,
@@ -198,5 +199,26 @@ export const webhookEvents = platformSchema.table(
       t.provider,
       t.eventId,
     ),
+  }),
+);
+
+// `observability/06-metrics-and-alerts.md` — one row per OB§3 metric per
+// scheduled collection run (`../../../../apps/api/src/jobs/metrics-collector.ts`).
+// `dimensions` may carry a route or queue name, NEVER a user id or any
+// DB§18-classified value — an alert built from this table is a log line
+// with a wider audience, same allowlist discipline. No user_id column and
+// therefore no DB§19.2 deletion-cascade entry: every metric here is a
+// system/aggregate count, never data about one person.
+export const metricSamples = platformSchema.table(
+  'metric_samples',
+  {
+    ...id,
+    metric: text('metric').notNull(), // OB§3's dotted name, e.g. 'integrity.duplicate_sessions'
+    value: numeric('value', { mode: 'number' }).notNull(),
+    dimensions: jsonb('dimensions').notNull().default({}),
+    sampledAt: timestamp('sampled_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    metricTimeIdx: index('metric_samples_metric_time').on(t.metric, t.sampledAt.desc()),
   }),
 );

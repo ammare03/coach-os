@@ -82,4 +82,20 @@ export const keys = {
   summaryLock(clientId: string, date: string): RedisKey {
     return { key: prefixed(`lock:summary:${clientId}:${date}`), ttlSeconds: 10 * SECOND };
   },
+
+  // `observability/06-metrics-and-alerts.md` — one counter per outcome per
+  // minute, read as a 5-minute sliding window by `../jobs/metrics-collector.ts`.
+  // `outcome` is exactly `'ok' | 'error'`, never a route or a user id — this
+  // key exists to compute a rate, not to attribute one.
+  requestOutcome(epochMinute: number, outcome: 'ok' | 'error'): RedisKey {
+    return { key: prefixed(`metrics:req:${epochMinute}:${outcome}`), ttlSeconds: 10 * MINUTE };
+  },
+
+  // OB§4's dedupe/escalation state, keyed by the fixed P1–P5 alert id
+  // (`../jobs/alert-evaluator.ts`). A hash, not a string: it holds both
+  // `lastFiredAt` and `stage` together so they're read/written atomically
+  // from one key.
+  alertState(alertId: string): RedisKey {
+    return { key: prefixed(`alert:${alertId}:state`), ttlSeconds: 7 * 24 * HOUR };
+  },
 };
