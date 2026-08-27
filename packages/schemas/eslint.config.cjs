@@ -13,7 +13,7 @@ module.exports = [
     // pagination.test.ts's throwaway item schema for pageOf() is neither
     // caller input nor a redaction gate.
     files: ['src/**/*.ts'],
-    ignores: ['src/strict.ts', 'src/pagination.ts', 'src/__tests__/**'],
+    ignores: ['src/strict.ts', 'src/pagination.ts', 'src/auth-session.ts', 'src/__tests__/**'],
     rules: base.noBareZodObjectRules,
   },
 ];

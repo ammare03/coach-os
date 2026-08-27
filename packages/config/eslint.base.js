@@ -198,7 +198,13 @@ const config = tseslint.config(
   },
   {
     files: ['packages/schemas/src/**/*.{ts,tsx}'],
-    ignores: ['packages/schemas/src/strict.ts', 'packages/schemas/src/pagination.ts'],
+    ignores: [
+      'packages/schemas/src/strict.ts',
+      'packages/schemas/src/pagination.ts',
+      // Server-assembled output, not caller input — same exemption and the
+      // same reasoning as pagination.ts's pageOf() (auth-server/02).
+      'packages/schemas/src/auth-session.ts',
+    ],
     rules: noBareZodObjectRules,
   },
   {

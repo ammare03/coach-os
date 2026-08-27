@@ -37,8 +37,11 @@ export const publicProcedure = basePublicProcedure
 
 // The dedicated, whole-group `auth.*` throttle (`rate-limit.ts`'s
 // `authRateLimit` doc comment) — `phase-03-identity-and-auth/auth-server/`
-// builds `signIn` / `signUp` / `refresh` on this, never on `publicProcedure`
-// directly, or CLAUDE.md §6.5's `auth.*` row never actually applies.
+// builds `signIn` / `signUp` / `requestReset` / `resetPassword` on this,
+// never on `publicProcedure` directly, or CLAUDE.md §6.5's `auth.*` row
+// never actually applies. `refresh` is the one exception — it is rate
+// limited per refresh-token family instead (`04`, `rate-limit.ts`'s
+// `authRateLimit` doc comment) and is built directly on `publicProcedure`.
 export const authProcedure = publicProcedure.use(authRateLimit(RATE_LIMIT_TIERS.auth));
 
 // `01-is-authed.md`: narrows `ctx.user` to non-null at the type level. A

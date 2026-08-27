@@ -7,16 +7,32 @@
 // database would reject data the database would have accepted.
 import { z } from 'zod';
 
+// Re-exported so a §6.1 feature-schema module can import it alongside every
+// other primitive from this one file — `layout.test.ts` holds each of those
+// modules to importing nothing but `zod` and `./primitives.ts`, precisely
+// so a router schema never reaches into an arbitrary set of sibling files.
+export { strictObject } from './strict.ts';
+
 // ---------------------------------------------------------------------------
 // Identity
 // ---------------------------------------------------------------------------
+
+// `.max(36)` on every UUID/email/timezone primitive below is a fixed
+// format bound (36 chars is exactly a textual UUID's length; 320 is RFC
+// 5321's email length ceiling; 64 comfortably exceeds the longest real
+// IANA zone name), not a DATABASE.md-derived one — `conventions.test.ts`
+// requires every string reachable from an input schema to carry a
+// `.max()`, on the DoS-shaped principle that an unbounded string is a
+// bound this file failed to set, not a bound the database chose not to
+// have. `z.uuid()`/`z.email()` validate *shape*; they don't themselves
+// produce the `max_length` check that walker looks for.
 
 /**
  * A row id. Generated app-side as **UUIDv7** (DB§2 — time-ordered, so index
  * inserts stay sequential). This schema validates UUID *shape* only; which
  * version was generated is the generator's concern, not the validator's.
  */
-export const id = z.uuid();
+export const id = z.uuid().max(36);
 
 /**
  * The offline idempotency key (DB§14.1). UUIDv7, generated on the device at
@@ -26,14 +42,14 @@ export const id = z.uuid();
  * Same shape as {@link id}; kept as a separate export because the two mean
  * different things at call sites.
  */
-export const clientLocalId = z.uuid();
+export const clientLocalId = z.uuid().max(36);
 
 /**
  * Case-insensitive, trimmed, lowercased on parse — matching the `citext`
  * column type (DB§2.1) so two users can never register with emails that
  * differ only in case or incidental whitespace.
  */
-export const email = z.string().trim().toLowerCase().pipe(z.email());
+export const email = z.string().trim().toLowerCase().max(320).pipe(z.email().max(320));
 
 function isSupportedTimeZone(value: string): boolean {
   try {
@@ -52,7 +68,7 @@ function isSupportedTimeZone(value: string): boolean {
  * runtime's own zone database rather than a regex — a regex can confirm the
  * *shape* of `"Asia/Kolkata"` but not that the zone actually exists.
  */
-export const timezone = z.string().refine(isSupportedTimeZone, {
+export const timezone = z.string().max(64).refine(isSupportedTimeZone, {
   message: 'Not a recognised IANA timezone identifier',
 });
 

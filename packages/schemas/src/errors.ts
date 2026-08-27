@@ -34,6 +34,13 @@ export const APP_ERROR_CODES = [
   // "refetch, a write raced you" — this means "a duplicate the server
   // refused", a different recovery action the client can't merge into.
   'UNKNOWN_CONFLICT',
+  // auth-server/04 — refresh rotation. Two codes, deliberately distinct
+  // (04's Produces table): a reused token means the session is gone for
+  // good (sign out, clear storage); a race means a concurrent refresh from
+  // the same device is already in flight (wait and retry once, never sign
+  // out). Collapsing the two into one code produces random sign-outs.
+  'REFRESH_TOKEN_REUSED',
+  'REFRESH_RACE',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -76,6 +83,8 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   INTERNAL_ERROR: 'INTERNAL_SERVER_ERROR',
   UNKNOWN_CONFLICT: 'CONFLICT',
+  REFRESH_TOKEN_REUSED: 'UNAUTHORIZED',
+  REFRESH_RACE: 'CONFLICT',
 };
 
 /**
@@ -115,6 +124,8 @@ export interface AppErrorPayloads {
   // No constraint name, table, or column — DB§18: that's exactly the
   // disclosure this code exists to avoid (04's step 7).
   UNKNOWN_CONFLICT: EmptyErrorPayload;
+  REFRESH_TOKEN_REUSED: EmptyErrorPayload;
+  REFRESH_RACE: EmptyErrorPayload;
 }
 
 /**

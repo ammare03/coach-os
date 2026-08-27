@@ -18,8 +18,12 @@ const envSchema = z.object({
   // shares a rate-limit counter and a session cache with production.
   REDIS_KEY_PREFIX: z.string().min(1),
 
-  JWT_SECRET: z.string().min(1),
-  REFRESH_TOKEN_SECRET: z.string().min(1),
+  // 32 chars minimum — both secrets key an HMAC (HS256 for access tokens,
+  // HMAC-SHA256 for refresh token digests, `auth-server/03`/`04`). A short
+  // key makes the HMAC brute-forceable offline; failing to boot on a short
+  // secret catches a misconfigured deploy, not the hundredth sign-in.
+  JWT_SECRET: z.string().min(32),
+  REFRESH_TOKEN_SECRET: z.string().min(32),
 
   // Social sign-in token verification (`lib/auth/provider-verification.ts`).
   // The expected `aud` claim on an inbound identity token — never a secret,

@@ -9,8 +9,10 @@ const HOUR = 60 * MINUTE;
  * that merely reads a limit's numbers pulls in the middleware chain.
  */
 export const RATE_LIMIT_TIERS = {
-  /** 10 / 15 min / IP — the whole `auth.*` group shares this one bucket (`rate-limit.ts`'s `authRateLimit`, not `rateLimit`). */
+  /** 10 / 15 min / IP — `signIn`/`signUp`/`requestReset`/`resetPassword` share this one bucket (`rate-limit.ts`'s `authRateLimit`, not `rateLimit`). NOT `refresh` — see the next entry. */
   auth: { windowSeconds: 15 * MINUTE, max: 10 },
+  /** 30 / hour / refresh-token family (`auth-server/04`). A legitimate device refreshes a few times an hour; anything past this is a client bug, not a user. `rotate-refresh-token.ts` applies this directly via `enforceRateLimit`, not `rateLimit`/`authRateLimit` — see that file's own note on why a per-IP bucket is actively harmful for this one procedure. */
+  authRefresh: { windowSeconds: HOUR, max: 30 },
   /** 60 / hour / user */
   mediaCreateUploadUrl: { windowSeconds: HOUR, max: 60 },
   /** 120 / min / user */

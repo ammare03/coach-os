@@ -1,3 +1,71 @@
-// Input schemas for `auth.*` (signUp, signIn, refresh, signOut, requestReset,
-// resetPassword). Filled by phase-03-identity-and-auth. Empty for now so the
-// module layout is visible from error-and-validation/01 onward.
+// Input schemas for `auth.*` (signUp, signIn, refresh, signOut,
+// requestReset, resetPassword). `auth-server/02` fills `signUpInput` and
+// `signInInput`; `04` adds `refreshInput`; `05`/`06` add the rest. The
+// output shapes these procedures return (`authSession`, `refreshOutput`)
+// live in `./auth-session.ts`, not here — `layout.test.ts` holds every
+// §6.1 input-schema module to importing nothing but `zod` and
+// `./primitives.ts`, and `conventions.test.ts` walks every export of this
+// module expecting caller input (strict, capped); an output shape belongs
+// with `./pagination.ts`'s `pageOf()`, the one other schema this package
+// exempts from both for the same reason.
+import { z } from 'zod';
+
+import { email, id, strictObject, timezone } from './primitives.ts';
+
+/**
+ * A minimum length only — `CLAUDE.md` has no stated composition policy
+ * (no forced digit/symbol), which matches current NIST guidance that
+ * composition rules push users toward predictable substitutions instead of
+ * real entropy. The upper bound is defensive, not a UX opinion: Argon2id's
+ * cost scales with input size, and an unbounded password is a way to make
+ * one request expensive to hash.
+ */
+export const password = z.string().min(8).max(256);
+
+/**
+ * Carried by every procedure that opens a session (`signUp`, `signIn`, and
+ * later `refresh` continuing the same device) — `03`'s device-identity flow
+ * needs `deviceId` (omitted on a device's first sign-in) and `platform` on
+ * every call; `appVersion`/`osVersion` are informational only. Not
+ * `strictObject` on its own — it's always spread into a `strictObject`
+ * caller, and a nested `strictObject` would reject the very keys the outer
+ * schema is trying to merge in.
+ */
+const deviceFields = {
+  deviceId: id.optional(),
+  platform: z.enum(['ios', 'android', 'web']),
+  appVersion: z.string().max(50).optional(),
+  osVersion: z.string().max(50).optional(),
+};
+
+/**
+ * `auth.signUp` — coaches only (`02`'s "Why this exists": clients cannot
+ * self-register). `role` isn't a field on this schema at all, not merely
+ * defaulted — there's nothing for a caller to override.
+ */
+export const signUpInput = strictObject({
+  email,
+  password,
+  name: z.string().trim().min(1).max(200),
+  timezone,
+  ...deviceFields,
+});
+export type SignUpInput = z.infer<typeof signUpInput>;
+
+export const signInInput = strictObject({
+  email,
+  password: z.string().min(1).max(256), // no minimum here — an existing account may predate any policy change
+  ...deviceFields,
+});
+export type SignInInput = z.infer<typeof signInInput>;
+
+/**
+ * `auth.refresh` (`04`) — the presented refresh token, opaque. No device
+ * fields: rotation continues the family the token already belongs to, it
+ * never opens a new one, so there's nothing here for the server to decide
+ * device identity from.
+ */
+export const refreshInput = strictObject({
+  refreshToken: z.string().min(1).max(512), // opaque, 32 raw bytes base64url-encoded (~43 chars) — 512 is a generous format-agnostic ceiling, not a length the format requires
+});
+export type RefreshInput = z.infer<typeof refreshInput>;

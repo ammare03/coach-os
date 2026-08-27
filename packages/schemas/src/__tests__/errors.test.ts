@@ -48,6 +48,8 @@ function describeCode(code: AppErrorCode): string {
     case 'PAYLOAD_TOO_LARGE':
     case 'INTERNAL_ERROR':
     case 'UNKNOWN_CONFLICT':
+    case 'REFRESH_TOKEN_REUSED':
+    case 'REFRESH_RACE':
       return code;
     default:
       return assertNever(code);

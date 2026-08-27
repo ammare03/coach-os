@@ -36,6 +36,7 @@ beforeAll(async () => {
     '..',
     '..',
     '..',
+    '..',
     'packages',
     'db',
     'src',
