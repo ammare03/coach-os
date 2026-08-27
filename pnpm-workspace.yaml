@@ -10,6 +10,12 @@ packages:
 allowBuilds:
   cpu-features: false
   esbuild: true
+  # bullmq's msgpack encoder (`background-jobs/01-bullmq-setup.md`) — unlike
+  # cpu-features/ssh2/protobufjs above, this is a runtime dependency of a
+  # queue actually in use, not a dead code path. Allowed so job payloads use
+  # the native (de)serializer rather than silently falling back to the
+  # slower pure-JS one.
+  msgpackr-extract: true
   protobufjs: false
   ssh2: false
   unrs-resolver: true
@@ -31,6 +37,7 @@ auditConfig:
 minimumReleaseAgeExclude:
   - '@tanstack/query-core@5.102.0'
   - '@tanstack/react-query@5.102.0'
+  - bullmq@6.3.1
 
 # Metro (React Native's bundler) does not reliably follow pnpm's default
 # symlinked node_modules layout. A flat, hoisted tree avoids resolution
