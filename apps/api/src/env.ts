@@ -21,6 +21,16 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(1),
   REFRESH_TOKEN_SECRET: z.string().min(1),
 
+  // Social sign-in token verification (`lib/auth/provider-verification.ts`).
+  // The expected `aud` claim on an inbound identity token — never a secret,
+  // but required at boot so a misconfigured client id fails loudly instead
+  // of silently rejecting every social sign-in. Apple: the app's bundle id
+  // (native Sign In with Apple uses the bundle id as audience, not a
+  // Services ID). Google: comma-separated OAuth client ids, one per
+  // platform (iOS, Android) that may legitimately appear as `aud`.
+  APPLE_SIGN_IN_CLIENT_ID: z.string().min(1),
+  GOOGLE_SIGN_IN_CLIENT_IDS: z.string().min(1),
+
   R2_ACCOUNT_ID: z.string().min(1),
   R2_ACCESS_KEY_ID: z.string().min(1),
   R2_SECRET_ACCESS_KEY: z.string().min(1),

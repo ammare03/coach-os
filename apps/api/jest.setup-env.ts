@@ -30,6 +30,9 @@ process.env.REDIS_TEST_GIVE_UP_AFTER_FIRST_FAILURE = 'true';
 process.env.JWT_SECRET = 'test-jwt-secret';
 process.env.REFRESH_TOKEN_SECRET = 'test-refresh-token-secret';
 
+process.env.APPLE_SIGN_IN_CLIENT_ID = 'com.coachos.app.test';
+process.env.GOOGLE_SIGN_IN_CLIENT_IDS = 'test-ios-client-id,test-android-client-id';
+
 process.env.R2_ACCOUNT_ID = 'test-r2-account-id';
 process.env.R2_ACCESS_KEY_ID = 'test-r2-access-key-id';
 process.env.R2_SECRET_ACCESS_KEY = 'test-r2-secret-access-key';

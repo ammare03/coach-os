@@ -24,6 +24,7 @@
     "drizzle-orm": "0.45.2",
     "hono": "4.13.3",
     "ioredis": "5.11.1",
+    "jose": "5.10.0",
     "postgres": "3.4.9",
     "superjson": "1.13.3",
     "uuidv7": "1.2.1",
