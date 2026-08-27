@@ -27,6 +27,7 @@ describe('signUpInput', () => {
     name: 'Coach Example',
     timezone: 'Asia/Kolkata',
     platform: 'ios' as const,
+    dateOfBirth: '1990-05-14',
   };
 
   it('accepts a well-formed sign-up', () => {
@@ -44,6 +45,18 @@ describe('signUpInput', () => {
 
   it('rejects a malformed timezone', () => {
     expect(signUpInput.safeParse({ ...valid, timezone: 'Not/AZone' }).success).toBe(false);
+  });
+
+  it('rejects a missing dateOfBirth', () => {
+    const rest: Record<string, unknown> = { ...valid };
+    delete rest.dateOfBirth;
+    expect(signUpInput.safeParse(rest).success).toBe(false);
+  });
+
+  it('rejects a datetime where a calendar date belongs', () => {
+    expect(
+      signUpInput.safeParse({ ...valid, dateOfBirth: '1990-05-14T00:00:00.000Z' }).success,
+    ).toBe(false);
   });
 });
 

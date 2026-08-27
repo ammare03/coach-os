@@ -12,6 +12,11 @@ export interface CreateCoachAccountInput {
   passwordHash: string;
   name: string;
   timezone: string;
+  // Age-checked by the caller (`../../routers/auth.ts`, via `./age.ts`'s
+  // `evaluateSignupAge`) before this function ever runs — `07`'s Approach
+  // step 1: the role decision depends on it, so it's collected and
+  // verified ahead of any write, never stored speculatively then revoked.
+  dateOfBirth: string;
 }
 
 export interface CreateCoachAccountResult {
@@ -46,6 +51,11 @@ export async function createCoachAccount(
       name: input.name,
       role: 'coach',
       timezone: input.timezone,
+      dateOfBirth: input.dateOfBirth,
+      // Always false here — `evaluateSignupAge` already refused anyone
+      // under 18 before this function was called, and `isMinor` only ever
+      // applies to the 13-17 client path (`../invites/04`).
+      isMinor: false,
     })
     .returning();
   if (!user) throw new Error('insert into identity.users did not return a row');

@@ -10,7 +10,7 @@
 // exempts from both for the same reason.
 import { z } from 'zod';
 
-import { email, id, strictObject, timezone } from './primitives.ts';
+import { calendarDate, email, id, strictObject, timezone } from './primitives.ts';
 
 /**
  * A minimum length only — `CLAUDE.md` has no stated composition policy
@@ -48,6 +48,14 @@ export const signUpInput = strictObject({
   password,
   name: z.string().trim().min(1).max(200),
   timezone,
+  // Required, not deferred to onboarding (`07`'s Approach step 1) — the
+  // role decision (this procedure only ever creates a coach) depends on
+  // it, and a role assigned before the age is known has to be revoked
+  // later, which is worse. `auth.signUp` refuses anyone under 18
+  // (`../features/auth/age.ts`'s `evaluateSignupAge`); the 13-17 client
+  // path is `../invites/04-invite-acceptance.md`, a different signup with
+  // a different rule.
+  dateOfBirth: calendarDate,
   ...deviceFields,
 });
 export type SignUpInput = z.infer<typeof signUpInput>;

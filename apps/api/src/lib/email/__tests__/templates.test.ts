@@ -2,6 +2,8 @@
 // on a string" — the rendered HTML and plaintext, not `sendEmail`, which
 // never touches Resend in a test.
 import { renderEmailHtml, toPlainText } from '../client.ts';
+import { GuardianAccessEndedEmail } from '../templates/guardian-access-ended.tsx';
+import { GuardianConsentEmail } from '../templates/guardian-consent.tsx';
 import { PasswordResetEmail } from '../templates/password-reset.tsx';
 
 const RESET_URL = 'https://app.coachos.test/reset-password/abc123';
@@ -55,5 +57,28 @@ describe('toPlainText', () => {
 
   it('collapses more than two consecutive blank lines', () => {
     expect(toPlainText('<p>a</p><p></p><p></p><p>b</p>')).toBe('a\n\nb');
+  });
+});
+
+describe('GuardianConsentEmail', () => {
+  const CONSENT_URL = 'https://app.coachos.test/guardian-consent/abc123';
+
+  it('renders the client and coach name and the consent link', () => {
+    const html = renderEmailHtml(
+      GuardianConsentEmail({ clientName: 'Alex', coachName: 'Coach Sam', consentUrl: CONSENT_URL }),
+    );
+    expect(html).toContain('Alex');
+    expect(html).toContain('Coach Sam');
+    expect(html).toContain(CONSENT_URL);
+    expect(html).not.toContain('coachos://');
+  });
+});
+
+describe('GuardianAccessEndedEmail', () => {
+  it('renders a different body for the client than for the guardian', () => {
+    const clientHtml = renderEmailHtml(GuardianAccessEndedEmail({ recipient: 'client' }));
+    const guardianHtml = renderEmailHtml(GuardianAccessEndedEmail({ recipient: 'guardian' }));
+    expect(clientHtml).not.toBe(guardianHtml);
+    expect(guardianHtml).toMatch(/guardian access/i);
   });
 });

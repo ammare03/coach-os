@@ -61,6 +61,7 @@ async function signUp(email: string) {
     email,
     password: 'a-real-password',
     name: 'Refresh Test',
+    dateOfBirth: '1990-01-01',
     timezone: 'UTC',
     platform: 'ios',
   });

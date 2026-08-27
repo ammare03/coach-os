@@ -61,6 +61,7 @@ describe('auth.refresh — concurrent replay of the same token', () => {
       email: 'race@refresh-test.com',
       password: 'a-real-password',
       name: 'Race Test',
+      dateOfBirth: '1990-01-01',
       timezone: 'UTC',
       platform: 'ios',
     });

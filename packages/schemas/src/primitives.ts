@@ -86,7 +86,7 @@ export const timezone = z.string().max(64).refine(isSupportedTimeZone, {
  * (CLAUDE.md §17.4, §25.5) — see primitives.test.ts for the compile-time
  * proof.
  */
-export const calendarDate = z.iso.date().brand('CalendarDate');
+export const calendarDate = z.iso.date().max(10).brand('CalendarDate');
 export type CalendarDate = z.infer<typeof calendarDate>;
 
 // ---------------------------------------------------------------------------

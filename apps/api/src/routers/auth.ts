@@ -2,6 +2,7 @@ import { schema } from '@coachos/db';
 import { auth as authSchemas } from '@coachos/schemas';
 import { eq } from 'drizzle-orm';
 
+import { evaluateSignupAge } from '../features/auth/age.ts';
 import { createCoachAccount } from '../features/auth/create-coach-account.ts';
 import { openSession } from '../features/auth/open-session.ts';
 import { requestReset, resetPassword } from '../features/auth/password-reset.ts';
@@ -46,6 +47,23 @@ export const authRouter = router({
   // always `role: 'coach'`, enforced in `createCoachAccount`, not by an
   // input check.
   signUp: authProcedure.input(authSchemas.signUpInput).mutation(async ({ ctx, input }) => {
+    // `07`'s rules table: under 13 is refused outright, 13-17 is refused
+    // specifically because this procedure only ever creates a coach (the
+    // 13-17 *client* path is `../invites/04-invite-acceptance.md`, a
+    // different signup). Checked before any write, deliberately — a role
+    // assigned before the age is known has to be revoked later.
+    const ageOutcome = evaluateSignupAge(input.dateOfBirth);
+    if (ageOutcome === 'AGE_BELOW_MINIMUM') {
+      throw appError('AGE_BELOW_MINIMUM', 'You need to be at least 13 to use CoachOS.', {});
+    }
+    if (ageOutcome === 'COACH_MUST_BE_ADULT') {
+      throw appError(
+        'COACH_MUST_BE_ADULT',
+        'Coach accounts are for adults only. You can still join as a client if a coach invites you.',
+        {},
+      );
+    }
+
     const passwordHash = await hashPassword(input.password);
 
     // A duplicate email surfaces as a raw Postgres unique violation on
@@ -58,6 +76,7 @@ export const authRouter = router({
       createCoachAccount(tx, ctx, {
         email: input.email,
         passwordHash,
+        dateOfBirth: input.dateOfBirth,
         name: input.name,
         timezone: input.timezone,
       }),

@@ -61,6 +61,7 @@ async function signUp(email: string, deviceId?: string) {
     email,
     password: 'a-real-password',
     name: 'Sign Out Test',
+    dateOfBirth: '1990-01-01',
     timezone: 'UTC',
     platform: 'ios',
     ...(deviceId ? { deviceId } : {}),

@@ -85,6 +85,7 @@ describe('a signed-up session', () => {
       email: 'session-proof@session-test.com',
       password: 'a-real-password',
       name: 'Session Proof',
+      dateOfBirth: '1990-01-01',
       timezone: 'Asia/Kolkata',
       platform: 'ios',
     });
@@ -109,6 +110,7 @@ describe('a signed-up session', () => {
       email: 'same-device@session-test.com',
       password: 'a-real-password',
       name: 'Same Device',
+      dateOfBirth: '1990-01-01',
       timezone: 'UTC',
       platform: 'android',
     });
@@ -141,6 +143,7 @@ describe('a signed-up session', () => {
       email: 'device-owner@session-test.com',
       password: 'a-real-password',
       name: 'Owner',
+      dateOfBirth: '1990-01-01',
       timezone: 'UTC',
       platform: 'ios',
     });
@@ -148,6 +151,7 @@ describe('a signed-up session', () => {
       email: 'device-intruder@session-test.com',
       password: 'a-real-password',
       name: 'Intruder',
+      dateOfBirth: '1990-01-01',
       timezone: 'UTC',
       platform: 'ios',
       deviceId: owner.deviceId, // someone else's device id
