@@ -59,6 +59,24 @@ export const keys = {
     return { key: prefixed(`rl:auth:${ip}`), ttlSeconds: 15 * MINUTE };
   },
 
+  // `auth-server/06` step 7 — a second, tighter limit on top of
+  // `rateLimitAuth` above, keyed on the address rather than the caller's
+  // IP, so rotating IPs can't mailbomb one target and one target can't
+  // exhaust the free Resend tier's 100/day cap alone. `emailHash` is the
+  // caller's SHA-256 of the (already-lowercased) address — never the raw
+  // address in a key (this file's own doc comment: "no builder accepts a
+  // raw value").
+  rateLimitResetEmail(emailHash: string): RedisKey {
+    return { key: prefixed(`rl:auth.requestReset.email:${emailHash}`), ttlSeconds: 15 * MINUTE };
+  },
+
+  // `auth-server/06` — password-reset token → user id. Consumption is a
+  // `GETDEL`, never a plain `GET`; no database column ever records that a
+  // reset is outstanding (DATABASE.md DB§15).
+  pwreset(tokenHash: string): RedisKey {
+    return { key: prefixed(`pwreset:${tokenHash}`), ttlSeconds: 60 * MINUTE };
+  },
+
   presence(conversationId: string): RedisKey {
     return { key: prefixed(`presence:${conversationId}`), ttlSeconds: 60 * SECOND };
   },

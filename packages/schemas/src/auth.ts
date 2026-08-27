@@ -80,3 +80,16 @@ export const signOutInput = strictObject({
   refreshToken: z.string().min(1).max(512).optional(),
 });
 export type SignOutInput = z.infer<typeof signOutInput>;
+
+/** `auth.requestReset` (`06`) — always returns the same shape; see that procedure's own doc comment. */
+export const requestResetInput = strictObject({
+  email,
+});
+export type RequestResetInput = z.infer<typeof requestResetInput>;
+
+/** `auth.resetPassword` (`06`) — the same {@link password} rule task 02 writes with; a second policy would be a second thing to keep in sync. */
+export const resetPasswordInput = strictObject({
+  token: z.string().min(1).max(512),
+  newPassword: password,
+});
+export type ResetPasswordInput = z.infer<typeof resetPasswordInput>;

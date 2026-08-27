@@ -50,6 +50,14 @@ const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().min(1),
 
   RESEND_API_KEY: z.string().min(1),
+  // The from-address every outbound email uses (`lib/email/client.ts`) and
+  // the https origin every emailed link is built from (`auth-server/06`
+  // step 8) — so a preview build never emails a production link and vice
+  // versa (`configuration` skill). Neither is secret; both fail boot when
+  // missing because a misconfigured one silently breaks every email link
+  // rather than erroring loudly.
+  EMAIL_FROM: z.string().min(1),
+  APP_PUBLIC_URL: z.url(),
 
   ANTHROPIC_API_KEY: z.string().min(1),
 

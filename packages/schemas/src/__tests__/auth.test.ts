@@ -1,6 +1,14 @@
 // One valid case, one invalid case per shape (CLAUDE.md §18.1).
 import { authSession, refreshOutput } from '../auth-session.ts';
-import { password, refreshInput, signInInput, signUpInput } from '../auth.ts';
+import {
+  password,
+  refreshInput,
+  requestResetInput,
+  resetPasswordInput,
+  signInInput,
+  signOutInput,
+  signUpInput,
+} from '../auth.ts';
 
 describe('password', () => {
   it('accepts an 8+ character password', () => {
@@ -111,5 +119,45 @@ describe('refreshOutput', () => {
       expiresAt: '2026-08-27T00:00:00.000Z',
     };
     expect(refreshOutput.safeParse(rest).success).toBe(false);
+  });
+});
+
+describe('requestResetInput', () => {
+  it('accepts a well-formed email', () => {
+    expect(requestResetInput.safeParse({ email: 'coach@example.com' }).success).toBe(true);
+  });
+
+  it('rejects a malformed email', () => {
+    expect(requestResetInput.safeParse({ email: 'not-an-email' }).success).toBe(false);
+  });
+});
+
+describe('resetPasswordInput', () => {
+  it('accepts a token and a valid new password', () => {
+    const result = resetPasswordInput.safeParse({
+      token: 'opaque-reset-token',
+      newPassword: 'a-real-password',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a new password shorter than 8 characters — the same password rule signUp uses', () => {
+    expect(
+      resetPasswordInput.safeParse({ token: 'opaque-reset-token', newPassword: 'short' }).success,
+    ).toBe(false);
+  });
+});
+
+describe('signOutInput', () => {
+  it('accepts an object with a refresh token', () => {
+    expect(signOutInput.safeParse({ refreshToken: 'opaque-token' }).success).toBe(true);
+  });
+
+  it('accepts an empty object — a device with nothing left to present', () => {
+    expect(signOutInput.safeParse({}).success).toBe(true);
+  });
+
+  it('rejects an unknown key', () => {
+    expect(signOutInput.safeParse({ refreshToken: 'x', extra: true }).success).toBe(false);
   });
 });

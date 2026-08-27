@@ -48,6 +48,8 @@ process.env.STRIPE_SECRET_KEY = 'sk_test_test-stripe-secret-key';
 process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test-stripe-webhook-secret';
 
 process.env.RESEND_API_KEY = 'test-resend-api-key';
+process.env.EMAIL_FROM = 'CoachOS <noreply@coachos.test>';
+process.env.APP_PUBLIC_URL = 'https://app.coachos.test';
 
 process.env.ANTHROPIC_API_KEY = 'test-anthropic-api-key';
 

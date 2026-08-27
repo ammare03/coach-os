@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 
 import { createCoachAccount } from '../features/auth/create-coach-account.ts';
 import { openSession } from '../features/auth/open-session.ts';
+import { requestReset, resetPassword } from '../features/auth/password-reset.ts';
 import { rotateRefreshToken } from '../features/auth/rotate-refresh-token.ts';
 import { signOut, signOutAllDevices } from '../features/auth/sign-out.ts';
 import { appError } from '../lib/app-error.ts';
@@ -196,4 +197,23 @@ export const authRouter = router({
     await signOutAllDevices(ctx.db, ctx, ctx.user.id);
     return { success: true } as const;
   }),
+
+  // `authProcedure` — the shared per-IP `auth.*` bucket still applies here
+  // (`06` step 7: "an addition within §6.5's existing rule, not an
+  // amendment to it"); `requestReset` itself adds a second, per-email
+  // limit on top. Always returns the same shape — see `requestReset`'s own
+  // doc comment for why.
+  requestReset: authProcedure
+    .input(authSchemas.requestResetInput)
+    .mutation(async ({ ctx, input }) => {
+      await requestReset(ctx.db, ctx, input.email);
+      return { success: true } as const;
+    }),
+
+  resetPassword: authProcedure
+    .input(authSchemas.resetPasswordInput)
+    .mutation(async ({ ctx, input }) => {
+      await resetPassword(ctx.db, ctx, input.token, input.newPassword);
+      return { success: true } as const;
+    }),
 });

@@ -62,9 +62,18 @@ export const PUBLIC_ALLOWLIST: readonly PublicAllowlistEntry[] = [
     addedOn: '2026-08-27',
   },
 
-  // `auth.requestReset` and `auth.resetPassword` are deliberately NOT
-  // listed yet — each is added in the same PR that implements it (`06`),
-  // never speculatively ahead of it. Invite acceptance is deliberately
-  // excluded even then (`CLAUDE.md` §8.1 requires it to be a protected
-  // procedure).
+  {
+    path: 'auth.requestReset',
+    reason:
+      'A caller with no session is exactly who needs to recover an account. Response equivalence (same shape for a known and an unknown address) is enforced inside the resolver; a per-email rate limit on top of the shared auth.* bucket bounds abuse (auth-server/06).',
+    addedBy: 'phase-03-identity-and-auth/auth-server/06-password-reset-via-resend.md',
+    addedOn: '2026-08-27',
+  },
+  {
+    path: 'auth.resetPassword',
+    reason:
+      'Identity is established by the presented reset token itself (a single-use, Redis-backed digest lookup), not by a session — a caller recovering an account has none. An unknown, expired, or already-used token returns one identical error (auth-server/06).',
+    addedBy: 'phase-03-identity-and-auth/auth-server/06-password-reset-via-resend.md',
+    addedOn: '2026-08-27',
+  },
 ];
