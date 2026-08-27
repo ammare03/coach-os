@@ -88,3 +88,52 @@ describe('initSentry', () => {
     expect(() => initSentry()).not.toThrow();
   });
 });
+
+describe('captureServerException — async-local requestId fallback', () => {
+  // `@sentry/node` no-ops `captureException` once `dsn` is unset (this
+  // module's own doc comment), which would make the tag never observable
+  // through the real SDK in a DSN-less test run. Mocked here — the only way
+  // to prove `05-request-correlation.md` step 5's fallback actually runs —
+  // rather than asserting on `initSentry`'s real, untagged no-op behaviour.
+  it('tags the scope with the async-local requestId when the caller does not pass one', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const setTag = jest.fn();
+      const captureException = jest.fn(
+        (_error: unknown, withScope: (scope: unknown) => unknown) => {
+          withScope({ setTag, setUser: jest.fn() });
+        },
+      );
+      jest.doMock('@sentry/node', () => ({ captureException, init: jest.fn() }));
+
+      const { captureServerException: captureWithMock } = await import('./sentry.ts');
+      const { runWithRequestId: runWithMock } = await import('./request-context.ts');
+
+      runWithMock('req-fallback', () => {
+        captureWithMock(new Error('scratch'), { procedure: 'workouts.logSet' });
+      });
+
+      expect(setTag).toHaveBeenCalledWith('requestId', 'req-fallback');
+    });
+  });
+
+  it('keeps an explicitly passed requestId over the async-local context', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const setTag = jest.fn();
+      const captureException = jest.fn(
+        (_error: unknown, withScope: (scope: unknown) => unknown) => {
+          withScope({ setTag, setUser: jest.fn() });
+        },
+      );
+      jest.doMock('@sentry/node', () => ({ captureException, init: jest.fn() }));
+
+      const { captureServerException: captureWithMock } = await import('./sentry.ts');
+      const { runWithRequestId: runWithMock } = await import('./request-context.ts');
+
+      runWithMock('req-context', () => {
+        captureWithMock(new Error('scratch'), { requestId: 'req-explicit' });
+      });
+
+      expect(setTag).toHaveBeenCalledWith('requestId', 'req-explicit');
+    });
+  });
+});

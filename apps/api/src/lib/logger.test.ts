@@ -1,4 +1,5 @@
 import { logger, type LogFields } from './logger.ts';
+import { runWithRequestId } from './request-context.ts';
 
 // DB§18's sensitive field names — the exact ones the redaction is proving
 // never reach a log line, not just the ones `LogFields` happens to declare.
@@ -110,6 +111,34 @@ describe('logger', () => {
 
       expect(written).toHaveLength(0);
     });
+  });
+
+  it('fills requestId from async-local context when a call site does not pass it', () => {
+    const entry = runWithRequestId('req-ctx', () =>
+      captureOneEntry(() => {
+        logger.info('resolver.did.not.thread.ctx', { procedure: 'workouts.logSet' });
+      }),
+    );
+
+    expect(entry.requestId).toBe('req-ctx');
+  });
+
+  it('prefers an explicitly passed requestId over the async-local context', () => {
+    const entry = runWithRequestId('req-context-value', () =>
+      captureOneEntry(() => {
+        logger.info('request.completed', { requestId: 'req-explicit' });
+      }),
+    );
+
+    expect(entry.requestId).toBe('req-explicit');
+  });
+
+  it('omits requestId entirely outside any bound request and with none passed', () => {
+    const entry = captureOneEntry(() => {
+      logger.info('background.task', {});
+    });
+
+    expect(entry).not.toHaveProperty('requestId');
   });
 
   it('emits debug output outside production', () => {

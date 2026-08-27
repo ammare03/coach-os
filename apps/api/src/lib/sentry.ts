@@ -2,6 +2,8 @@ import * as Sentry from '@sentry/node';
 
 import { env } from '../env.ts';
 
+import { getRequestId } from './request-context.ts';
+
 /**
  * Server-side Sentry (`observability/02-sentry-integration.md`). Distinct
  * from mobile's `@sentry/react-native` (`phase-05-app-shell/providers-and-gates/05`)
@@ -85,8 +87,13 @@ export function scrubEvent(event: Sentry.ErrorEvent): Sentry.ErrorEvent {
  * where a DB§18-classified field would otherwise reach Sentry.
  */
 export function captureServerException(error: unknown, context: SentryContext): void {
+  // `05-request-correlation.md` step 5: a call site that already knows its
+  // `requestId` (every current one does, via `ctx`) keeps it explicit — this
+  // only covers a future call site with no `ctx` in hand, the same fallback
+  // `logger.ts`'s `buildEntry` applies.
+  const requestId = context.requestId ?? getRequestId();
   Sentry.captureException(error, (scope) => {
-    if (context.requestId) scope.setTag('requestId', context.requestId);
+    if (requestId) scope.setTag('requestId', requestId);
     if (context.procedure) scope.setTag('procedure', context.procedure);
     if (context.userId) scope.setUser({ id: context.userId });
     return scope;

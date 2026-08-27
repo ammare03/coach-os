@@ -1,5 +1,7 @@
 import { env } from '../env.ts';
 
+import { getRequestId } from './request-context.ts';
+
 /**
  * The structured (JSON) logger (`observability/01-structured-logging.md`).
  * No dependency added — CLAUDE.md §3.4.1 step 2: Node's own `process.stdout`
@@ -87,6 +89,17 @@ function buildEntry(level: LogLevel, msg: string, fields: LogFields = {}): LogEn
     const value = fields[key];
     if (value !== undefined) {
       assign(picked, key, value);
+    }
+  }
+  // `05-request-correlation.md` step 2: a call site that already passes
+  // `requestId` (e.g. `requestLogging`, which has `ctx` in hand) keeps it —
+  // this only fills the gap for the call sites that don't have `ctx` to
+  // thread through, which is the whole point of binding it to async-local
+  // storage instead of requiring it as an argument.
+  if (picked.requestId === undefined) {
+    const requestId = getRequestId();
+    if (requestId !== undefined) {
+      picked.requestId = requestId;
     }
   }
   return { ts: new Date().toISOString(), level, msg, ...picked };
