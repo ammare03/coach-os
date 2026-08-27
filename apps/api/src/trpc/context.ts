@@ -3,6 +3,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import type { Redis } from 'ioredis';
 
 import { env } from '../env.ts';
+import { parseBearerToken } from '../lib/bearer-token.ts';
 import { keys } from '../lib/redis-keys.ts';
 import { safeRedis } from '../lib/redis-safe.ts';
 import { redis } from '../lib/redis.ts';
@@ -59,14 +60,17 @@ export type AuthenticatedContext = Context & { user: ContextUser };
 
 // Module scope — created once per process, not per request.
 // `../authorization-middleware/03-owns-resource.md` and every resolver use
-// this; nobody opens a connection of their own.
+// this; nobody opens a connection of their own. Exported so `../index.ts`'s
+// `/ready` endpoint (`observability/04-health-and-readiness.md`) can probe
+// this exact pool rather than opening a second one just to check it's
+// reachable.
 //
 // DB§18.2 says "require minimum, verify-full in production", but
 // `packages/db/src/migrate.ts`'s `sslModeFor` already established the real
 // exception in practice: the local docker-compose Postgres (`development`)
 // and Testcontainers' ephemeral one (`test`) have no TLS listener at all, so
 // `require` fails the handshake outright. Mirrors that mapping exactly.
-const db = createDbClient({
+export const db = createDbClient({
   connectionString: env.DATABASE_URL,
   sslMode: env.NODE_ENV === 'production' ? 'verify-full' : false,
 });
@@ -115,14 +119,6 @@ async function resolveUser(claims: { userId: string }): Promise<ContextUser | nu
     clientProfileId: row.clientProfileId,
     deletedAt: null,
   };
-}
-
-function parseBearerToken(header: string | null): string | null {
-  if (!header?.startsWith('Bearer ')) {
-    return null;
-  }
-  const token = header.slice('Bearer '.length).trim();
-  return token.length > 0 ? token : null;
 }
 
 function readRequestMeta(req: Request): RequestMeta {

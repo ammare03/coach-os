@@ -169,6 +169,13 @@
       "when": 1787393408595,
       "tag": "0023_v_client_overview",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1787809799676,
+      "tag": "0024_real_titanium_man",
+      "breakpoints": true
     }
   ]
 }

@@ -76,14 +76,19 @@ afterAll(async () => {
 });
 
 // Re-spied fresh every test, not once at module load — Jest reinstalls its
-// own `console.error` wrapper per test, which silently orphans a spy
-// installed earlier (its `.mock.calls` stays empty even though the visible
-// transcript still shows the call going through Jest's own instrumentation).
-let consoleErrorSpy: ReturnType<typeof jest.spyOn>;
+// own instrumentation per test, which silently orphans a spy installed
+// earlier (its `.mock.calls` stays empty even though the visible transcript
+// still shows the call going through Jest's own instrumentation).
+//
+// `../lib/app-error.ts`'s `logDatabaseError` writes through
+// `../lib/logger.ts` (`observability/01-structured-logging.md`), whose only
+// sink is `process.stdout.write` — spying there, not on `console.error`, is
+// what actually observes it now.
+let stdoutWriteSpy: ReturnType<typeof jest.spyOn>;
 beforeEach(() => {
-  consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  stdoutWriteSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
 });
-afterEach(() => consoleErrorSpy.mockRestore());
+afterEach(() => stdoutWriteSpy.mockRestore());
 
 const uuidInput = z.object({ id: z.string() });
 
@@ -331,7 +336,7 @@ describe('databaseErrorBoundary — unique_violation (23505)', () => {
       'scratch_unmapped_unique',
     ]);
 
-    const logged = consoleErrorSpy.mock.calls.flat().map((c: unknown) => JSON.stringify(c));
+    const logged = stdoutWriteSpy.mock.calls.flat().map((c: unknown) => JSON.stringify(c));
     expect(logged.some((l: string) => l.includes('scratch_unmapped_unique_tag_key'))).toBe(true);
   });
 });
@@ -465,7 +470,7 @@ describe('databaseErrorBoundary — statement timeout (57014)', () => {
 
 describe('databaseErrorBoundary — nothing raw ever reaches the log either', () => {
   it('no log line contains detail, where, or internal_query', async () => {
-    consoleErrorSpy.mockClear();
+    stdoutWriteSpy.mockClear();
     // Same owner_id the first describe block already used — the row
     // exists, so this collides on the mapped constraint again.
     await expect(
@@ -474,7 +479,7 @@ describe('databaseErrorBoundary — nothing raw ever reaches the log either', ()
         ownerId: '11111111-1111-7111-8111-111111111111',
       }),
     ).rejects.toBeDefined();
-    const logged = consoleErrorSpy.mock.calls.flat().map((c: unknown) => JSON.stringify(c));
+    const logged = stdoutWriteSpy.mock.calls.flat().map((c: unknown) => JSON.stringify(c));
     for (const line of logged) {
       expect(line).not.toMatch(/"detail"|"where"|"internal_query"/);
     }

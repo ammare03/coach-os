@@ -53,7 +53,8 @@ function sleep(ms: number): Promise<void> {
 /**
  * The single boundary (`error-and-validation/04-no-raw-db-errors.md` step
  * 1) — attached to the base procedure builder in `../trpc/procedures.ts`,
- * **outermost**, so it also catches a database error thrown by
+ * first after `../observability/01-structured-logging.md`'s request logger,
+ * so it also catches a database error thrown by
  * `../authorization-middleware/03-owns-resource.md`'s ownership query,
  * which runs further into the same `next()` chain.
  *

@@ -1,0 +1,48 @@
+name: Metrics cron
+
+# `OBSERVABILITY.md` OB§6: "a cron job that emails and pushes — five alerts
+# do not need a platform." This is that cron job. It has nothing to do
+# until two repo secrets exist (`API_BASE_URL`, `INTERNAL_JOB_SECRET`) —
+# there is no deployed API to call yet (`ARCHITECTURE.md`'s Fly.io hosting
+# is not live at the time this file was written) — so every run before then
+# is a fast no-op, not a failure (see the guard in the one step below).
+#
+# Cadence is hourly, not OB§4's ideal "detect within minutes", for one
+# reason: GitHub Actions bills in whole-minute increments per run
+# (CLAUDE.md §3.4.2's $0 ceiling, and §3.4.3's 2,000-minutes/month private-repo
+# allowance, which `ci.yml` also draws from). Every 5 minutes would be
+# ~8,640 min/month on this job alone — several times the entire monthly
+# allowance. Hourly is 720 min/month, leaving headroom for CI.
+#
+# **Once the pilot needs faster detection**, tighten this by pointing a free
+# external cron service (e.g. cron-job.org's free tier, which supports
+# 1-minute intervals with a custom header, at $0) at
+# `POST {API_BASE_URL}/internal/metrics/collect` directly instead of routing
+# through GitHub Actions — the same "free external pinger" OB§6 already
+# names for `/health`. Do not shorten this workflow's own schedule to get
+# there; that is the path that reintroduces the minutes cost above.
+on:
+  schedule:
+    - cron: '17 * * * *' # hourly, off the exact hour to avoid GitHub's peak-minute queueing
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    name: collect
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger metrics collection
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
+        run: |
+          if [ -z "$API_BASE_URL" ] || [ -z "$INTERNAL_JOB_SECRET" ]; then
+            echo "API_BASE_URL / INTERNAL_JOB_SECRET not configured yet — skipping (no deployment to call)."
+            exit 0
+          fi
+          curl --fail-with-body --silent --show-error \
+            -X POST "$API_BASE_URL/internal/metrics/collect" \
+            -H "x-internal-secret: $INTERNAL_JOB_SECRET"

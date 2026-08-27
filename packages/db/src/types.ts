@@ -54,6 +54,7 @@ import type {
 import type {
   auditLog,
   featureUsage,
+  metricSamples,
   notificationPreferences,
   notifications,
   storageUsage,
@@ -213,6 +214,9 @@ export type NewFeatureUsage = typeof featureUsage.$inferInsert;
 
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type NewWebhookEvent = typeof webhookEvents.$inferInsert;
+
+export type MetricSample = typeof metricSamples.$inferSelect;
+export type NewMetricSample = typeof metricSamples.$inferInsert;
 
 // Read-only — a Postgres VIEW, never insertable. No "New" counterpart.
 export type ClientOverview = typeof vClientOverview.$inferSelect;
