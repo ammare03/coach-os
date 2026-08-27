@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { createCoachAccount } from '../features/auth/create-coach-account.ts';
 import { openSession } from '../features/auth/open-session.ts';
 import { rotateRefreshToken } from '../features/auth/rotate-refresh-token.ts';
+import { signOut, signOutAllDevices } from '../features/auth/sign-out.ts';
 import { appError } from '../lib/app-error.ts';
 import { writeAuditLog } from '../lib/audit-log.ts';
 import {
@@ -14,7 +15,7 @@ import {
   verifyPassword,
 } from '../lib/auth/password.ts';
 import { router } from '../trpc/init.ts';
-import { authProcedure, publicProcedure } from '../trpc/procedures.ts';
+import { authProcedure, protectedProcedure, publicProcedure } from '../trpc/procedures.ts';
 
 // Filled by phase-03-identity-and-auth (auth-server). `signUp` and `signIn`
 // land in `02`; `refresh` (`04`), `signOut`/`signOutAllDevices` (`05`), and
@@ -173,4 +174,26 @@ export const authRouter = router({
   refresh: publicProcedure
     .input(authSchemas.refreshInput)
     .mutation(({ ctx, input }) => rotateRefreshToken(ctx.db, ctx, input.refreshToken)),
+
+  // Public, not `authProcedure` — `05`'s Approach step 1: a caller whose
+  // access token already expired still has a valid refresh token and
+  // still needs the session ended. Requiring a live access token here
+  // means the sign-out button fails for exactly the person who left the
+  // app closed overnight. Always resolves — an unknown, malformed,
+  // revoked, or expired token is not an error (`signOut`'s own doc
+  // comment); the response never distinguishes them.
+  signOut: publicProcedure.input(authSchemas.signOutInput).mutation(async ({ ctx, input }) => {
+    await signOut(ctx.db, ctx, input.refreshToken);
+    return { success: true } as const;
+  }),
+
+  // `protectedProcedure`, deliberately the opposite of `signOut` — ending
+  // every session is high-consequence and has no expired-token case to
+  // accommodate (the client can refresh first). Requiring a live access
+  // token means a stolen refresh token alone can't log the real user out
+  // of everything (`05`'s Approach step 1).
+  signOutAllDevices: protectedProcedure.mutation(async ({ ctx }) => {
+    await signOutAllDevices(ctx.db, ctx, ctx.user.id);
+    return { success: true } as const;
+  }),
 });

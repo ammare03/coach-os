@@ -161,13 +161,10 @@ export async function rotateRefreshToken(
   }
 
   // Reuse: revoke every live token in the family and record why.
-  await revokeFamily(db, ctx, existing.familyId, {
-    auditAction: 'auth.refresh.reuse',
-    metadata: {
-      deviceId: existing.deviceId,
-      revokedTokenId: existing.id,
-      openedFamilyAt: existing.createdAt,
-    },
+  await revokeFamily(db, ctx, existing.familyId, 'reuse', {
+    deviceId: existing.deviceId,
+    revokedTokenId: existing.id,
+    openedFamilyAt: existing.createdAt,
   });
   throw appError('REFRESH_TOKEN_REUSED', 'This session is no longer valid. Sign in again.', {});
 }

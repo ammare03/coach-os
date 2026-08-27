@@ -69,3 +69,14 @@ export const refreshInput = strictObject({
   refreshToken: z.string().min(1).max(512), // opaque, 32 raw bytes base64url-encoded (~43 chars) — 512 is a generous format-agnostic ceiling, not a length the format requires
 });
 export type RefreshInput = z.infer<typeof refreshInput>;
+
+/**
+ * `auth.signOut` (`05`) — optional: a device that has already discarded
+ * its stored tokens locally can still call this defensively, with nothing
+ * to present. That case has no family to resolve and no-ops (`05`'s
+ * Approach step 7's "return, do not revoke", applied one level earlier).
+ */
+export const signOutInput = strictObject({
+  refreshToken: z.string().min(1).max(512).optional(),
+});
+export type SignOutInput = z.infer<typeof signOutInput>;

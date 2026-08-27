@@ -54,6 +54,14 @@ export const PUBLIC_ALLOWLIST: readonly PublicAllowlistEntry[] = [
     addedOn: '2026-08-27',
   },
 
+  {
+    path: 'auth.signOut',
+    reason:
+      "A caller whose access token already expired still has a valid refresh token and still needs the session ended — requiring a live access token would fail the sign-out button for exactly the person who left the app closed overnight. The family is resolved from the presented token's own digest, never from caller input, so no other session can be reached (auth-server/05).",
+    addedBy: 'phase-03-identity-and-auth/auth-server/05-sign-out-and-family-revocation.md',
+    addedOn: '2026-08-27',
+  },
+
   // `auth.requestReset` and `auth.resetPassword` are deliberately NOT
   // listed yet — each is added in the same PR that implements it (`06`),
   // never speculatively ahead of it. Invite acceptance is deliberately
