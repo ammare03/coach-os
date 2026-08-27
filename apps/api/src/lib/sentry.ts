@@ -48,6 +48,11 @@ export interface SentryContext {
   requestId?: string;
   procedure?: string;
   userId?: string | null;
+  // `04-dead-letter-handling.md`: the two tags DB§15 requires a dead-letter
+  // alert to carry alongside the failure reason (which reaches Sentry via
+  // `error` itself, below — never a third, free-text field here).
+  jobId?: string;
+  queue?: string;
 }
 
 // Rebuilt field-by-field from an explicit allowlist — never `{ ...event }`
@@ -62,6 +67,8 @@ export interface SentryContext {
 export function scrubEvent(event: Sentry.ErrorEvent): Sentry.ErrorEvent {
   const requestId = typeof event.tags?.requestId === 'string' ? event.tags.requestId : undefined;
   const procedure = typeof event.tags?.procedure === 'string' ? event.tags.procedure : undefined;
+  const jobId = typeof event.tags?.jobId === 'string' ? event.tags.jobId : undefined;
+  const queue = typeof event.tags?.queue === 'string' ? event.tags.queue : undefined;
   const userId = event.user?.id;
 
   return {
@@ -75,7 +82,12 @@ export function scrubEvent(event: Sentry.ErrorEvent): Sentry.ErrorEvent {
     ...(event.message !== undefined ? { message: event.message } : {}),
     ...(event.exception !== undefined ? { exception: event.exception } : {}),
     ...(event.environment !== undefined ? { environment: event.environment } : {}),
-    tags: { ...(requestId ? { requestId } : {}), ...(procedure ? { procedure } : {}) },
+    tags: {
+      ...(requestId ? { requestId } : {}),
+      ...(procedure ? { procedure } : {}),
+      ...(jobId ? { jobId } : {}),
+      ...(queue ? { queue } : {}),
+    },
     ...(userId ? { user: { id: userId } } : {}),
   };
 }
@@ -95,6 +107,8 @@ export function captureServerException(error: unknown, context: SentryContext): 
   Sentry.captureException(error, (scope) => {
     if (requestId) scope.setTag('requestId', requestId);
     if (context.procedure) scope.setTag('procedure', context.procedure);
+    if (context.jobId) scope.setTag('jobId', context.jobId);
+    if (context.queue) scope.setTag('queue', context.queue);
     if (context.userId) scope.setUser({ id: context.userId });
     return scope;
   });
