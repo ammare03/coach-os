@@ -7,6 +7,7 @@ import {
   calendarDate,
   deviceFields,
   email,
+  id,
   password,
   strictObject,
   timezone,
@@ -57,3 +58,9 @@ export const acceptInviteInput = strictObject({
   ...deviceFields,
 });
 export type AcceptInviteInput = z.infer<typeof acceptInviteInput>;
+
+/** `invites.revoke` (`05`) — `ownsResource('invite', ...)` confirms the id belongs to the calling coach before this ever reaches the resolver. */
+export const revokeInviteInput = strictObject({
+  inviteId: id,
+});
+export type RevokeInviteInput = z.infer<typeof revokeInviteInput>;

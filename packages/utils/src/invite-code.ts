@@ -6,6 +6,17 @@
 const ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'; // 32 chars: 2-9, A-Z minus I/O
 const CODE_LENGTH = 8;
 
+// This package's `tsconfig.json` deliberately carries neither `"dom"` (this
+// runs on-device too) nor `"node"` (see that file's own comment) in `lib`/
+// `types`, so `Crypto`/`globalThis.crypto` aren't ambiently typed here even
+// though both runtimes provide them at runtime. A minimal local shape for
+// the one method used, cast through `unknown` rather than reaching for
+// `any` (`code-conventions` §3), keeps this typed without pulling in either
+// lib wholesale.
+interface MinimalCrypto {
+  getRandomValues: (array: Uint8Array) => Uint8Array;
+}
+
 /**
  * `globalThis.crypto.getRandomValues`, not `Math.random()` (unsuitable for
  * anything collision-sensitive) and not `node:crypto` (`packages/utils`
@@ -22,7 +33,7 @@ const CODE_LENGTH = 8;
  */
 export function generateInviteCode(): string {
   const bytes = new Uint8Array(CODE_LENGTH);
-  globalThis.crypto.getRandomValues(bytes);
+  (globalThis as unknown as { crypto: MinimalCrypto }).crypto.getRandomValues(bytes);
 
   let code = '';
   for (const byte of bytes) {

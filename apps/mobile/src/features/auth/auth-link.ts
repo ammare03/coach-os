@@ -25,6 +25,7 @@ export const EXCLUDED_PROCEDURES: readonly string[] = [
   'auth.signInWithApple',
   'auth.signInWithGoogle',
   'auth.completeSocialSignUp',
+  'invites.accept',
 ];
 
 /** Also used by `refresh-interceptor.ts`, which sits above this link in
