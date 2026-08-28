@@ -12,7 +12,7 @@ import { eq } from 'drizzle-orm';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 
 import type { createTestContext as CreateTestContext } from '../../__tests__/test-context.ts';
-import { isCatalogedError } from '../../lib/app-error.ts';
+import type { isCatalogedError as IsCatalogedError } from '../../lib/app-error.ts';
 
 import type { completeSocialSignUp as CompleteSocialSignUp } from './complete-social-signup.ts';
 import type { handleSocialSignIn as HandleSocialSignIn } from './social-sign-in.ts';
@@ -23,6 +23,7 @@ let db: DbClient;
 let handleSocialSignIn: typeof HandleSocialSignIn;
 let completeSocialSignUp: typeof CompleteSocialSignUp;
 let createTestContext: typeof CreateTestContext;
+let isCatalogedError: typeof IsCatalogedError;
 
 beforeAll(async () => {
   [pgContainer, redisContainer] = await Promise.all([
@@ -65,6 +66,7 @@ beforeAll(async () => {
   ({ handleSocialSignIn } = await import('./social-sign-in.ts'));
   ({ completeSocialSignUp } = await import('./complete-social-signup.ts'));
   ({ createTestContext } = await import('../../__tests__/test-context.ts'));
+  ({ isCatalogedError } = await import('../../lib/app-error.ts'));
 
   const { redis } = await import('../../lib/redis.ts');
   await redis.connect();
