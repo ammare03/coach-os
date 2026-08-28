@@ -1,9 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react-native';
 
-import { api } from '../lib/trpc.ts';
-
-import HomeScreen from './index.tsx';
+import { api } from '../../lib/trpc.ts';
+import HomeScreen from '../index.tsx';
 
 // `HomeScreen` calls `api.health.ping.useQuery()`, so it needs both
 // providers mounted — same as `TRPCProvider` does in `app/_layout.tsx`,
