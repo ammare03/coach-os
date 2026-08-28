@@ -16,6 +16,7 @@ const ROUTERS = [
   'comments',
   'exercises',
   'habits',
+  'invites',
   'live',
   'me',
   'media',

@@ -19,6 +19,7 @@ export * as coach from './coach.ts';
 export * as comments from './comments.ts';
 export * as exercises from './exercises.ts';
 export * as habits from './habits.ts';
+export * as invites from './invites.ts';
 export * as live from './live.ts';
 export * as me from './me.ts';
 export * as media from './media.ts';

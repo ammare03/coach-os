@@ -9,6 +9,7 @@ import { commentsRouter } from './comments.ts';
 import { exercisesRouter } from './exercises.ts';
 import { habitsRouter } from './habits.ts';
 import { healthRouter } from './health.ts';
+import { invitesRouter } from './invites.ts';
 import { liveRouter } from './live.ts';
 import { meRouter } from './me.ts';
 import { mediaRouter } from './media.ts';
@@ -34,6 +35,7 @@ export const appRouter = router({
   comments: commentsRouter,
   exercises: exercisesRouter,
   habits: habitsRouter,
+  invites: invitesRouter,
   live: liveRouter,
   me: meRouter,
   media: mediaRouter,

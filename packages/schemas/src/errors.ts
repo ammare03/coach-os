@@ -20,6 +20,19 @@ export const APP_ERROR_CODES = [
   'CHECKIN_ALREADY_SUBMITTED',
   'CLIENT_ALREADY_HAS_COACH',
   'INVITE_EXPIRED',
+  // invites/04 — the code is well-formed but doesn't resolve to a row.
+  // High-entropy secret, not a resource id (`security-and-privacy` skill's
+  // NOT_FOUND-vs-NOT_YOUR_CLIENT distinction is about ids an attacker can
+  // enumerate; an 8-char base32 invite code from a 32^8 space is not that),
+  // so NOT_FOUND carries no oracle risk here the way it would on an
+  // `ownsResource`-guarded id.
+  'INVITE_NOT_FOUND',
+  // invites/04, invites/05 — two distinct terminal states a code or a
+  // revoke attempt can already be in, each needing its own copy
+  // ("this invite was already used" reads nothing like "this invite was
+  // cancelled").
+  'INVITE_ALREADY_ACCEPTED',
+  'INVITE_REVOKED',
   'RECORDING_CONSENT_REQUIRED',
   'SYNC_CONFLICT',
   'VALIDATION_FAILED',
@@ -94,6 +107,9 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   CHECKIN_ALREADY_SUBMITTED: 'CONFLICT',
   CLIENT_ALREADY_HAS_COACH: 'CONFLICT',
   INVITE_EXPIRED: 'BAD_REQUEST',
+  INVITE_NOT_FOUND: 'NOT_FOUND',
+  INVITE_ALREADY_ACCEPTED: 'CONFLICT',
+  INVITE_REVOKED: 'BAD_REQUEST',
   RECORDING_CONSENT_REQUIRED: 'FORBIDDEN',
   SYNC_CONFLICT: 'CONFLICT',
   VALIDATION_FAILED: 'BAD_REQUEST',
@@ -139,6 +155,9 @@ export interface AppErrorPayloads {
   CHECKIN_ALREADY_SUBMITTED: { checkinId: string };
   CLIENT_ALREADY_HAS_COACH: EmptyErrorPayload;
   INVITE_EXPIRED: { expiredAt: string };
+  INVITE_NOT_FOUND: EmptyErrorPayload;
+  INVITE_ALREADY_ACCEPTED: EmptyErrorPayload;
+  INVITE_REVOKED: EmptyErrorPayload;
   RECORDING_CONSENT_REQUIRED: EmptyErrorPayload;
   SYNC_CONFLICT: { entity: string };
   VALIDATION_FAILED: { fields: Record<string, string> };

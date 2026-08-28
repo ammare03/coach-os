@@ -4,6 +4,7 @@
 import { renderEmailHtml, toPlainText } from '../client.ts';
 import { GuardianAccessEndedEmail } from '../templates/guardian-access-ended.ts';
 import { GuardianConsentEmail } from '../templates/guardian-consent.ts';
+import { InviteEmail } from '../templates/invite.ts';
 import { PasswordResetEmail } from '../templates/password-reset.ts';
 
 const RESET_URL = 'https://app.coachos.test/reset-password/abc123';
@@ -71,6 +72,56 @@ describe('GuardianConsentEmail', () => {
     expect(html).toContain('Coach Sam');
     expect(html).toContain(CONSENT_URL);
     expect(html).not.toContain('coachos://');
+  });
+});
+
+describe('InviteEmail', () => {
+  const DEEP_LINK_URL = 'coachos://invite/ABCD2345';
+  const HTTPS_FALLBACK_URL = 'https://app.coachos.test/invite/ABCD2345';
+
+  it('renders both the coachos:// deep link and the https fallback', () => {
+    const html = renderEmailHtml(
+      InviteEmail({
+        coachName: 'Coach Sam',
+        deepLinkUrl: DEEP_LINK_URL,
+        httpsFallbackUrl: HTTPS_FALLBACK_URL,
+      }),
+    );
+    expect(html).toContain(DEEP_LINK_URL);
+    expect(html).toContain(HTTPS_FALLBACK_URL);
+  });
+
+  it('renders the https fallback as the primary button, not the deep link', () => {
+    const html = renderEmailHtml(
+      InviteEmail({
+        coachName: 'Coach Sam',
+        deepLinkUrl: DEEP_LINK_URL,
+        httpsFallbackUrl: HTTPS_FALLBACK_URL,
+      }),
+    );
+    expect(html).toContain(`href="${HTTPS_FALLBACK_URL}"`);
+  });
+
+  it('states the 14-day expiry', () => {
+    const html = renderEmailHtml(
+      InviteEmail({
+        coachName: 'Coach Sam',
+        deepLinkUrl: DEEP_LINK_URL,
+        httpsFallbackUrl: HTTPS_FALLBACK_URL,
+      }),
+    );
+    expect(html).toMatch(/14 days/);
+  });
+
+  it('contains no remotely-loaded image and no tracking pixel', () => {
+    const html = renderEmailHtml(
+      InviteEmail({
+        coachName: 'Coach Sam',
+        deepLinkUrl: DEEP_LINK_URL,
+        httpsFallbackUrl: HTTPS_FALLBACK_URL,
+      }),
+    );
+    expect(html).not.toMatch(/<img/i);
   });
 });
 
