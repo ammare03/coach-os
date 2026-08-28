@@ -3,11 +3,14 @@ import { auth as authSchemas } from '@coachos/schemas';
 import { eq } from 'drizzle-orm';
 
 import { evaluateSignupAge } from '../features/auth/age.ts';
+import { completeSocialSignUp } from '../features/auth/complete-social-signup.ts';
 import { createCoachAccount } from '../features/auth/create-coach-account.ts';
+import { linkSocialProvider } from '../features/auth/link-social-provider.ts';
 import { openSession } from '../features/auth/open-session.ts';
 import { requestReset, resetPassword } from '../features/auth/password-reset.ts';
 import { rotateRefreshToken } from '../features/auth/rotate-refresh-token.ts';
 import { signOut, signOutAllDevices } from '../features/auth/sign-out.ts';
+import { handleSocialSignIn } from '../features/auth/social-sign-in.ts';
 import { appError } from '../lib/app-error.ts';
 import { writeAuditLog } from '../lib/audit-log.ts';
 import {
@@ -16,6 +19,10 @@ import {
   verifyDummyPassword,
   verifyPassword,
 } from '../lib/auth/password.ts';
+import {
+  verifyAppleIdentityToken,
+  verifyGoogleIdToken,
+} from '../lib/auth/provider-verification.ts';
 import { router } from '../trpc/init.ts';
 import { authProcedure, protectedProcedure, publicProcedure } from '../trpc/procedures.ts';
 
@@ -39,6 +46,16 @@ const INVALID_CREDENTIALS_MESSAGE = 'Incorrect email or password.';
 
 function invalidCredentials() {
   return appError('AUTH_REQUIRED', INVALID_CREDENTIALS_MESSAGE, {});
+}
+
+// `social-sign-in/01`, `/02` — the provider rejected the token, or
+// `jwtVerify` did (bad signature, wrong aud/iss, expired, bad nonce).
+// `verifyAppleIdentityToken`/`verifyGoogleIdToken` collapse every one of
+// those into a `null` return (their own doc comments: a JWKS outage must
+// not become a 500 in the sign-in path), so this is the one place that
+// turns "null" into the catalogued client-facing code.
+function socialTokenInvalid() {
+  return appError('SOCIAL_TOKEN_INVALID', "We couldn't verify that sign-in. Try again.", {});
 }
 
 export const authRouter = router({
@@ -233,6 +250,106 @@ export const authRouter = router({
     .input(authSchemas.resetPasswordInput)
     .mutation(async ({ ctx, input }) => {
       await resetPassword(ctx.db, ctx, input.token, input.newPassword);
+      return { success: true } as const;
+    }),
+
+  // `social-sign-in/01` — `authProcedure`, same shared `auth.*` throttle as
+  // `signIn`/`signUp` above (`procedures.ts`'s own comment: every new
+  // `auth.*` procedure derives from this, or §6.5's row never actually
+  // applies). Returns `{ kind: 'session', ... }` or
+  // `{ kind: 'needsDateOfBirth', pendingSignupToken }` — never throws for a
+  // genuinely new identity, only for a bad token or a collision.
+  signInWithApple: authProcedure
+    .input(authSchemas.signInWithAppleInput)
+    .mutation(async ({ ctx, input }) => {
+      const claim = await verifyAppleIdentityToken(input.identityToken, input.nonce);
+      if (!claim) {
+        throw socialTokenInvalid();
+      }
+      return handleSocialSignIn(
+        ctx.db,
+        ctx,
+        claim,
+        {
+          deviceId: input.deviceId,
+          platform: input.platform,
+          appVersion: input.appVersion,
+          osVersion: input.osVersion,
+        },
+        // Apple's identity token never carries a name (`claim.name` is
+        // always `null`) — `input.fullName` is the client's one-time
+        // `AppleAuthentication` response, the only place it exists.
+        input.fullName ?? null,
+      );
+    }),
+
+  // `social-sign-in/02` — same shape as `signInWithApple` above, except
+  // Google's own verified `claim.name` is passed straight through — no
+  // client-supplied fallback needed.
+  signInWithGoogle: authProcedure
+    .input(authSchemas.signInWithGoogleInput)
+    .mutation(async ({ ctx, input }) => {
+      const claim = await verifyGoogleIdToken(input.idToken);
+      if (!claim) {
+        throw socialTokenInvalid();
+      }
+      return handleSocialSignIn(
+        ctx.db,
+        ctx,
+        claim,
+        {
+          deviceId: input.deviceId,
+          platform: input.platform,
+          appVersion: input.appVersion,
+          osVersion: input.osVersion,
+        },
+        claim.name,
+      );
+    }),
+
+  // `social-sign-in/03` + Ammar's DOB-gate decision — the second step of a
+  // brand-new social sign-up, once `pendingSignupToken` proves the identity
+  // was already verified.
+  completeSocialSignUp: authProcedure
+    .input(authSchemas.completeSocialSignUpInput)
+    .mutation(({ ctx, input }) =>
+      completeSocialSignUp(ctx.db, ctx, {
+        pendingSignupToken: input.pendingSignupToken,
+        timezone: input.timezone,
+        dateOfBirth: input.dateOfBirth,
+        device: {
+          deviceId: input.deviceId,
+          platform: input.platform,
+          appVersion: input.appVersion,
+          osVersion: input.osVersion,
+        },
+      }),
+    ),
+
+  // `social-sign-in/03`'s collision-resolution path — `protectedProcedure`,
+  // deliberately: the caller must already be signed in via their existing
+  // method before this can run at all (`03`'s Risks: proof of ownership,
+  // never an email match alone). `ctx.user.id` is the link target; nothing
+  // here accepts a `userId` from the request body.
+  linkAppleProvider: protectedProcedure
+    .input(authSchemas.linkAppleProviderInput)
+    .mutation(async ({ ctx, input }) => {
+      const claim = await verifyAppleIdentityToken(input.identityToken, input.nonce);
+      if (!claim) {
+        throw socialTokenInvalid();
+      }
+      await linkSocialProvider(ctx.db, ctx.user.id, 'apple', claim.providerUid);
+      return { success: true } as const;
+    }),
+
+  linkGoogleProvider: protectedProcedure
+    .input(authSchemas.linkGoogleProviderInput)
+    .mutation(async ({ ctx, input }) => {
+      const claim = await verifyGoogleIdToken(input.idToken);
+      if (!claim) {
+        throw socialTokenInvalid();
+      }
+      await linkSocialProvider(ctx.db, ctx.user.id, 'google', claim.providerUid);
       return { success: true } as const;
     }),
 });

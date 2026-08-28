@@ -23,7 +23,7 @@ import { and, eq, isNotNull, lte } from 'drizzle-orm';
 
 import { computeAgeYears, ADULT_AGE_YEARS } from '../features/auth/age.ts';
 import { sendEmail } from '../lib/email/client.ts';
-import { GuardianAccessEndedEmail } from '../lib/email/templates/guardian-access-ended.tsx';
+import { GuardianAccessEndedEmail } from '../lib/email/templates/guardian-access-ended.ts';
 import { logger } from '../lib/logger.ts';
 
 export interface AgeSweepResult {

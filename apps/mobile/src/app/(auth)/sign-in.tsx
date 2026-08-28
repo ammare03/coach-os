@@ -1,20 +1,57 @@
 import { GlassSurface } from '@coachos/ui';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
+import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AppleSignInButton } from '../../features/auth/components/AppleSignInButton.tsx';
+import { GoogleSignInButton } from '../../features/auth/components/GoogleSignInButton.tsx';
 import { PulseRingBackground } from '../../features/auth/components/PulseRingBackground.tsx';
 import { SignInForm } from '../../features/auth/components/SignInForm.tsx';
+import { useAppleSignIn } from '../../features/auth/hooks/useAppleSignIn.ts';
+import { useGoogleSignIn } from '../../features/auth/hooks/useGoogleSignIn.ts';
 
 // The finalised auth-screen chrome — "2 — Conservative" from `/design`
 // round 2: glass on the nav bar only (DS§12.1's already-approved
 // nav-bar use, zero extension of the rule), fully opaque form below, and
 // the pulse-ring background from "1 — Maximal" swapped in for the
 // original drifting trend line. Social buttons are real, separate
-// controls per the design canvas's comment #1, disabled until
-// `phase-03-identity-and-auth/social-sign-in/` builds them.
+// controls per the design canvas's comment #1 — now wired to
+// `phase-03-identity-and-auth/social-sign-in/`, same spot and styling the
+// canvas approved.
 export default function SignInScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { signInWithApple, isSubmitting: isApplePending } = useAppleSignIn();
+  const { signInWithGoogle, isSubmitting: isGooglePending } = useGoogleSignIn();
+  const [socialError, setSocialError] = useState<string | null>(null);
+  const socialBusy = isApplePending || isGooglePending;
+
+  // Shared by both providers — `social-sign-in/03`'s three outcomes are
+  // identical regardless of which one produced them. A brand-new identity
+  // routes to the date-of-birth screen (`auth-server/07` requires it at
+  // signup; neither provider supplies it) — approved via `/design`.
+  function handleOutcome(result: {
+    status: string;
+    pendingSignupToken?: string;
+    email?: string;
+    error?: { formMessage: string };
+  }) {
+    if (result.status === 'signedIn') {
+      router.replace('/');
+      return;
+    }
+    if (result.status === 'needsDateOfBirth' && result.pendingSignupToken) {
+      router.push({
+        pathname: '/complete-social-signup',
+        params: { pendingSignupToken: result.pendingSignupToken, email: result.email ?? '' },
+      });
+      return;
+    }
+    if (result.status === 'error' && result.error) {
+      setSocialError(result.error.formMessage);
+    }
+  }
 
   return (
     <View style={styles.screen}>
@@ -55,13 +92,27 @@ export default function SignInScreen() {
           </View>
 
           <View style={styles.socialGroup}>
-            <View style={[styles.socialButton, styles.appleButton]}>
-              <Text style={styles.appleButtonText}>Continue with Apple</Text>
-            </View>
-            <View style={[styles.socialButton, styles.googleButton]}>
-              <Text style={styles.googleButtonText}>Continue with Google</Text>
-            </View>
+            <AppleSignInButton
+              disabled={socialBusy}
+              onPress={() => {
+                setSocialError(null);
+                void signInWithApple().then(handleOutcome);
+              }}
+            />
+            <GoogleSignInButton
+              disabled={socialBusy}
+              onPress={() => {
+                setSocialError(null);
+                void signInWithGoogle().then(handleOutcome);
+              }}
+            />
           </View>
+
+          {socialError !== null && (
+            <Text style={styles.socialErrorText} accessibilityRole="alert">
+              {socialError}
+            </Text>
+          )}
 
           <View style={styles.footer}>
             <Text style={styles.footerText}>
@@ -144,30 +195,11 @@ const styles = StyleSheet.create({
   socialGroup: {
     gap: 10,
   },
-  socialButton: {
-    height: 48,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    opacity: 0.5, // not yet wired — `social-sign-in` builds the real handler
-  },
-  appleButton: {
-    backgroundColor: '#000000',
-    borderWidth: 1,
-    borderColor: '#2A323F',
-  },
-  appleButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  googleButton: {
-    backgroundColor: '#FFFFFF',
-  },
-  googleButtonText: {
-    color: '#1F2430',
-    fontSize: 15,
-    fontWeight: '600',
+  socialErrorText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#F2F5F9',
+    textAlign: 'center',
   },
   footer: {
     flexGrow: 1,

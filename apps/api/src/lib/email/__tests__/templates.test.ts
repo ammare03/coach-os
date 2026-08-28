@@ -2,9 +2,9 @@
 // on a string" — the rendered HTML and plaintext, not `sendEmail`, which
 // never touches Resend in a test.
 import { renderEmailHtml, toPlainText } from '../client.ts';
-import { GuardianAccessEndedEmail } from '../templates/guardian-access-ended.tsx';
-import { GuardianConsentEmail } from '../templates/guardian-consent.tsx';
-import { PasswordResetEmail } from '../templates/password-reset.tsx';
+import { GuardianAccessEndedEmail } from '../templates/guardian-access-ended.ts';
+import { GuardianConsentEmail } from '../templates/guardian-consent.ts';
+import { PasswordResetEmail } from '../templates/password-reset.ts';
 
 const RESET_URL = 'https://app.coachos.test/reset-password/abc123';
 

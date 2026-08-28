@@ -101,3 +101,74 @@ export const resetPasswordInput = strictObject({
   newPassword: password,
 });
 export type ResetPasswordInput = z.infer<typeof resetPasswordInput>;
+
+/**
+ * `auth.signInWithApple` (`social-sign-in/01`) — the device-generated nonce
+ * is required, not optional: `../../apps/api/src/lib/auth/provider-verification.ts`'s
+ * `verifyAppleIdentityToken` rejects a token whose `nonce` claim doesn't
+ * match it, and there is nothing to compare against without it.
+ *
+ * `fullName` is optional and Apple-specific: the identity token never
+ * carries a name claim at all (`provider-verification.ts`'s own doc
+ * comment), so on a brand-new identity the ONLY chance to learn it is
+ * `AppleAuthentication`'s one-time authorization response, which the
+ * client has and the server never sees independently. Sent here so the
+ * date-of-birth screen never has to ask for a name Apple already gave —
+ * that screen has no name field by design (`/design`'s approved canvas).
+ */
+export const signInWithAppleInput = strictObject({
+  identityToken: z.string().min(1).max(4096),
+  nonce: z.string().min(16).max(256),
+  fullName: z.string().trim().min(1).max(200).optional(),
+  ...deviceFields,
+});
+export type SignInWithAppleInput = z.infer<typeof signInWithAppleInput>;
+
+/** `auth.signInWithGoogle` (`social-sign-in/02`) — Google's own ID token carries no per-request nonce check on this codebase's verifier (`provider-verification.ts`'s `verifyGoogleIdToken` signature), unlike Apple's. */
+export const signInWithGoogleInput = strictObject({
+  idToken: z.string().min(1).max(4096),
+  ...deviceFields,
+});
+export type SignInWithGoogleInput = z.infer<typeof signInWithGoogleInput>;
+
+/**
+ * `auth.completeSocialSignUp` (`social-sign-in/03`) — the second step of a
+ * brand-new social sign-up. `pendingSignupToken` is the opaque token
+ * `signInWithApple`/`signInWithGoogle` returned when the verified identity
+ * matched no existing account; `dateOfBirth` is collected here because
+ * neither provider hands one over and `auth-server/07` requires it at
+ * signup for both roles.
+ *
+ * No `name` field, deliberately — the approved `/design` canvas for this
+ * screen has none. The name travels with the pending signup record
+ * instead (Google's verified `name` claim, or Apple's one-time
+ * `fullName` from {@link signInWithAppleInput}), resolved server-side
+ * when the account is created.
+ */
+export const completeSocialSignUpInput = strictObject({
+  pendingSignupToken: z.string().min(1).max(512),
+  timezone,
+  dateOfBirth: calendarDate,
+  ...deviceFields,
+});
+export type CompleteSocialSignUpInput = z.infer<typeof completeSocialSignUpInput>;
+
+/**
+ * `auth.linkAppleProvider` / `auth.linkGoogleProvider` (`social-sign-in/03`'s
+ * collision-resolution path) — called only once already signed in via the
+ * existing method, so there is no `deviceFields`/session output here, just
+ * the identity to re-verify and link. Split by provider rather than one
+ * polymorphic schema, matching `signInWithAppleInput`/`signInWithGoogleInput`
+ * above — the two providers were never going to share a shape once Apple's
+ * nonce requirement is in the mix.
+ */
+export const linkAppleProviderInput = strictObject({
+  identityToken: z.string().min(1).max(4096),
+  nonce: z.string().min(16).max(256),
+});
+export type LinkAppleProviderInput = z.infer<typeof linkAppleProviderInput>;
+
+export const linkGoogleProviderInput = strictObject({
+  idToken: z.string().min(1).max(4096),
+});
+export type LinkGoogleProviderInput = z.infer<typeof linkGoogleProviderInput>;

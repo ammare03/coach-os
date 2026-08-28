@@ -14,6 +14,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   icon: './assets/images/icon.png',
   scheme: 'coachos',
   userInterfaceStyle: 'automatic',
+  ios: {
+    // `social-sign-in/01` — the `com.apple.developer.applesignin`
+    // entitlement. `expo-apple-authentication` ships no config plugin of
+    // its own (checked: no `app.plugin.js` in the package); `usesAppleSignIn`
+    // is the dedicated top-level Expo config field for it, resolved into
+    // the entitlement at `expo prebuild` time — the same "native change,
+    // needs a dev client rebuild, never an OTA" rule as everything else in
+    // the `configuration` skill §8.
+    usesAppleSignIn: true,
+  },
   android: {
     adaptiveIcon: {
       backgroundColor: '#E6F4FE',

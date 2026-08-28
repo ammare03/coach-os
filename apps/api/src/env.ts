@@ -6,6 +6,20 @@ import { z } from 'zod';
 // three requests later inside a database driver. See the `configuration`
 // skill and CLAUDE.md §16.1 — every variable here is server-only and MUST
 // NEVER be prefixed EXPO_PUBLIC_.
+
+// A genuinely optional variable, tolerant of the shape `.env.example` ships
+// it in: `KEY=` with nothing after the `=`, not the line deleted entirely
+// (`docs/UNFORGET.md` S3's boot bug shared a root cause with this one —
+// neither was ever exercised by an actual `pnpm dev` run end to end). Plain
+// `.optional()` only skips validation when the key is *absent*; present but
+// empty still fails `.min(1)`, which turned every one of this file's
+// documented-safe-to-leave-blank variables into a boot failure the moment
+// someone's `.env` matched the example file exactly. Empty string here is
+// treated the same as absent — `undefined` — never as an invalid value.
+function optionalNonEmpty() {
+  return z.preprocess((value) => (value === '' ? undefined : value), z.string().min(1).optional());
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -72,7 +86,7 @@ const envSchema = z.object({
   // no-op on every capture call — the correct behaviour for local
   // development and CI, which have no reason to require a real Sentry
   // account just to boot the server.
-  SENTRY_DSN: z.string().min(1).optional(),
+  SENTRY_DSN: optionalNonEmpty(),
 
   // `observability/06-metrics-and-alerts.md` — the shared secret the
   // scheduled collector/evaluator trigger (`.github/workflows/metrics-cron.yml`)
@@ -87,8 +101,8 @@ const envSchema = z.object({
   // itself as a structured-log-only no-op for whichever one is unset, rather
   // than failing startup over an integration that isn't load-bearing for the
   // app to function.
-  ALERTS_EMAIL_TO: z.string().min(1).optional(),
-  ALERTS_EXPO_PUSH_TOKEN: z.string().min(1).optional(),
+  ALERTS_EMAIL_TO: optionalNonEmpty(),
+  ALERTS_EXPO_PUSH_TOKEN: optionalNonEmpty(),
 
   // OB§4.4 / PI§4.1 — tightens alert thresholds during the pilot (any crash
   // affecting a pilot user, any `sync_failed`, same-day). One flag, removed

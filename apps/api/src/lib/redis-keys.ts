@@ -77,6 +77,15 @@ export const keys = {
     return { key: prefixed(`pwreset:${tokenHash}`), ttlSeconds: 60 * MINUTE };
   },
 
+  // `social-sign-in/03` — a verified-but-not-yet-created social identity,
+  // held until `auth.completeSocialSignUp` supplies the date of birth
+  // `auth-server/07` requires at signup. 10 minutes is enough to type a
+  // birthdate, short enough to bound how long a verified claim sits
+  // unconsumed. Consumption is a `GETDEL`, same as `pwreset` above.
+  socialSignup(tokenHash: string): RedisKey {
+    return { key: prefixed(`socialsignup:${tokenHash}`), ttlSeconds: 10 * MINUTE };
+  },
+
   presence(conversationId: string): RedisKey {
     return { key: prefixed(`presence:${conversationId}`), ttlSeconds: 60 * SECOND };
   },
