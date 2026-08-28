@@ -48,6 +48,12 @@ function describeCode(code: AppErrorCode): string {
     case 'PAYLOAD_TOO_LARGE':
     case 'INTERNAL_ERROR':
     case 'UNKNOWN_CONFLICT':
+    case 'REFRESH_TOKEN_REUSED':
+    case 'REFRESH_RACE':
+    case 'AGE_BELOW_MINIMUM':
+    case 'COACH_MUST_BE_ADULT':
+    case 'GUARDIAN_CONSENT_REQUIRED':
+    case 'GUARDIAN_CONSENT_PENDING':
       return code;
     default:
       return assertNever(code);

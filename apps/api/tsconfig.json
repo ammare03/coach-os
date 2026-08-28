@@ -6,6 +6,12 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
 
+    // React Email templates only (`src/lib/email/`, auth-server/06) —
+    // rendered server-side to a string via `@react-email/render`, never
+    // shipped to a client. Not a step toward a DOM/React Native runtime in
+    // this app.
+    "jsx": "react-jsx",
+
     // Source imports write the real .ts extension (Node's --experimental-strip-types
     // dev runner needs the literal file on disk); tsc rewrites it to .js in the
     // emitted output so the built dist/ still resolves correctly under Node's ESM.

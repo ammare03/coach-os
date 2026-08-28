@@ -82,10 +82,17 @@ function trustedClientIp(trustedIp: string | null): string {
   return trustedIp ?? UNTRUSTED_IP_BUCKET;
 }
 
-// Shared by both middlewares below: run the atomic counter against
-// whichever key the caller resolved, fail open on a Redis miss, throw
-// `RATE_LIMITED` on a real one.
-async function enforce(identity: { key: string; ttlSeconds: number }, max: number): Promise<void> {
+// Shared by both middlewares below, and exported for `auth-server/04`'s
+// `rotate-refresh-token.ts` — `auth.refresh` is rate-limited **per family**
+// (CLAUDE.md §6.5's amended row), a key only known after looking up the
+// presented token, which is not available to a tRPC middleware running
+// ahead of the resolver. Run the atomic counter against whichever key the
+// caller resolved, fail open on a Redis miss, throw `RATE_LIMITED` on a
+// real one.
+export async function enforceRateLimit(
+  identity: { key: string; ttlSeconds: number },
+  max: number,
+): Promise<void> {
   const result = await safeRedis(() => incrementWithTtl(identity.key, identity.ttlSeconds), null);
   if (result !== null && result.count > max) {
     throw appError('RATE_LIMITED', RATE_LIMITED_MESSAGE, { retryAfterSeconds: result.ttlSeconds });
@@ -112,7 +119,7 @@ export function rateLimit(config: RateLimitConfig) {
     const identityValue = ctx.user ? ctx.user.id : trustedClientIp(ctx.request.trustedIp);
     const identity = keys.rateLimit(route, identityValue, config.windowSeconds);
 
-    await enforce(identity, config.max);
+    await enforceRateLimit(identity, config.max);
     return next();
   });
 }
@@ -120,18 +127,28 @@ export function rateLimit(config: RateLimitConfig) {
 /**
  * The one exception to "always scoped by route": CLAUDE.md §6.5's `auth.*`
  * row is a single throttle **shared across the whole group** — `signIn`,
- * `signUp`, and `refresh` all draw from the same 10-per-15-minute bucket per
- * IP, using `redis-keys.ts`'s dedicated `rl:auth:{ip}` pattern (DB§15) whose
- * 15-minute TTL is fixed by that builder, not configurable here. Attach to
- * a procedure builder every `auth.*` procedure derives from
- * (`rate-limit-config.ts`'s `authProcedure`), never to one individually —
- * the shared bucket is the point, not an accident of reuse.
+ * `signUp`, `requestReset`, and `resetPassword` all draw from the same
+ * 10-per-15-minute bucket per IP, using `redis-keys.ts`'s dedicated
+ * `rl:auth:{ip}` pattern (DB§15) whose 15-minute TTL is fixed by that
+ * builder, not configurable here. Attach to a procedure builder every
+ * `auth.*` procedure derives from (`rate-limit-config.ts`'s
+ * `authProcedure`), never to one individually — the shared bucket is the
+ * point, not an accident of reuse.
+ *
+ * **`auth.refresh` is the one procedure in the group that does NOT use
+ * this.** CLAUDE.md §6.5's amended row (`auth-server/04`) limits it per
+ * refresh-token *family* instead — mobile carriers put tens of thousands
+ * of subscribers behind one CGNAT address, so a per-IP bucket here would
+ * lock out everyone on that carrier the moment a dozen users foreground
+ * their apps at once. `auth.refresh` calls `enforceRateLimit` directly,
+ * from `../../features/auth/rotate-refresh-token.ts`, once the family is
+ * known.
  */
 export function authRateLimit(config: { max: number }) {
   return middleware(async ({ ctx, next }) => {
     const identity = keys.rateLimitAuth(trustedClientIp(ctx.request.trustedIp));
 
-    await enforce(identity, config.max);
+    await enforceRateLimit(identity, config.max);
     return next();
   });
 }

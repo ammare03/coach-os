@@ -34,6 +34,23 @@ export const APP_ERROR_CODES = [
   // "refetch, a write raced you" — this means "a duplicate the server
   // refused", a different recovery action the client can't merge into.
   'UNKNOWN_CONFLICT',
+  // auth-server/04 — refresh rotation. Two codes, deliberately distinct
+  // (04's Produces table): a reused token means the session is gone for
+  // good (sign out, clear storage); a race means a concurrent refresh from
+  // the same device is already in flight (wait and retry once, never sign
+  // out). Collapsing the two into one code produces random sign-outs.
+  'REFRESH_TOKEN_REUSED',
+  'REFRESH_RACE',
+  // auth-server/07 — ERRORS.md ER§1.2, verbatim. `AGE_BELOW_MINIMUM` is
+  // under-13, both roles. `COACH_MUST_BE_ADULT` is 13-17 attempting a
+  // coach/assistant account. `GUARDIAN_CONSENT_REQUIRED`/`_PENDING` are two
+  // different moments for a 13-17 client: the first before a consent
+  // request has been sent, the second after — collapsing them loses the
+  // "resend" recovery action ER§1.2's own table gives only to the second.
+  'AGE_BELOW_MINIMUM',
+  'COACH_MUST_BE_ADULT',
+  'GUARDIAN_CONSENT_REQUIRED',
+  'GUARDIAN_CONSENT_PENDING',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -76,6 +93,12 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   INTERNAL_ERROR: 'INTERNAL_SERVER_ERROR',
   UNKNOWN_CONFLICT: 'CONFLICT',
+  REFRESH_TOKEN_REUSED: 'UNAUTHORIZED',
+  REFRESH_RACE: 'CONFLICT',
+  AGE_BELOW_MINIMUM: 'FORBIDDEN',
+  COACH_MUST_BE_ADULT: 'FORBIDDEN',
+  GUARDIAN_CONSENT_REQUIRED: 'FORBIDDEN',
+  GUARDIAN_CONSENT_PENDING: 'FORBIDDEN',
 };
 
 /**
@@ -115,6 +138,12 @@ export interface AppErrorPayloads {
   // No constraint name, table, or column — DB§18: that's exactly the
   // disclosure this code exists to avoid (04's step 7).
   UNKNOWN_CONFLICT: EmptyErrorPayload;
+  REFRESH_TOKEN_REUSED: EmptyErrorPayload;
+  REFRESH_RACE: EmptyErrorPayload;
+  AGE_BELOW_MINIMUM: EmptyErrorPayload;
+  COACH_MUST_BE_ADULT: EmptyErrorPayload;
+  GUARDIAN_CONSENT_REQUIRED: EmptyErrorPayload;
+  GUARDIAN_CONSENT_PENDING: EmptyErrorPayload;
 }
 
 /**

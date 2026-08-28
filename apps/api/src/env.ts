@@ -18,8 +18,22 @@ const envSchema = z.object({
   // shares a rate-limit counter and a session cache with production.
   REDIS_KEY_PREFIX: z.string().min(1),
 
-  JWT_SECRET: z.string().min(1),
-  REFRESH_TOKEN_SECRET: z.string().min(1),
+  // 32 chars minimum — both secrets key an HMAC (HS256 for access tokens,
+  // HMAC-SHA256 for refresh token digests, `auth-server/03`/`04`). A short
+  // key makes the HMAC brute-forceable offline; failing to boot on a short
+  // secret catches a misconfigured deploy, not the hundredth sign-in.
+  JWT_SECRET: z.string().min(32),
+  REFRESH_TOKEN_SECRET: z.string().min(32),
+
+  // Social sign-in token verification (`lib/auth/provider-verification.ts`).
+  // The expected `aud` claim on an inbound identity token — never a secret,
+  // but required at boot so a misconfigured client id fails loudly instead
+  // of silently rejecting every social sign-in. Apple: the app's bundle id
+  // (native Sign In with Apple uses the bundle id as audience, not a
+  // Services ID). Google: comma-separated OAuth client ids, one per
+  // platform (iOS, Android) that may legitimately appear as `aud`.
+  APPLE_SIGN_IN_CLIENT_ID: z.string().min(1),
+  GOOGLE_SIGN_IN_CLIENT_IDS: z.string().min(1),
 
   R2_ACCOUNT_ID: z.string().min(1),
   R2_ACCESS_KEY_ID: z.string().min(1),
@@ -36,6 +50,14 @@ const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().min(1),
 
   RESEND_API_KEY: z.string().min(1),
+  // The from-address every outbound email uses (`lib/email/client.ts`) and
+  // the https origin every emailed link is built from (`auth-server/06`
+  // step 8) — so a preview build never emails a production link and vice
+  // versa (`configuration` skill). Neither is secret; both fail boot when
+  // missing because a misconfigured one silently breaks every email link
+  // rather than erroring loudly.
+  EMAIL_FROM: z.string().min(1),
+  APP_PUBLIC_URL: z.url(),
 
   ANTHROPIC_API_KEY: z.string().min(1),
 

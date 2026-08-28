@@ -16,6 +16,14 @@ export interface WriteAuditLogParams {
   targetType?: string;
   targetId?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * Overrides `ctx.user?.id` as the actor. The one legitimate case this
+   * exists for: `auth.signup` (`auth-server/02`), where the actor *is* the
+   * row the same transaction just inserted — it cannot appear in `ctx`,
+   * which was built before the request existed. Every other call site
+   * omits this and gets the ctx-derived actor described below.
+   */
+  actorUserId?: string;
 }
 
 /**
@@ -36,7 +44,10 @@ export interface WriteAuditLogParams {
  *
  * `actorUserId`, `ip`, and `userAgent` are read from `ctx` automatically
  * (Approach step 2) — a call site only ever supplies `action` and, where it
- * applies, `targetType`/`targetId`/`metadata`. `ctx.request.ip` (not
+ * applies, `targetType`/`targetId`/`metadata`/`actorUserId`. The last one is
+ * an override, not routine: it exists for the one case where the actor
+ * cannot be in `ctx` at all (`WriteAuditLogParams.actorUserId`'s own doc
+ * comment). `ctx.request.ip` (not
  * `trustedIp`) is deliberate: `../trpc/context.ts`'s own doc comment on
  * `RequestMeta.ip` names this table as its one sanctioned use, since a
  * compliance record benefits from best-effort provenance even where it
@@ -48,7 +59,7 @@ export async function writeAuditLog(
   params: WriteAuditLogParams,
 ): Promise<void> {
   const row: NewAuditLogEntry = {
-    actorUserId: ctx.user?.id ?? null,
+    actorUserId: params.actorUserId ?? ctx.user?.id ?? null,
     action: params.action,
     targetType: params.targetType ?? null,
     targetId: params.targetId ?? null,

@@ -4,6 +4,7 @@
 // have, say, a `listInput` without colliding. Alphabetical, no logic — the
 // same reasoning `api-scaffold/04`'s router registry gives for its own
 // list applies here.
+export * from './auth-session.ts';
 export * from './errors.ts';
 export * from './limits.ts';
 export * from './pagination.ts';

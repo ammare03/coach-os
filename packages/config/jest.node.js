@@ -17,19 +17,25 @@ const base = require('./jest.base');
 module.exports = {
   ...base,
   testEnvironment: 'node',
-  moduleFileExtensions: ['ts', 'js', 'json'],
+  // `.tsx` added for `apps/api/src/lib/email/` (auth-server/06) — React
+  // Email templates are the one place this preset's "no DOM, no React
+  // Native transform" doc comment above has an exception: `react-dom/server`
+  // renders them to a string server-side, no DOM or native runtime
+  // involved, so this stays a plain Node preset, just with JSX enabled.
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'json'],
   transform: {
-    '^.+\\.ts$': [
+    '^.+\\.tsx?$': [
       'ts-jest',
       {
         tsconfig: {
           module: 'commonjs',
+          jsx: 'react-jsx',
           ignoreDeprecations: '6.0',
           // The real tsconfig rewrites relative `./x.ts` imports to `./x.js`
           // for Node's native loader. Under ts-jest's CommonJS transpile,
           // that rewrite would point Jest's resolver at a `.js` file that
-          // doesn't exist on disk — leave the literal `.ts` specifier alone
-          // instead so Jest just finds the real file.
+          // doesn't exist on disk — leave the literal `.ts`/`.tsx` specifier
+          // alone instead so Jest just finds the real file.
           rewriteRelativeImportExtensions: false,
         },
       },

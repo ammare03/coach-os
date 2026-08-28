@@ -27,6 +27,9 @@
 6. Run `pnpm check` before declaring work complete. It must exit 0.
 7. If a requirement is ambiguous, **ask** — do not guess and do not silently invent a
    product decision. Product decisions belong to Ammar.
+   7a. **Before writing any code for a screen a trainer or client will see, stop and load the
+   `design-gate` skill.** Alert Ammar, wait for him to run `/design`, and build to his
+   inputs. Design decisions belong to Ammar exactly as product decisions do.
 8. Do not refactor unrelated code "while you're in there." One PR, one concern.
 
 **Hard rules that override everything else:**
@@ -40,6 +43,8 @@
 - **Free over paid, always.** If a free or open-source option covers the scope, use
   it. If none exists, justify the cheapest adequate paid option in §3.4 first.
 - Do not write to `main`. Feature branches + PR only.
+- **No user-facing screen is built before it is designed.** See rule 7a and the
+  `design-gate` skill.
 
 ### 0.1 Where things live
 
@@ -125,8 +130,8 @@ the table above in that same PR. The count goes down over time without a risky b
 
 ---
 
-**Full skill list (17):**
-`git-workflow` · `code-conventions` · `screen-composition` · `ui-conventions` ·
+**Full skill list (18):**
+`design-gate` · `git-workflow` · `code-conventions` · `screen-composition` · `ui-conventions` ·
 `api-conventions` · `db-migrations` · `offline-sync` · `configuration` · `testing` ·
 `frontend-performance` · `accessibility` · `security-and-privacy` · `product-copy` ·
 `release-ops` · `observability-ops` · `analytics-events` · `trust-and-safety` —
@@ -270,26 +275,27 @@ glassmorphism on content surfaces.
 
 ### 3.2 Backend
 
-| Concern              | Choice                                                         | Notes                                                                                                                                                                                                                                                               |
-| -------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Runtime              | **Node 22 LTS**                                                |                                                                                                                                                                                                                                                                     |
-| Framework            | **Hono** on Node adapter                                       | Small, fast, runs on Node and edge                                                                                                                                                                                                                                  |
-| API layer            | **tRPC v11**                                                   | End-to-end types; no OpenAPI codegen needed for our own client                                                                                                                                                                                                      |
-| Wire transformer     | **superjson** (pinned to 1.x, not the current 2.x)             | Lets `Date` cross the wire as a real `Date`, not an ISO string every call site re-parses (`api-conventions` §10). 2.x is ESM-only with no CJS build, which ts-jest's CommonJS transpile (`jest.node.js`) can't load — 1.x still ships one. Added `api-scaffold/01`. |
-| DB                   | **PostgreSQL 16**                                              | Managed: Neon (dev) → AWS RDS (prod)                                                                                                                                                                                                                                |
-| ORM                  | **Drizzle ORM**                                                | Same ORM on server and device — one mental model                                                                                                                                                                                                                    |
-| Migrations           | **drizzle-kit**                                                | Migrations are committed. Never edit an applied migration. See `db-migrations` skill.                                                                                                                                                                               |
-| Cache / queues       | **Redis** (Upstash) + **BullMQ**, client: **ioredis** 5.11.1   | Video transcode jobs, digest emails, notification fanout. One request-path client (`apps/api/src/lib/redis.ts`); BullMQ gets its own connection — see `rate-limiting/01`.                                                                                           |
-| Object storage       | **Cloudflare R2**                                              | S3-compatible, zero egress fees — critical for video (§22)                                                                                                                                                                                                          |
-| Video transcode      | **`ffmpeg` worker** (BullMQ)                                   | Free. Runs on the API host until CPU forces a split. Cloudflare Stream only if §3.4 gate is hit.                                                                                                                                                                    |
-| Auth                 | **Better Auth** (self-hosted)                                  | Email+password, Apple, Google. JWT access + rotating refresh.                                                                                                                                                                                                       |
-| Email                | **Resend** + React Email templates                             |                                                                                                                                                                                                                                                                     |
-| Billing (coach subs) | **RevenueCat** → App Store / Play IAP                          | Stripe retained for the Phase-3 web dashboard and Agency invoicing only. See §15.7.                                                                                                                                                                                 |
-| Realtime             | LiveKit (video) + WebSocket via Hono (presence, live comments) |                                                                                                                                                                                                                                                                     |
-| Search               | Postgres full-text (`tsvector`)                                | No Elasticsearch until it hurts                                                                                                                                                                                                                                     |
-| Error tracking       | **Sentry** (`@sentry/node` 10.70.0)                            | Server counterpart to mobile's `@sentry/react-native` — same free tier, §3.4.3. `observability/02-sentry-integration.md`.                                                                                                                                           |
-| Hosting              | **Fly.io** (API) + **Vercel** (marketing/web)                  |                                                                                                                                                                                                                                                                     |
-| CI                   | **GitHub Actions** + **EAS Build**                             |                                                                                                                                                                                                                                                                     |
+| Concern              | Choice                                                           | Notes                                                                                                                                                                                                                                                               |
+| -------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime              | **Node 22 LTS**                                                  |                                                                                                                                                                                                                                                                     |
+| Framework            | **Hono** on Node adapter                                         | Small, fast, runs on Node and edge                                                                                                                                                                                                                                  |
+| API layer            | **tRPC v11**                                                     | End-to-end types; no OpenAPI codegen needed for our own client                                                                                                                                                                                                      |
+| Wire transformer     | **superjson** (pinned to 1.x, not the current 2.x)               | Lets `Date` cross the wire as a real `Date`, not an ISO string every call site re-parses (`api-conventions` §10). 2.x is ESM-only with no CJS build, which ts-jest's CommonJS transpile (`jest.node.js`) can't load — 1.x still ships one. Added `api-scaffold/01`. |
+| DB                   | **PostgreSQL 16**                                                | Managed: Neon (dev) → AWS RDS (prod)                                                                                                                                                                                                                                |
+| ORM                  | **Drizzle ORM**                                                  | Same ORM on server and device — one mental model                                                                                                                                                                                                                    |
+| Migrations           | **drizzle-kit**                                                  | Migrations are committed. Never edit an applied migration. See `db-migrations` skill.                                                                                                                                                                               |
+| Cache / queues       | **Redis** (Upstash) + **BullMQ**, client: **ioredis** 5.11.1     | Video transcode jobs, digest emails, notification fanout. One request-path client (`apps/api/src/lib/redis.ts`); BullMQ gets its own connection — see `rate-limiting/01`.                                                                                           |
+| Object storage       | **Cloudflare R2**                                                | S3-compatible, zero egress fees — critical for video (§22)                                                                                                                                                                                                          |
+| Video transcode      | **`ffmpeg` worker** (BullMQ)                                     | Free. Runs on the API host until CPU forces a split. Cloudflare Stream only if §3.4 gate is hit.                                                                                                                                                                    |
+| Auth                 | **`jose`** + our own Drizzle queries (self-hosted, no framework) | Email+password (Argon2id), Apple, Google. JWT access + rotating refresh. Reversed from Better Auth — see §3.3 and `apps/api/src/lib/auth/adoption.md` (`phase-03-identity-and-auth/auth-server/01`).                                                                |
+| Password hashing     | **`@node-rs/argon2`**                                            | Argon2id via Rust/napi-rs, prebuilt binaries for every platform this repo builds on — no node-gyp toolchain, no pure-JS fallback slow enough to tempt lowering the cost parameters. OWASP-minimum params (`auth-server/02`).                                        |
+| Email                | **Resend** + React Email templates                               |                                                                                                                                                                                                                                                                     |
+| Billing (coach subs) | **RevenueCat** → App Store / Play IAP                            | Stripe retained for the Phase-3 web dashboard and Agency invoicing only. See §15.7.                                                                                                                                                                                 |
+| Realtime             | LiveKit (video) + WebSocket via Hono (presence, live comments)   |                                                                                                                                                                                                                                                                     |
+| Search               | Postgres full-text (`tsvector`)                                  | No Elasticsearch until it hurts                                                                                                                                                                                                                                     |
+| Error tracking       | **Sentry** (`@sentry/node` 10.70.0)                              | Server counterpart to mobile's `@sentry/react-native` — same free tier, §3.4.3. `observability/02-sentry-integration.md`.                                                                                                                                           |
+| Hosting              | **Fly.io** (API) + **Vercel** (marketing/web)                    |                                                                                                                                                                                                                                                                     |
+| CI                   | **GitHub Actions** + **EAS Build**                               |                                                                                                                                                                                                                                                                     |
 
 ### 3.3 Explicitly rejected
 
@@ -301,6 +307,17 @@ Recorded so we don't relitigate:
 - **Redux Toolkit** — TanStack Query covers 90% of it; Zustand covers the rest.
 - **Bare React Native CLI** — we lose EAS, OTA updates, and config plugins for no gain.
 - **GraphQL** — tRPC gives us types without a schema layer we'd have to maintain.
+- **Better Auth** — the original §3.2 pick, reversed in `phase-03-identity-and-auth/auth-server/01`.
+  Its core schema hard-requires a boolean `user.emailVerified`, a URL `user.image`, and separate
+  `account`/`session`/`verification` tables — none of which exist in `DATABASE.md` DB§5.1
+  (`email_verified_at timestamptz`, `avatar_asset_id uuid` FK, `password_hash` on the user row,
+  and `refresh_tokens` rotation families instead of an opaque session table). Confirmed against
+  the library's own `getAuthTables` source, not assumed from docs. Adopting it would have meant
+  either a migration DB§5.1 doesn't call for, or running two parallel and disagreeing models of
+  "is this email verified" and "what is a session" — worse than not adopting it. Replaced by
+  `jose` (JWT signing/verification, JWKS handling for Apple/Google) plus our own Drizzle queries —
+  still free, still self-hosted, just not a framework. Full mapping table:
+  `apps/api/src/lib/auth/adoption.md`.
 
 ### 3.4 Cost-first selection policy
 
@@ -360,7 +377,7 @@ outgrow it. **Keep this table accurate.** It is the early-warning system for cos
 | **Cloudflare R2**             | 10GB storage, **$0 egress**              | ~Phase 1        | $0.015/GB/mo. Egress stays free — this is why R2 and not S3.                                           |
 | **Video transcode (ffmpeg)**  | Free, OSS                                | until CPU-bound | Split the worker to its own cheap VPS. Cloudflare Stream only past ~2,000 videos/mo.                   |
 | **LiveKit**                   | Cloud free tier ≈ 5k participant-min/mo  | Phase 2 pilot   | **Self-host the OSS SFU** on a VPS. This is the whole reason we chose LiveKit.                         |
-| **Better Auth**               | Free, OSS, self-hosted                   | forever         | — (this is why we rejected Auth0/Clerk, which bill per MAU)                                            |
+| **`jose`**                    | Free, OSS (MIT)                          | forever         | — self-hosted JWT/JWKS, no per-MAU billing to outgrow (this is still why we rejected Auth0/Clerk)      |
 | **Sentry**                    | 5k errors/mo, 1 user                     | Phase 1–2       | Self-hostable, but realistically stay on free and sample aggressively                                  |
 | **PostHog**                   | 1M events/mo, cloud                      | Phase 1–3       | Event volume is controllable — cut low-value events before paying                                      |
 | **Resend**                    | 3k emails/mo, 100/day                    | Phase 1–2       | Brevo (300/day free) or Amazon SES ($0.10/1k)                                                          |

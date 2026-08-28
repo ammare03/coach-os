@@ -31,17 +31,49 @@ export const PUBLIC_ALLOWLIST: readonly PublicAllowlistEntry[] = [
     addedOn: '2026-08-23',
   },
 
-  // The five `auth.*` procedures §6.1 defines as unauthenticated
-  // (`auth.signUp`, `auth.signIn`, `auth.refresh`, `auth.requestReset`,
-  // `auth.resetPassword`) are deliberately NOT listed yet. `routers/auth.ts`
-  // is still the empty stub `api-scaffold` registered — adding their paths
-  // now would make every one of them fail this file's own staleness check
-  // (`authz.test.ts`'s "the walk must produce this path" assertion) the
-  // moment it's added, since `appRouter._def.procedures` has nothing at
-  // `auth.*` for it to find. That failure would be real, but it would teach
-  // nobody anything they don't already know: the procedures don't exist.
-  // `phase-03-identity-and-auth/auth-server/` adds each entry in the same
-  // PR that implements the procedure it names — never speculatively ahead
-  // of it. Invite acceptance is deliberately excluded even then
-  // (`CLAUDE.md` §8.1 requires it to be a protected procedure).
+  {
+    path: 'auth.signUp',
+    reason:
+      'Account creation has no caller identity to check yet — that is the whole point of a sign-up procedure. Coach-only is enforced inside the resolver (signUpInput has no role field), not by authz.',
+    addedBy: 'phase-03-identity-and-auth/auth-server/02-password-hashing-and-user-creation.md',
+    addedOn: '2026-08-27',
+  },
+  {
+    path: 'auth.signIn',
+    reason:
+      'Credential verification is what establishes identity — a caller with no session must be able to reach this to get one. Response equivalence (unknown email / wrong password / social-only) is enforced inside the resolver, not by authz.',
+    addedBy: 'phase-03-identity-and-auth/auth-server/02-password-hashing-and-user-creation.md',
+    addedOn: '2026-08-27',
+  },
+
+  {
+    path: 'auth.refresh',
+    reason:
+      'Must work with an absent or expired access token — that is the entire point of a refresh procedure. Identity is established by the presented refresh token itself (a database-backed lookup, not the JWT verifier), and it is rate-limited per token family rather than by caller identity (CLAUDE.md §6.5, api-conventions skill §7).',
+    addedBy: 'phase-03-identity-and-auth/auth-server/04-refresh-token-rotation.md',
+    addedOn: '2026-08-27',
+  },
+
+  {
+    path: 'auth.signOut',
+    reason:
+      "A caller whose access token already expired still has a valid refresh token and still needs the session ended — requiring a live access token would fail the sign-out button for exactly the person who left the app closed overnight. The family is resolved from the presented token's own digest, never from caller input, so no other session can be reached (auth-server/05).",
+    addedBy: 'phase-03-identity-and-auth/auth-server/05-sign-out-and-family-revocation.md',
+    addedOn: '2026-08-27',
+  },
+
+  {
+    path: 'auth.requestReset',
+    reason:
+      'A caller with no session is exactly who needs to recover an account. Response equivalence (same shape for a known and an unknown address) is enforced inside the resolver; a per-email rate limit on top of the shared auth.* bucket bounds abuse (auth-server/06).',
+    addedBy: 'phase-03-identity-and-auth/auth-server/06-password-reset-via-resend.md',
+    addedOn: '2026-08-27',
+  },
+  {
+    path: 'auth.resetPassword',
+    reason:
+      'Identity is established by the presented reset token itself (a single-use, Redis-backed digest lookup), not by a session — a caller recovering an account has none. An unknown, expired, or already-used token returns one identical error (auth-server/06).',
+    addedBy: 'phase-03-identity-and-auth/auth-server/06-password-reset-via-resend.md',
+    addedOn: '2026-08-27',
+  },
 ];

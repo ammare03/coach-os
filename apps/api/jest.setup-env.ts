@@ -27,8 +27,11 @@ process.env.REDIS_KEY_PREFIX = 'coachos:test:';
 // fails, and theirs doesn't.
 process.env.REDIS_TEST_GIVE_UP_AFTER_FIRST_FAILURE = 'true';
 
-process.env.JWT_SECRET = 'test-jwt-secret';
-process.env.REFRESH_TOKEN_SECRET = 'test-refresh-token-secret';
+process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters-long';
+process.env.REFRESH_TOKEN_SECRET = 'test-refresh-token-secret-at-least-32-chars';
+
+process.env.APPLE_SIGN_IN_CLIENT_ID = 'com.coachos.app.test';
+process.env.GOOGLE_SIGN_IN_CLIENT_IDS = 'test-ios-client-id,test-android-client-id';
 
 process.env.R2_ACCOUNT_ID = 'test-r2-account-id';
 process.env.R2_ACCESS_KEY_ID = 'test-r2-access-key-id';
@@ -45,6 +48,8 @@ process.env.STRIPE_SECRET_KEY = 'sk_test_test-stripe-secret-key';
 process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test-stripe-webhook-secret';
 
 process.env.RESEND_API_KEY = 'test-resend-api-key';
+process.env.EMAIL_FROM = 'CoachOS <noreply@coachos.test>';
+process.env.APP_PUBLIC_URL = 'https://app.coachos.test';
 
 process.env.ANTHROPIC_API_KEY = 'test-anthropic-api-key';
 
