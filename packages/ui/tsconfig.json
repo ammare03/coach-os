@@ -11,7 +11,14 @@
     "moduleDetection": "force",
     "customConditions": ["react-native"],
     "jsx": "react-jsx",
-    "noEmit": true
+    "noEmit": true,
+    // Same reason as `apps/mobile`/`apps/api`'s tsconfig: every relative
+    // import in this repo writes the real `.ts`/`.tsx` extension on disk
+    // (CLAUDE.md §17.1 `verbatimModuleSyntax`), and tsc needs this flag to
+    // resolve those literally under `noEmit`.
+    "allowImportingTsExtensions": true,
+    // Needed for `*.test.tsx` to typecheck (mirrors `apps/mobile/tsconfig.json`).
+    "types": ["jest"]
   },
   "include": ["src"]
 }
