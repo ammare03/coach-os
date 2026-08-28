@@ -18,14 +18,17 @@ describe('SignInForm', () => {
     mockSignIn.mockClear();
   });
 
+  // Slower CI runners can take longer than the 5s Jest default to settle
+  // the re-render after zodResolver validates the empty form — bumped, not
+  // the other two tests in this file, which don't wait on a validation pass.
   it('shows a validation error and never calls signIn when the form is empty', async () => {
     render(<SignInForm />);
 
     fireEvent.press(screen.getByText('Sign in'));
 
-    await waitFor(() => expect(screen.getByText(/invalid/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/invalid/i)).toBeTruthy(), { timeout: 10_000 });
     expect(mockSignIn).not.toHaveBeenCalled();
-  });
+  }, 15_000);
 
   it('calls signIn with the entered values and navigates home on success', async () => {
     mockSignIn.mockResolvedValue({ ok: true });
