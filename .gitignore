@@ -129,5 +129,11 @@ OBSERVABILITY.md
 SUPPORT.md
 UI-UX.md
 
+# ── unforget deferred-work ledger (split posture: contents private, ──
+# ── docs/README.md's registry block stays tracked as the index) ──────
+docs/UNFORGET.md
+docs/.unforget.json
+docs/.unforget-session.json
+
 # ── Misc ──────────────────────────────────────────────────────
 example

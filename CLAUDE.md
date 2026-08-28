@@ -138,6 +138,12 @@ the table above in that same PR. The count goes down over time without a risky b
 all installed at `.claude/skills/<name>/SKILL.md`. Roster by role:
 `.claude/skills/README.md`.
 
+**Plugins (use as and when required, alongside the skills above):** `bug-echo` and
+`prompter` are installed globally and are fair game in this repo whenever the task
+at hand calls for what they do — debugging/bug-report capture for `bug-echo`,
+prompt drafting/refinement for `prompter`. Neither replaces a project skill above;
+reach for one only when it's actually the tool for the moment, not by default.
+
 ---
 
 ## 1. Product overview
@@ -1071,3 +1077,14 @@ should bring it back — none of them is "when we get around to it."
 ---
 
 _Last updated: 16 August 2026 · Owner: Ammar · Update this file in the same PR as the code it describes._
+
+<!-- unforget:begin — maintained by the unforget skill; do not hand-edit inside these markers -->
+
+## Deferred Work Index
+
+**Ledger home:** `docs/UNFORGET.md` (git posture: split — contents ignored, README/index tracked)
+
+- `UNFORGET.md` — UNFORGET.md (main · standard-10col).
+
+Read the ledgers when the user asks "what's deferred?" / "backlog?" / "prioritize," and before suggesting a release (check 🔴 THIS rows). Log new deferrals via the deferral gate — an item lives in exactly ONE ledger; siblings get a pointer row, not a copy.
+<!-- unforget:end -->
