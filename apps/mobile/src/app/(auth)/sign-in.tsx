@@ -25,22 +25,16 @@ export default function SignInScreen() {
   const { signInWithApple, isSubmitting: isApplePending } = useAppleSignIn();
   const { signInWithGoogle, isSubmitting: isGooglePending } = useGoogleSignIn();
   const [socialError, setSocialError] = useState<string | null>(null);
-  // Held, not yet consumed — `social-sign-in/03`'s `newIdentity` outcome
-  // needs a date-of-birth screen before an account exists at all
-  // (`auth-server/07` requires it at signup; neither provider supplies it).
-  // That screen is gated behind `/design` per `CLAUDE.md` rule 7a — see the
-  // `design-gate` alert this feature raised. The server has already
-  // verified the identity and issued a short-lived token by this point;
-  // nothing here invents a screen or navigates to one that doesn't exist
-  // yet. Once it does, this is what it reads.
-  const [pendingSocialSignupToken, setPendingSocialSignupToken] = useState<string | null>(null);
   const socialBusy = isApplePending || isGooglePending;
 
   // Shared by both providers — `social-sign-in/03`'s three outcomes are
-  // identical regardless of which one produced them.
+  // identical regardless of which one produced them. A brand-new identity
+  // routes to the date-of-birth screen (`auth-server/07` requires it at
+  // signup; neither provider supplies it) — approved via `/design`.
   function handleOutcome(result: {
     status: string;
     pendingSignupToken?: string;
+    email?: string;
     error?: { formMessage: string };
   }) {
     if (result.status === 'signedIn') {
@@ -48,14 +42,16 @@ export default function SignInScreen() {
       return;
     }
     if (result.status === 'needsDateOfBirth' && result.pendingSignupToken) {
-      setPendingSocialSignupToken(result.pendingSignupToken);
+      router.push({
+        pathname: '/complete-social-signup',
+        params: { pendingSignupToken: result.pendingSignupToken, email: result.email ?? '' },
+      });
       return;
     }
     if (result.status === 'error' && result.error) {
       setSocialError(result.error.formMessage);
     }
   }
-  void pendingSocialSignupToken; // read by the date-of-birth screen once it exists
 
   return (
     <View style={styles.screen}>

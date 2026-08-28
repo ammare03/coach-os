@@ -8,7 +8,7 @@ import { commitOpenedSession } from '../session-result.ts';
 
 export type GoogleSignInResult =
   | { status: 'signedIn' }
-  | { status: 'needsDateOfBirth'; pendingSignupToken: string }
+  | { status: 'needsDateOfBirth'; pendingSignupToken: string; email: string }
   | { status: 'cancelled' }
   | { status: 'error'; error: AuthFormError };
 
@@ -73,7 +73,11 @@ export function useGoogleSignIn() {
     try {
       const result = await mutation.mutateAsync({ idToken, ...device });
       if (result.kind === 'needsDateOfBirth') {
-        return { status: 'needsDateOfBirth', pendingSignupToken: result.pendingSignupToken };
+        return {
+          status: 'needsDateOfBirth',
+          pendingSignupToken: result.pendingSignupToken,
+          email: result.email,
+        };
       }
       await commitOpenedSession(result);
       return { status: 'signedIn' };

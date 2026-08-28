@@ -30,7 +30,8 @@ export interface SocialSignInDevice {
  * exists.
  */
 export type SocialSignInResult =
-  ({ kind: 'session' } & OpenedSession) | { kind: 'needsDateOfBirth'; pendingSignupToken: string };
+  | ({ kind: 'session' } & OpenedSession)
+  | { kind: 'needsDateOfBirth'; pendingSignupToken: string; email: string };
 
 function socialAccountExists(provider: SocialIdentityClaim['provider']) {
   return appError(
@@ -52,6 +53,14 @@ export async function handleSocialSignIn(
   ctx: Pick<Context, 'user' | 'request'>,
   claim: SocialIdentityClaim,
   device: SocialSignInDevice,
+  // The best name available for this identity outside `claim` itself —
+  // Google's verified `name` claim (`routers/auth.ts` reads it off the
+  // full `ProviderClaim` before narrowing to `SocialIdentityClaim`), or
+  // Apple's client-supplied one-time `fullName`. `null` when neither
+  // provider gave one. Not part of `SocialIdentityClaim` — resolving a
+  // provider identity to a `userId` never needs it; only account
+  // *creation* does.
+  name: string | null = null,
 ): Promise<SocialSignInResult> {
   const resolution = await resolveSocialIdentity(db, claim);
 
@@ -70,8 +79,9 @@ export async function handleSocialSignIn(
       provider: claim.provider,
       providerUid: claim.providerUid,
       email: claim.email,
+      name,
     });
-    return { kind: 'needsDateOfBirth', pendingSignupToken: token };
+    return { kind: 'needsDateOfBirth', pendingSignupToken: token, email: claim.email };
   }
 
   const [user] = await db

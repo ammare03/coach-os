@@ -16,7 +16,6 @@ import type { SocialSignInDevice } from './social-sign-in.ts';
 
 export interface CompleteSocialSignUpInput {
   pendingSignupToken: string;
-  name: string;
   timezone: string;
   dateOfBirth: string;
   device: SocialSignInDevice;
@@ -26,19 +25,35 @@ function expiredPendingSignup() {
   return appError('AUTH_REQUIRED', 'This sign-in attempt has expired. Try again.', {});
 }
 
+/**
+ * The last-resort name when neither provider gave one (Apple, on any
+ * authorization after the very first — Google practically always
+ * includes a `name` claim). `users.name` is `NOT NULL` and this screen
+ * has no field to ask with (the approved `/design` canvas), so this is
+ * what stands in until the coach edits their profile. Splits the email's
+ * local part on the common separators and title-cases each piece —
+ * `jane.doe@x.com` → "Jane Doe"; a local part with no separator just gets
+ * its first letter capitalised.
+ */
+function deriveNameFromEmail(email: string): string {
+  const localPart = email.split('@')[0] ?? email;
+  const words = localPart.split(/[._+-]+/).filter((w) => w.length > 0);
+  const titled = (words.length > 0 ? words : [localPart]).map(
+    (w) => w.charAt(0).toUpperCase() + w.slice(1),
+  );
+  return titled.join(' ').slice(0, 200);
+}
+
 export async function completeSocialSignUp(
   db: DbClient,
   ctx: Pick<Context, 'user' | 'request'>,
   input: CompleteSocialSignUpInput,
 ): Promise<OpenedSession> {
-  const pending = await consumePendingSignup(input.pendingSignupToken);
-  if (!pending) {
-    throw expiredPendingSignup();
-  }
-
-  // The exact rule `auth-server/07` applies at `auth.signUp` — social
-  // sign-up creates coaches only, same restriction (`create-social-account.ts`'s
-  // own doc comment), so the same age check applies unmodified.
+  // Age-checked BEFORE consuming the token, deliberately — `dateOfBirth`
+  // is the caller's input alone, nothing to do with the pending record,
+  // and `consumePendingSignup` is single-use (`GETDEL`). Checking after
+  // would burn the token on a rejected age and force the person back
+  // through the entire Apple/Google sheet just to retype a birthdate.
   const ageOutcome = evaluateSignupAge(input.dateOfBirth);
   if (ageOutcome === 'AGE_BELOW_MINIMUM') {
     throw appError('AGE_BELOW_MINIMUM', 'You need to be at least 13 to use CoachOS.', {});
@@ -51,6 +66,11 @@ export async function completeSocialSignUp(
     );
   }
 
+  const pending = await consumePendingSignup(input.pendingSignupToken);
+  if (!pending) {
+    throw expiredPendingSignup();
+  }
+
   // A duplicate email here surfaces as a raw `users_email_unique` violation,
   // left uncaught for the same reason `auth.signUp` leaves it uncaught
   // (`../../routers/auth.ts`'s own comment) — the request-wide
@@ -58,7 +78,7 @@ export async function completeSocialSignUp(
   const { user, coachProfile } = await db.transaction((tx) =>
     createSocialCoachAccount(tx, ctx, {
       email: pending.email,
-      name: input.name,
+      name: pending.name ?? deriveNameFromEmail(pending.email),
       timezone: input.timezone,
       dateOfBirth: input.dateOfBirth,
       provider: pending.provider,

@@ -107,10 +107,19 @@ export type ResetPasswordInput = z.infer<typeof resetPasswordInput>;
  * is required, not optional: `../../apps/api/src/lib/auth/provider-verification.ts`'s
  * `verifyAppleIdentityToken` rejects a token whose `nonce` claim doesn't
  * match it, and there is nothing to compare against without it.
+ *
+ * `fullName` is optional and Apple-specific: the identity token never
+ * carries a name claim at all (`provider-verification.ts`'s own doc
+ * comment), so on a brand-new identity the ONLY chance to learn it is
+ * `AppleAuthentication`'s one-time authorization response, which the
+ * client has and the server never sees independently. Sent here so the
+ * date-of-birth screen never has to ask for a name Apple already gave —
+ * that screen has no name field by design (`/design`'s approved canvas).
  */
 export const signInWithAppleInput = strictObject({
   identityToken: z.string().min(1).max(4096),
   nonce: z.string().min(16).max(256),
+  fullName: z.string().trim().min(1).max(200).optional(),
   ...deviceFields,
 });
 export type SignInWithAppleInput = z.infer<typeof signInWithAppleInput>;
@@ -128,14 +137,16 @@ export type SignInWithGoogleInput = z.infer<typeof signInWithGoogleInput>;
  * `signInWithApple`/`signInWithGoogle` returned when the verified identity
  * matched no existing account; `dateOfBirth` is collected here because
  * neither provider hands one over and `auth-server/07` requires it at
- * signup for both roles. `name` mirrors {@link signUpInput}'s field — a
- * provider's own name claim is unreliable enough (Apple never includes one
- * in the identity token at all) that this is the one source of truth,
- * regardless of what a screen pre-fills it with.
+ * signup for both roles.
+ *
+ * No `name` field, deliberately — the approved `/design` canvas for this
+ * screen has none. The name travels with the pending signup record
+ * instead (Google's verified `name` claim, or Apple's one-time
+ * `fullName` from {@link signInWithAppleInput}), resolved server-side
+ * when the account is created.
  */
 export const completeSocialSignUpInput = strictObject({
   pendingSignupToken: z.string().min(1).max(512),
-  name: z.string().trim().min(1).max(200),
   timezone,
   dateOfBirth: calendarDate,
   ...deviceFields,

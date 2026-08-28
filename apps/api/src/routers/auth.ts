@@ -266,15 +266,26 @@ export const authRouter = router({
       if (!claim) {
         throw socialTokenInvalid();
       }
-      return handleSocialSignIn(ctx.db, ctx, claim, {
-        deviceId: input.deviceId,
-        platform: input.platform,
-        appVersion: input.appVersion,
-        osVersion: input.osVersion,
-      });
+      return handleSocialSignIn(
+        ctx.db,
+        ctx,
+        claim,
+        {
+          deviceId: input.deviceId,
+          platform: input.platform,
+          appVersion: input.appVersion,
+          osVersion: input.osVersion,
+        },
+        // Apple's identity token never carries a name (`claim.name` is
+        // always `null`) — `input.fullName` is the client's one-time
+        // `AppleAuthentication` response, the only place it exists.
+        input.fullName ?? null,
+      );
     }),
 
-  // `social-sign-in/02` — same shape as `signInWithApple` above.
+  // `social-sign-in/02` — same shape as `signInWithApple` above, except
+  // Google's own verified `claim.name` is passed straight through — no
+  // client-supplied fallback needed.
   signInWithGoogle: authProcedure
     .input(authSchemas.signInWithGoogleInput)
     .mutation(async ({ ctx, input }) => {
@@ -282,12 +293,18 @@ export const authRouter = router({
       if (!claim) {
         throw socialTokenInvalid();
       }
-      return handleSocialSignIn(ctx.db, ctx, claim, {
-        deviceId: input.deviceId,
-        platform: input.platform,
-        appVersion: input.appVersion,
-        osVersion: input.osVersion,
-      });
+      return handleSocialSignIn(
+        ctx.db,
+        ctx,
+        claim,
+        {
+          deviceId: input.deviceId,
+          platform: input.platform,
+          appVersion: input.appVersion,
+          osVersion: input.osVersion,
+        },
+        claim.name,
+      );
     }),
 
   // `social-sign-in/03` + Ammar's DOB-gate decision — the second step of a
@@ -298,7 +315,6 @@ export const authRouter = router({
     .mutation(({ ctx, input }) =>
       completeSocialSignUp(ctx.db, ctx, {
         pendingSignupToken: input.pendingSignupToken,
-        name: input.name,
         timezone: input.timezone,
         dateOfBirth: input.dateOfBirth,
         device: {

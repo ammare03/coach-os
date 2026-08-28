@@ -23,6 +23,12 @@ export interface PendingSocialSignup {
   provider: SocialProvider;
   providerUid: string;
   email: string;
+  // Google's own `name` claim, or Apple's one-time `fullName` from the
+  // client — `null` when the provider gave nothing (Apple, on any
+  // authorization after the first). `complete-social-signup.ts` falls
+  // back to deriving something from `email` when this is `null`; the
+  // date-of-birth screen has no name field to ask with instead.
+  name: string | null;
 }
 
 /** Bare SHA-256, same reasoning as `./reset-token.ts`'s `hashResetToken` — this token dies on its own within its TTL, so there's no rotating secret worth keying it with. */

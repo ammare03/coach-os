@@ -8,7 +8,7 @@ import { commitOpenedSession } from '../session-result.ts';
 
 export type AppleSignInResult =
   | { status: 'signedIn' }
-  | { status: 'needsDateOfBirth'; pendingSignupToken: string }
+  | { status: 'needsDateOfBirth'; pendingSignupToken: string; email: string }
   | { status: 'cancelled' }
   | { status: 'error'; error: AuthFormError };
 
@@ -62,15 +62,30 @@ export function useAppleSignIn() {
       return genericError();
     }
 
+    // Apple's identity token never carries a name — `credential.fullName`
+    // is the one-time chance (only present on this app's very first
+    // authorization for this Apple ID), and the only place it exists at
+    // all. Sent alongside the token so a brand-new account never needs to
+    // ask for it separately (`packages/schemas/src/auth.ts`'s own comment).
+    const fullName = [credential.fullName?.givenName, credential.fullName?.familyName]
+      .filter((part): part is string => Boolean(part))
+      .join(' ')
+      .trim();
+
     const device = await buildDeviceFields();
     try {
       const result = await mutation.mutateAsync({
         identityToken: credential.identityToken,
         nonce,
+        ...(fullName.length > 0 && { fullName }),
         ...device,
       });
       if (result.kind === 'needsDateOfBirth') {
-        return { status: 'needsDateOfBirth', pendingSignupToken: result.pendingSignupToken };
+        return {
+          status: 'needsDateOfBirth',
+          pendingSignupToken: result.pendingSignupToken,
+          email: result.email,
+        };
       }
       await commitOpenedSession(result);
       return { status: 'signedIn' };
