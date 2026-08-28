@@ -1,5 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 
+import { tokenCache } from './token-cache.ts';
 import type { StoredSession } from './types.ts';
 
 // The only file in this app that imports `expo-secure-store`
@@ -67,12 +68,18 @@ export async function getTokens(): Promise<StoredSession | null> {
  * write that fails partway is cleaned up rather than left as a stranded
  * access token with no refresh token behind it — order matters: refresh
  * token first, then the access token and its expiry.
+ *
+ * Also primes `tokenCache` in this same function (`auth-client/02`) — the
+ * invariant `authLink` depends on is that SecureStore and the in-memory
+ * cache can never disagree, which only holds if every writer updates both
+ * in one place rather than each caller remembering to.
  */
 export async function setTokens(session: StoredSession): Promise<void> {
   try {
     await SecureStore.setItemAsync(KEYS.refreshToken, session.refreshToken, OPTIONS);
     await SecureStore.setItemAsync(KEYS.accessToken, session.accessToken, OPTIONS);
     await SecureStore.setItemAsync(KEYS.accessExpiresAt, session.accessExpiresAt, OPTIONS);
+    tokenCache.set(session.accessToken, session.accessExpiresAt);
   } catch (error) {
     await clearTokens();
     throw error;
@@ -82,7 +89,8 @@ export async function setTokens(session: StoredSession): Promise<void> {
 /**
  * Removes the access token, refresh token, and expiry — but deliberately
  * NOT the device id, which survives sign-out because signing out ends a
- * session, not the phone's identity (task 01 approach step 3).
+ * session, not the phone's identity (task 01 approach step 3). Also clears
+ * `tokenCache`, for the same same-function invariant as `setTokens`.
  */
 export async function clearTokens(): Promise<void> {
   await Promise.all([
@@ -90,6 +98,7 @@ export async function clearTokens(): Promise<void> {
     SecureStore.deleteItemAsync(KEYS.refreshToken, OPTIONS),
     SecureStore.deleteItemAsync(KEYS.accessExpiresAt, OPTIONS),
   ]);
+  tokenCache.clear();
 }
 
 /** The id `auth-server/03` mints and expects back on the next sign-in. */

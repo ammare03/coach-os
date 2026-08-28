@@ -2,6 +2,8 @@ import { httpBatchLink, loggerLink, type TRPCLink } from '@trpc/client';
 import type { AppRouter } from 'api/src/routers/index.ts';
 import superjson from 'superjson';
 
+import { authLink, buildRequestHeaders } from '../features/auth/auth-link.ts';
+
 import { getApiUrl } from './api-url.ts';
 import { generateRequestId } from './request-id.ts';
 
@@ -9,19 +11,12 @@ import { generateRequestId } from './request-id.ts';
 // only observe/retry an operation that passes *through* it. That ordering
 // is load-bearing, not cosmetic:
 //
-//   loggerLink        dev only, sees the PROCEDURE before batching collapses it
-//   [auth position]    pass-through now; phase-03-identity-and-auth/auth-client/02
-//                      puts the header link here, /03 puts refresh+replay right after —
-//                      it must sit above the terminating link to retry what that link saw fail
-//   httpBatchLink      terminating — superjson transformer, POST to {url}/trpc
-//
-// The auth link's position is this file's `links.push(passThroughAuthLink)`
-// line below — P03's auth-client/02 replaces that one push with the real
-// header link, and auth-client/03 adds refresh+replay immediately after it,
-// without reordering anything else.
-const passThroughAuthLink: TRPCLink<AppRouter> = () => {
-  return ({ next, op }) => next(op);
-};
+//   loggerLink     dev only, sees the PROCEDURE before batching collapses it
+//   authLink       stamps op.context.needsAuth (auth-client/02); auth-client/03
+//                  puts refresh+replay right after — it must sit above the
+//                  terminating link to retry what that link saw fail
+//   httpBatchLink  terminating — reads op.context via buildRequestHeaders,
+//                  superjson transformer, POST to {url}/trpc
 
 export function buildLinks(): TRPCLink<AppRouter>[] {
   const links: TRPCLink<AppRouter>[] = [];
@@ -30,7 +25,7 @@ export function buildLinks(): TRPCLink<AppRouter>[] {
     links.push(loggerLink());
   }
 
-  links.push(passThroughAuthLink);
+  links.push(authLink);
 
   links.push(
     httpBatchLink({
@@ -56,7 +51,10 @@ export function buildLinks(): TRPCLink<AppRouter>[] {
       // the id once with `generateRequestId()` at enqueue time, persists it
       // alongside the queued mutation, and passes it through here instead
       // of letting this link generate a new one per attempt.
-      headers: () => ({ 'x-request-id': generateRequestId() }),
+      headers: ({ opList }) => ({
+        ...buildRequestHeaders(opList),
+        'x-request-id': generateRequestId(),
+      }),
     }),
   );
 
