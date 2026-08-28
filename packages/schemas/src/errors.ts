@@ -51,6 +51,16 @@ export const APP_ERROR_CODES = [
   'COACH_MUST_BE_ADULT',
   'GUARDIAN_CONSENT_REQUIRED',
   'GUARDIAN_CONSENT_PENDING',
+  // social-sign-in/03 — a verified Apple/Google identity's email already
+  // belongs to an existing `users` row with no link to that provider yet.
+  // Never auto-merged (the task's own Risks section); the client tells the
+  // person to sign in with their existing method first, then link.
+  'SOCIAL_ACCOUNT_EXISTS',
+  // social-sign-in/01, /02 — the provider rejected the identity token, or
+  // `jwtVerify` did (bad signature, wrong aud/iss, expired, bad nonce).
+  // Distinct from `AUTH_REQUIRED`: this is a token the *provider* refused,
+  // not a CoachOS session.
+  'SOCIAL_TOKEN_INVALID',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -99,6 +109,8 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   COACH_MUST_BE_ADULT: 'FORBIDDEN',
   GUARDIAN_CONSENT_REQUIRED: 'FORBIDDEN',
   GUARDIAN_CONSENT_PENDING: 'FORBIDDEN',
+  SOCIAL_ACCOUNT_EXISTS: 'CONFLICT',
+  SOCIAL_TOKEN_INVALID: 'UNAUTHORIZED',
 };
 
 /**
@@ -144,6 +156,11 @@ export interface AppErrorPayloads {
   COACH_MUST_BE_ADULT: EmptyErrorPayload;
   GUARDIAN_CONSENT_REQUIRED: EmptyErrorPayload;
   GUARDIAN_CONSENT_PENDING: EmptyErrorPayload;
+  // `provider` only — which one collided, so the client can render "sign in
+  // to link Google" without tracking that across the request itself. Never
+  // the colliding email (DB§18) — the client already knows it, it just sent it.
+  SOCIAL_ACCOUNT_EXISTS: { provider: 'apple' | 'google' };
+  SOCIAL_TOKEN_INVALID: EmptyErrorPayload;
 }
 
 /**
