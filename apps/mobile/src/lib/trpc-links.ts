@@ -3,6 +3,7 @@ import type { AppRouter } from 'api/src/routers/index.ts';
 import superjson from 'superjson';
 
 import { authLink, buildRequestHeaders } from '../features/auth/auth-link.ts';
+import { refreshLink } from '../features/auth/refresh-interceptor.ts';
 
 import { getApiUrl } from './api-url.ts';
 import { generateRequestId } from './request-id.ts';
@@ -12,9 +13,10 @@ import { generateRequestId } from './request-id.ts';
 // is load-bearing, not cosmetic:
 //
 //   loggerLink     dev only, sees the PROCEDURE before batching collapses it
-//   authLink       stamps op.context.needsAuth (auth-client/02); auth-client/03
-//                  puts refresh+replay right after — it must sit above the
-//                  terminating link to retry what that link saw fail
+//   refreshLink    catches AUTH_REQUIRED, refreshes once, replays (auth-client/03) —
+//                  must sit above authLink so a replay passes back through it
+//   authLink       stamps op.context.needsAuth (auth-client/02), read by
+//                  buildRequestHeaders below — last stop before the wire
 //   httpBatchLink  terminating — reads op.context via buildRequestHeaders,
 //                  superjson transformer, POST to {url}/trpc
 
@@ -25,6 +27,7 @@ export function buildLinks(): TRPCLink<AppRouter>[] {
     links.push(loggerLink());
   }
 
+  links.push(refreshLink);
   links.push(authLink);
 
   links.push(

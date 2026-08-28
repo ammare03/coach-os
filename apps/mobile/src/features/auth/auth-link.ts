@@ -24,7 +24,11 @@ export const EXCLUDED_PROCEDURES: readonly string[] = [
   'auth.resetPassword',
 ];
 
-function needsAuth(path: string): boolean {
+/** Also used by `refresh-interceptor.ts`, which sits above this link in
+ * the chain and so cannot read the `needsAuth` this link stamps on
+ * `op.context` for the *downstream* chain — it needs its own answer to the
+ * same question, from the same list, before `op` ever reaches here. */
+export function needsAuth(path: string): boolean {
   return !EXCLUDED_PROCEDURES.includes(path);
 }
 
