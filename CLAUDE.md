@@ -27,6 +27,9 @@
 6. Run `pnpm check` before declaring work complete. It must exit 0.
 7. If a requirement is ambiguous, **ask** — do not guess and do not silently invent a
    product decision. Product decisions belong to Ammar.
+   7a. **Before writing any code for a screen a trainer or client will see, stop and load the
+   `design-gate` skill.** Alert Ammar, wait for him to run `/design`, and build to his
+   inputs. Design decisions belong to Ammar exactly as product decisions do.
 8. Do not refactor unrelated code "while you're in there." One PR, one concern.
 
 **Hard rules that override everything else:**
@@ -40,6 +43,8 @@
 - **Free over paid, always.** If a free or open-source option covers the scope, use
   it. If none exists, justify the cheapest adequate paid option in §3.4 first.
 - Do not write to `main`. Feature branches + PR only.
+- **No user-facing screen is built before it is designed.** See rule 7a and the
+  `design-gate` skill.
 
 ### 0.1 Where things live
 
@@ -125,8 +130,8 @@ the table above in that same PR. The count goes down over time without a risky b
 
 ---
 
-**Full skill list (17):**
-`git-workflow` · `code-conventions` · `screen-composition` · `ui-conventions` ·
+**Full skill list (18):**
+`design-gate` · `git-workflow` · `code-conventions` · `screen-composition` · `ui-conventions` ·
 `api-conventions` · `db-migrations` · `offline-sync` · `configuration` · `testing` ·
 `frontend-performance` · `accessibility` · `security-and-privacy` · `product-copy` ·
 `release-ops` · `observability-ops` · `analytics-events` · `trust-and-safety` —
