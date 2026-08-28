@@ -31,7 +31,7 @@ export function renderEmailHtml(react: ReactElement): string {
 
 /**
  * A deliberately small tag-stripper, not a general HTML-to-text library —
- * every template this project sends goes through `./layout.tsx`, whose
+ * every template this project sends goes through `./layout.ts`, whose
  * structure (heading, paragraphs, one button, the URL printed as text
  * beneath it) this function is written against. A template with a
  * fundamentally different shape (a table, nested lists) should get a

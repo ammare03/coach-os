@@ -11,7 +11,7 @@ import { writeAuditLog } from '../../lib/audit-log.ts';
 import { hashPassword } from '../../lib/auth/password.ts';
 import { consumeResetToken, issueResetToken, storeResetToken } from '../../lib/auth/reset-token.ts';
 import { sendEmail } from '../../lib/email/client.ts';
-import { PasswordResetEmail } from '../../lib/email/templates/password-reset.tsx';
+import { PasswordResetEmail } from '../../lib/email/templates/password-reset.ts';
 import { keys } from '../../lib/redis-keys.ts';
 import type { Context } from '../../trpc/context.ts';
 import { enforceRateLimit } from '../../trpc/middleware/rate-limit.ts';
