@@ -1071,3 +1071,14 @@ should bring it back — none of them is "when we get around to it."
 ---
 
 _Last updated: 16 August 2026 · Owner: Ammar · Update this file in the same PR as the code it describes._
+
+<!-- unforget:begin — maintained by the unforget skill; do not hand-edit inside these markers -->
+
+## Deferred Work Index
+
+**Ledger home:** `docs/UNFORGET.md` (git posture: split — contents ignored, README/index tracked)
+
+- `UNFORGET.md` — UNFORGET.md (main · standard-10col).
+
+Read the ledgers when the user asks "what's deferred?" / "backlog?" / "prioritize," and before suggesting a release (check 🔴 THIS rows). Log new deferrals via the deferral gate — an item lives in exactly ONE ledger; siblings get a pointer row, not a copy.
+<!-- unforget:end -->
