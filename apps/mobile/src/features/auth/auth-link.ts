@@ -22,6 +22,9 @@ export const EXCLUDED_PROCEDURES: readonly string[] = [
   'auth.signOut',
   'auth.requestReset',
   'auth.resetPassword',
+  'auth.signInWithApple',
+  'auth.signInWithGoogle',
+  'auth.completeSocialSignUp',
 ];
 
 /** Also used by `refresh-interceptor.ts`, which sits above this link in

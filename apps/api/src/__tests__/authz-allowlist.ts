@@ -76,4 +76,26 @@ export const PUBLIC_ALLOWLIST: readonly PublicAllowlistEntry[] = [
     addedBy: 'phase-03-identity-and-auth/auth-server/06-password-reset-via-resend.md',
     addedOn: '2026-08-27',
   },
+
+  {
+    path: 'auth.signInWithApple',
+    reason:
+      "Identity is established by verifying the presented Apple identity token's signature against Apple's own published JWKS (provider-verification.ts) — a caller with no CoachOS session is exactly who needs to reach this. Collision and new-identity handling are enforced inside the resolver, not by authz.",
+    addedBy: 'phase-03-identity-and-auth/social-sign-in/01-apple-sign-in.md',
+    addedOn: '2026-08-28',
+  },
+  {
+    path: 'auth.signInWithGoogle',
+    reason:
+      "Same reasoning as auth.signInWithApple — identity is established by verifying the presented Google ID token against Google's own published JWKS, not by a CoachOS session.",
+    addedBy: 'phase-03-identity-and-auth/social-sign-in/02-google-sign-in.md',
+    addedOn: '2026-08-28',
+  },
+  {
+    path: 'auth.completeSocialSignUp',
+    reason:
+      "The second half of a brand-new social sign-up, reached only with a single-use, Redis-backed pendingSignupToken issued by signInWithApple/signInWithGoogle after independently verifying the provider identity — the caller has no CoachOS session yet, same shape as auth.resetPassword's token-as-identity pattern.",
+    addedBy: 'phase-03-identity-and-auth/social-sign-in/03-provider-linkage.md',
+    addedOn: '2026-08-28',
+  },
 ];
