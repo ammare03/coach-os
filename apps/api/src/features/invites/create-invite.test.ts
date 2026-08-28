@@ -17,6 +17,15 @@ import type {
   insertInviteWithUniqueCode as InsertInviteWithUniqueCode,
 } from './create-invite.ts';
 
+// Stubbed at the boundary, same pattern as `../../__tests__/auth-reset.test.ts`
+// — a real Resend call against the fake test API key would otherwise fire
+// (and log its 401) after this suite's `afterAll` has already torn down the
+// Postgres pool, since `sendInviteEmail` is deliberately fire-and-forget
+// (`invites/02`).
+jest.mock('../../lib/email/client.ts', () => ({
+  sendEmail: jest.fn().mockResolvedValue({ ok: true }),
+}));
+
 let pgContainer: StartedTestContainer;
 let db: DbClient;
 let createInvite: typeof CreateInvite;
