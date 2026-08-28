@@ -138,6 +138,12 @@ the table above in that same PR. The count goes down over time without a risky b
 all installed at `.claude/skills/<name>/SKILL.md`. Roster by role:
 `.claude/skills/README.md`.
 
+**Plugins (use as and when required, alongside the skills above):** `bug-echo` and
+`prompter` are installed globally and are fair game in this repo whenever the task
+at hand calls for what they do — debugging/bug-report capture for `bug-echo`,
+prompt drafting/refinement for `prompter`. Neither replaces a project skill above;
+reach for one only when it's actually the tool for the moment, not by default.
+
 ---
 
 ## 1. Product overview
