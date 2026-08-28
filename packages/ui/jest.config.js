@@ -1,11 +1,12 @@
 // React Native preset via @coachos/config/jest.react-native
-// (quality-gates/01). No tests yet — the package is still an empty barrel
-// (shared-config/04) — so this only needs to prove that a workspace with
-// zero test files passes rather than errors (`passWithNoTests`, set in the
-// shared jest.base preset).
+// (quality-gates/01). `setupFilesAfterEnv` mirrors `apps/mobile/jest.
+// config.js` — same WinterCG-global workaround, needed now that this
+// package has real test files (`Button.test.tsx`, `auth-client/05`'s
+// minimal primitives).
 const reactNativePreset = require('@coachos/config/jest.react-native');
 
 /** @type {import('jest').Config} */
 module.exports = {
   ...reactNativePreset,
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
 };

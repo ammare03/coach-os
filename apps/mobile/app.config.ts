@@ -28,6 +28,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     favicon: './assets/images/favicon.png',
   },
   plugins: [
+    // `expo-secure-store` (auth-client/01) needs no entry here — its config
+    // plugin only exists to customize Face ID copy or Android backup
+    // rules, neither of which this app uses. Recorded so the next reader
+    // doesn't go looking for one.
+    //
+    // `expo-glass-effect` (`ui-primitives-core/07`) also needs no entry —
+    // it ships no `app.plugin.js` at all (checked in its
+    // `expo-module.config.json`); it's a plain autolinked native module,
+    // same situation as `expo-secure-store` above.
     'expo-router',
     [
       'expo-splash-screen',
