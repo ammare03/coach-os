@@ -1,13 +1,13 @@
-import type { Worker } from 'bullmq';
+import { createDbClient } from '@coachos/db';
+import { Worker } from 'bullmq';
 
+import { env } from './env.ts';
+import { purgeAccount } from './jobs/purge-account.ts';
 import { logger } from './lib/logger.ts';
 import { initSentry } from './lib/sentry.ts';
-// Side-effect import only — evaluating this module is what establishes the
-// connection every queue and worker in this process shares
-// (`./queues/connection.ts`), the same one the API process's queue registry
-// produces jobs through. No processor exists yet to hold a binding to it.
-import './queues/connection.ts';
+import { queueConnection } from './queues/connection.ts';
 import { registerGracefulShutdown } from './queues/graceful-shutdown.ts';
+import type { AccountDeletionJobData } from './queues/types.ts';
 
 /**
  * The worker process entry point (`03-worker-process.md`) — genuinely
@@ -21,14 +21,35 @@ import { registerGracefulShutdown } from './queues/graceful-shutdown.ts';
 initSentry();
 
 /**
- * The registration point later phases extend: as each phase builds its
- * processor, it imports its queue from `./queues/registry.ts`, constructs a
- * `new Worker(queueName, processor, { connection: queueConnection })`, and
- * pushes it here. Empty by design in this task (`03-worker-process.md`
- * step 2) — the worker starts, connects to Redis, and idles, which is
- * correct until a later phase attaches its first processor.
+ * The registration point `03-worker-process.md` built empty: as each phase
+ * builds its processor, it imports its queue from `./queues/registry.ts`,
+ * constructs a `new Worker(queueName, processor, { connection:
+ * queueConnection })`, and pushes it here.
  */
 export const workers: Worker[] = [];
+
+// This worker process's own DB client — never the API's per-request
+// `../trpc/context.ts` singleton, which is wired to Hono's request
+// lifecycle this process doesn't have. One connection, reused across every
+// job this process handles, same as the API's own module-scope `db`.
+const db = createDbClient({
+  connectionString: env.DATABASE_URL,
+  sslMode: env.NODE_ENV === 'production' ? 'verify-full' : false,
+});
+
+// `account-lifecycle/04` — the first processor this worker runs.
+// `'account-deletion'` must match `./queues/registry.ts`'s queue name
+// exactly; BullMQ resolves a `Worker` to a queue by that string, not by
+// import identity.
+workers.push(
+  new Worker<AccountDeletionJobData>(
+    'account-deletion',
+    async (job) => {
+      await purgeAccount(db, job.data.userId);
+    },
+    { connection: queueConnection },
+  ),
+);
 
 registerGracefulShutdown(workers);
 

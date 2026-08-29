@@ -40,3 +40,8 @@ export interface WebhookProcessorJobData {
 export interface AiGenerationJobData {
   generationId: string;
 }
+
+/** `account-lifecycle/04` — the DB§19.2 transactional purge, one job per account. */
+export interface AccountDeletionJobData {
+  userId: string;
+}

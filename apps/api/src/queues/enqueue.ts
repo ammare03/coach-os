@@ -1,4 +1,5 @@
 import {
+  accountDeletionQueue,
   aiGenerationQueue,
   checkinSchedulerQueue,
   digestEmailQueue,
@@ -77,4 +78,15 @@ export function enqueueAiGeneration(data: { generationId: string }) {
   return aiGenerationQueue.add('ai-generation', data, {
     jobId: `ai-generation.${data.generationId}`,
   });
+}
+
+/**
+ * `jobId`: `purge.{userId}` — at most one purge of a given account in
+ * flight at a time (`account-lifecycle/04`). `sweep-deletion-requests.ts`
+ * re-enqueues the same subject on every sweep run until the account is
+ * actually gone; BullMQ's own dedup is what makes that safe rather than
+ * queuing a second purge on top of one still running.
+ */
+export function enqueuePurgeAccount(data: { userId: string }) {
+  return accountDeletionQueue.add('purge', data, { jobId: `purge.${data.userId}` });
 }

@@ -2,6 +2,7 @@ import { Queue, type DefaultJobOptions } from 'bullmq';
 
 import { queueConnection } from './connection.ts';
 import type {
+  AccountDeletionJobData,
   AiGenerationJobData,
   CheckinSchedulerJobData,
   DigestEmailJobData,
@@ -72,6 +73,11 @@ export const webhookProcessorQueue = new Queue<WebhookProcessorJobData>('webhook
 });
 
 export const aiGenerationQueue = new Queue<AiGenerationJobData>('ai-generation', {
+  connection: queueConnection,
+  defaultJobOptions,
+});
+
+export const accountDeletionQueue = new Queue<AccountDeletionJobData>('account-deletion', {
   connection: queueConnection,
   defaultJobOptions,
 });
