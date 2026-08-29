@@ -8,6 +8,7 @@ import { requestDeletion } from '../features/me/request-deletion.ts';
 import { updateMe } from '../features/me/update-me.ts';
 import { updatePreferences } from '../features/me/update-preferences.ts';
 import { appError } from '../lib/app-error.ts';
+import { getSignedDownloadUrl } from '../lib/storage/r2-client.ts';
 import { EXPORT_ROW_COUNT_KEYS } from '../services/export/manifest.ts';
 import { requestExport } from '../services/export/request.ts';
 import { router } from '../trpc/init.ts';
@@ -89,6 +90,36 @@ export const meRouter = router({
               );
 
       return { ...row, progressPercent };
+    }),
+
+  // `10`/`11` — a fresh, short-lived signed URL for a ready archive.
+  // Minted on demand rather than stored: `security-and-privacy` skill §4's
+  // ≤1h ceiling means any URL saved on the row would already be stale by
+  // the time a client asks for it. Same ownership check as `exportStatus`,
+  // never `ownsResource` — this is "my own row", not a cross-boundary case.
+  // Returns `downloadUrl: null` rather than an error for a not-yet-ready
+  // row — the UI only ever calls this once it already knows the status is
+  // `ready`, so this is a defensive guard, not a real user-facing state.
+  exportDownloadUrl: protectedProcedure
+    .input(meSchemas.exportStatusInput)
+    .query(async ({ ctx, input }) => {
+      const [row] = await ctx.db
+        .select()
+        .from(schema.exportRequests)
+        .where(
+          and(
+            eq(schema.exportRequests.id, input.exportId),
+            eq(schema.exportRequests.userId, ctx.user.id),
+          ),
+        );
+      if (!row) {
+        throw appError('EXPORT_NOT_FOUND', "We couldn't find that export.", {});
+      }
+      if (row.status !== 'ready' || !row.objectKey) {
+        return { downloadUrl: null };
+      }
+      const downloadUrl = await getSignedDownloadUrl(row.objectKey, 3600);
+      return { downloadUrl };
     }),
 
   // `10` — the caller's own export history, most recent first. `api-
