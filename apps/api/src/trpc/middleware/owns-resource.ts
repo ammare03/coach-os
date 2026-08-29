@@ -103,6 +103,24 @@ async function resolveOwnership(ctx: Context, kind: ResourceKind, ids: string[])
         );
       }
       ownedAmongUncached = await entry.coachOwnedIds(ctx.db, { coachProfileId }, uncachedIds);
+      // `account-lifecycle/06`'s 30-day former-coach grace window — a
+      // second, independent ownership path unioned in alongside current
+      // ownership, never replacing it. `null` for a kind the window
+      // structurally cannot reach (`resource-registry.ts`'s own doc on the
+      // field).
+      if (entry.formerCoachOwnedIds) {
+        const stillIdsToCheck = uncachedIds.filter((id) => !ownedAmongUncached.has(id));
+        if (stillIdsToCheck.length > 0) {
+          const grantedByGrace = await entry.formerCoachOwnedIds(
+            ctx.db,
+            { coachProfileId },
+            stillIdsToCheck,
+          );
+          for (const id of grantedByGrace) {
+            ownedAmongUncached.add(id);
+          }
+        }
+      }
       break;
     }
     case 'client': {

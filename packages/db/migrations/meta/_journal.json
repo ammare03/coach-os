@@ -183,6 +183,20 @@
       "when": 1787967842368,
       "tag": "0025_tough_tiger_shark",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1787977131354,
+      "tag": "0026_lovely_callisto",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1787978073623,
+      "tag": "0027_steady_iceman",
+      "breakpoints": true
     }
   ]
 }

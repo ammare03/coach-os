@@ -127,9 +127,13 @@ export const meals = nutritionSchema.table(
     // discipline as training.workout_sessions.coach_id (training-schema/03).
     // Guarded by `meals_no_owner_change` (derived-data/02,
     // migrations/0022_guard_triggers.sql).
-    coachId: uuid('coach_id')
-      .notNull()
-      .references(() => coachProfiles.id, { onDelete: 'cascade' }),
+    //
+    // Nullable (`account-lifecycle/06`) — nutrition gets NO former-coach
+    // grace window at all (the transition table's own words: "No access,
+    // immediately"), so `detachClient` nulls this the moment a client
+    // leaves, via the same bypass, rather than leaving it to go stale and
+    // silently keep matching the departed coach forever.
+    coachId: uuid('coach_id').references(() => coachProfiles.id, { onDelete: 'cascade' }),
     // CLIENT-LOCAL calendar day — the same distinction training-schema/03
     // established for scheduled_date, applying identically here per §17.4.
     // `logged_at` below is the actual timestamp; these are two different

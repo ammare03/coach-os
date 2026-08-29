@@ -59,6 +59,7 @@ function describeCode(code: AppErrorCode): string {
     case 'GUARDIAN_CONSENT_PENDING':
     case 'SOCIAL_ACCOUNT_EXISTS':
     case 'SOCIAL_TOKEN_INVALID':
+    case 'CLIENT_HAS_NO_COACH':
       return code;
     default:
       return assertNever(code);

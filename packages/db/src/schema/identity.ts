@@ -286,9 +286,24 @@ export const clientProfiles = identitySchema.table(
     // with active clients cannot be deleted out from under them — the §21.4
     // detachment flow must run first. Never CASCADE — client data survives
     // the coach relationship ending (CLAUDE.md §21.3).
-    coachId: uuid('coach_id')
-      .notNull()
-      .references(() => coachProfiles.id, { onDelete: 'restrict' }),
+    //
+    // Nullable (`account-lifecycle/06`) — a client between coaches is a
+    // real, valid, coachless state, not a soft-deleted one. Nulled by
+    // `coach-client-transition.ts`'s `detachClient`, the one shared
+    // implementation `leaveCoach`, `releaseClient`, and coach-deletion
+    // (`account-lifecycle/05`) all call.
+    coachId: uuid('coach_id').references(() => coachProfiles.id, { onDelete: 'restrict' }),
+    // Who most recently handled this client, kept after detachment so
+    // `ownsResource` can grant the departing coach a time-boxed read-only
+    // window (`account-lifecycle/06` §"The transition, precisely").
+    // `set null`, not `restrict` — unlike `coachId` above, this is a
+    // historical pointer, not a live ownership edge; it must never block
+    // that coach's own account deletion, and a purged coach simply loses
+    // the window early (moot — they have no session left to use it).
+    formerCoachId: uuid('former_coach_id').references(() => coachProfiles.id, {
+      onDelete: 'set null',
+    }),
+    detachedAt: timestamp('detached_at', { withTimezone: true }),
     status: clientStatus('status').notNull().default('invited'),
     invitedAt: timestamp('invited_at', { withTimezone: true }).notNull().defaultNow(),
     activatedAt: timestamp('activated_at', { withTimezone: true }),
@@ -352,6 +367,12 @@ export const clientProfiles = identitySchema.table(
     activeSeatsIdx: index('client_profiles_active_seats')
       .on(t.coachId)
       .where(sql`${t.status} IN ('active', 'invited') AND ${t.deletedAt} IS NULL`),
+    // `ownsResource`'s former-coach grace-window clause (`account-
+    // lifecycle/06`) — every guarded read of a detached client's history
+    // filters on exactly these two columns together.
+    formerCoachIdx: index('client_profiles_former_coach')
+      .on(t.formerCoachId, t.detachedAt)
+      .where(sql`${t.formerCoachId} IS NOT NULL`),
   }),
 );
 
@@ -457,4 +478,11 @@ export const deletionRequests = identitySchema.table('deletion_requests', {
   scheduledPurgeAt: timestamp('scheduled_purge_at', { withTimezone: true })
     .notNull()
     .default(sql`now() + interval '7 days'`),
+  // `account-lifecycle/05` — set the first time the sweep finds a coach
+  // whose 7-day grace has elapsed but who still has non-archived clients.
+  // Null until then. Once set, `coachDeletionFlow` waits a further 30 days
+  // (DB§19.2's "Coach deletion is different" note) before detaching
+  // clients and letting the purge proceed — reusing this row rather than a
+  // second table, since a coach's deletion request already lives here.
+  coachClientsNotifiedAt: timestamp('coach_clients_notified_at', { withTimezone: true }),
 });

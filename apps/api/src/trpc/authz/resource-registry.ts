@@ -3,7 +3,14 @@
 // these ids does this coach/client own", never a single id at a time, so
 // the batch case (step 5) and the single-id case share one code path.
 import { schema, type DbClient } from '@coachos/db';
-import { and, eq, inArray, or } from 'drizzle-orm';
+import { and, eq, gt, inArray, notExists, or, sql } from 'drizzle-orm';
+
+// `account-lifecycle/06`'s time-boxed exception to DB§6: a coach who has
+// been detached still owns their own training-history feedback for this
+// long, read-only. `DATABASE.md` DB§6's own note names the exact rows this
+// applies to and the ones it structurally cannot (body_metrics,
+// progress_photos, nutrition).
+const FORMER_COACH_GRACE_WINDOW = sql`now() - interval '30 days'`;
 
 export type ResourceKind =
   | 'client'
@@ -36,6 +43,14 @@ interface ResourceKindEntry {
         client: { clientProfileId: string; userId: string },
         ids: string[],
       ) => Promise<Set<string>>)
+    | null;
+  // `account-lifecycle/06`: a detached coach's 30-day read-only window on
+  // their former client's training history and feedback (never photos,
+  // metrics, or nutrition). `null` for a kind the window structurally
+  // cannot reach — same "null, never a function returning empty" rule as
+  // `clientOwnedIds` above, and for the same reason.
+  formerCoachOwnedIds:
+    | ((db: DbClient, coach: { coachProfileId: string }, ids: string[]) => Promise<Set<string>>)
     | null;
 }
 
@@ -70,6 +85,9 @@ export const RESOURCE_REGISTRY: Record<ResourceKind, ResourceKindEntry> = {
             ),
           ),
       ),
+    // The window grants a former coach read access to their ex-client's
+    // *content*, never the client_profiles row itself.
+    formerCoachOwnedIds: null,
   },
 
   // No client branch — a client never sees `coach_client_notes` (CLAUDE.md
@@ -89,6 +107,7 @@ export const RESOURCE_REGISTRY: Record<ResourceKind, ResourceKindEntry> = {
           ),
       ),
     clientOwnedIds: null,
+    formerCoachOwnedIds: null,
   },
 
   // A client never sees an invite — it's a coach's own pending-invitation
@@ -103,6 +122,7 @@ export const RESOURCE_REGISTRY: Record<ResourceKind, ResourceKindEntry> = {
           .where(and(inArray(schema.invites.id, ids), eq(schema.invites.coachId, coachProfileId))),
       ),
     clientOwnedIds: null,
+    formerCoachOwnedIds: null,
   },
 
   program: {
@@ -119,6 +139,8 @@ export const RESOURCE_REGISTRY: Record<ResourceKind, ResourceKindEntry> = {
     // `phase-07-exercise-and-program-authoring/` adds that table and, with
     // it, this entry's client branch. Not a P02 concern; `null` until then.
     clientOwnedIds: null,
+    // A coach's own authored template, not client content — no grace window.
+    formerCoachOwnedIds: null,
   },
 
   workoutSession: {
@@ -143,6 +165,25 @@ export const RESOURCE_REGISTRY: Record<ResourceKind, ResourceKindEntry> = {
             and(
               inArray(schema.workoutSessions.id, ids),
               eq(schema.workoutSessions.clientId, clientProfileId),
+            ),
+          ),
+      ),
+    // Training history — explicitly granted to a detached coach for 30 days
+    // (`account-lifecycle/06`'s transition table).
+    formerCoachOwnedIds: async (db, { coachProfileId }, ids) =>
+      idsOf(
+        await db
+          .select({ id: schema.workoutSessions.id })
+          .from(schema.workoutSessions)
+          .innerJoin(
+            schema.clientProfiles,
+            eq(schema.clientProfiles.id, schema.workoutSessions.clientId),
+          )
+          .where(
+            and(
+              inArray(schema.workoutSessions.id, ids),
+              eq(schema.clientProfiles.formerCoachId, coachProfileId),
+              gt(schema.clientProfiles.detachedAt, FORMER_COACH_GRACE_WINDOW),
             ),
           ),
       ),
@@ -171,6 +212,21 @@ export const RESOURCE_REGISTRY: Record<ResourceKind, ResourceKindEntry> = {
             and(inArray(schema.setLogs.id, ids), eq(schema.setLogs.clientId, clientProfileId)),
           ),
       ),
+    // Same training-history grant as workoutSession, one join further.
+    formerCoachOwnedIds: async (db, { coachProfileId }, ids) =>
+      idsOf(
+        await db
+          .select({ id: schema.setLogs.id })
+          .from(schema.setLogs)
+          .innerJoin(schema.clientProfiles, eq(schema.clientProfiles.id, schema.setLogs.clientId))
+          .where(
+            and(
+              inArray(schema.setLogs.id, ids),
+              eq(schema.clientProfiles.formerCoachId, coachProfileId),
+              gt(schema.clientProfiles.detachedAt, FORMER_COACH_GRACE_WINDOW),
+            ),
+          ),
+      ),
   },
 
   meal: {
@@ -188,6 +244,10 @@ export const RESOURCE_REGISTRY: Record<ResourceKind, ResourceKindEntry> = {
           .from(schema.meals)
           .where(and(inArray(schema.meals.id, ids), eq(schema.meals.clientId, clientProfileId))),
       ),
+    // Nutrition is excluded from the grace window outright — access ends
+    // immediately on detachment, no 30-day read-only period at all
+    // (`account-lifecycle/06`'s transition table).
+    formerCoachOwnedIds: null,
   },
 
   // The one kind with two independent client-side conditions (step 8):
@@ -223,6 +283,35 @@ export const RESOURCE_REGISTRY: Record<ResourceKind, ResourceKindEntry> = {
             ),
           ),
       ),
+    // Form-check videos keep the 30-day window; progress photos never do,
+    // regardless of window (`account-lifecycle/06`'s transition table,
+    // `CLAUDE.md` §21.1). The `NOT EXISTS` is the only way to tell the two
+    // apart — both live in this same table with no `kind`/`purpose` column
+    // to switch on; a `progress_photos` row pointing at this asset is what
+    // makes it a photo.
+    formerCoachOwnedIds: async (db, { coachProfileId }, ids) =>
+      idsOf(
+        await db
+          .select({ id: schema.mediaAssets.id })
+          .from(schema.mediaAssets)
+          .innerJoin(
+            schema.clientProfiles,
+            eq(schema.clientProfiles.id, schema.mediaAssets.clientId),
+          )
+          .where(
+            and(
+              inArray(schema.mediaAssets.id, ids),
+              eq(schema.clientProfiles.formerCoachId, coachProfileId),
+              gt(schema.clientProfiles.detachedAt, FORMER_COACH_GRACE_WINDOW),
+              notExists(
+                db
+                  .select({ one: sql`1` })
+                  .from(schema.progressPhotos)
+                  .where(eq(schema.progressPhotos.assetId, schema.mediaAssets.id)),
+              ),
+            ),
+          ),
+      ),
   },
 
   // `comments` is polymorphic (DB§5.4/DB§10) with no reliable path from a
@@ -251,6 +340,22 @@ export const RESOURCE_REGISTRY: Record<ResourceKind, ResourceKindEntry> = {
             and(inArray(schema.comments.id, ids), eq(schema.comments.clientId, clientProfileId)),
           ),
       ),
+    // "Comments the coach left ... Read-only 30 days" — the transition
+    // table's own words.
+    formerCoachOwnedIds: async (db, { coachProfileId }, ids) =>
+      idsOf(
+        await db
+          .select({ id: schema.comments.id })
+          .from(schema.comments)
+          .innerJoin(schema.clientProfiles, eq(schema.clientProfiles.id, schema.comments.clientId))
+          .where(
+            and(
+              inArray(schema.comments.id, ids),
+              eq(schema.clientProfiles.formerCoachId, coachProfileId),
+              gt(schema.clientProfiles.detachedAt, FORMER_COACH_GRACE_WINDOW),
+            ),
+          ),
+      ),
   },
 
   checkin: {
@@ -270,6 +375,22 @@ export const RESOURCE_REGISTRY: Record<ResourceKind, ResourceKindEntry> = {
           .from(schema.checkins)
           .where(
             and(inArray(schema.checkins.id, ids), eq(schema.checkins.clientId, clientProfileId)),
+          ),
+      ),
+    // "Check-ins and their answers ... Read-only 30 days" — the transition
+    // table's own words.
+    formerCoachOwnedIds: async (db, { coachProfileId }, ids) =>
+      idsOf(
+        await db
+          .select({ id: schema.checkins.id })
+          .from(schema.checkins)
+          .innerJoin(schema.clientProfiles, eq(schema.clientProfiles.id, schema.checkins.clientId))
+          .where(
+            and(
+              inArray(schema.checkins.id, ids),
+              eq(schema.clientProfiles.formerCoachId, coachProfileId),
+              gt(schema.clientProfiles.detachedAt, FORMER_COACH_GRACE_WINDOW),
+            ),
           ),
       ),
   },
@@ -303,5 +424,9 @@ export const RESOURCE_REGISTRY: Record<ResourceKind, ResourceKindEntry> = {
             ),
           ),
       ),
+    // Not named in `account-lifecycle/06`'s transition table — the safer
+    // default is no grace window rather than inventing access it never
+    // granted. Revisit as an explicit decision if a real need surfaces.
+    formerCoachOwnedIds: null,
   },
 };

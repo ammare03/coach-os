@@ -74,6 +74,12 @@ export const APP_ERROR_CODES = [
   // Distinct from `AUTH_REQUIRED`: this is a token the *provider* refused,
   // not a CoachOS session.
   'SOCIAL_TOKEN_INVALID',
+  // account-lifecycle/06 — `client.leaveCoach` called with no current
+  // coach to leave, or `coach.clients.release` targeting an already-
+  // detached client. A caller-state bug the router should have prevented
+  // (both check `coachId IS NOT NULL` first), guarded here in case it
+  // hasn't.
+  'CLIENT_HAS_NO_COACH',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -127,6 +133,7 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   GUARDIAN_CONSENT_PENDING: 'FORBIDDEN',
   SOCIAL_ACCOUNT_EXISTS: 'CONFLICT',
   SOCIAL_TOKEN_INVALID: 'UNAUTHORIZED',
+  CLIENT_HAS_NO_COACH: 'CONFLICT',
 };
 
 /**
@@ -180,6 +187,7 @@ export interface AppErrorPayloads {
   // the colliding email (DB§18) — the client already knows it, it just sent it.
   SOCIAL_ACCOUNT_EXISTS: { provider: 'apple' | 'google' };
   SOCIAL_TOKEN_INVALID: EmptyErrorPayload;
+  CLIENT_HAS_NO_COACH: EmptyErrorPayload;
 }
 
 /**

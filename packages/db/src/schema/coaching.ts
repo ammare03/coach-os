@@ -276,9 +276,10 @@ export const checkins = coachingSchema.table(
     // check-in this is); this column exists for checkins_coach_pending's
     // query shape. Guarded by `checkins_no_owner_change` (derived-data/02,
     // migrations/0022_guard_triggers.sql).
-    coachId: uuid('coach_id')
-      .notNull()
-      .references(() => coachProfiles.id, { onDelete: 'cascade' }),
+    // Nullable (`account-lifecycle/06`) — nulled by `detachClient` on
+    // leave; the 30-day former-coach grace window is a read-time join, not
+    // a stale copy of this column (`resource-registry.ts`).
+    coachId: uuid('coach_id').references(() => coachProfiles.id, { onDelete: 'cascade' }),
     // A check-in survives its template being deleted.
     templateId: uuid('template_id').references(() => checkinTemplates.id, {
       onDelete: 'set null',
