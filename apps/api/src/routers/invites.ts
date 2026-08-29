@@ -1,11 +1,17 @@
 import { invites as invitesSchemas } from '@coachos/schemas';
 
+import { acceptInviteAsExistingClient } from '../features/invites/accept-invite-as-existing-client.ts';
 import { acceptInvite } from '../features/invites/accept-invite.ts';
 import { createInvite } from '../features/invites/create-invite.ts';
 import { listPendingInvites } from '../features/invites/list-pending-invites.ts';
 import { revokeInvite } from '../features/invites/revoke-invite.ts';
 import { router } from '../trpc/init.ts';
-import { authProcedure, coachProcedure, ownsResource } from '../trpc/procedures.ts';
+import {
+  authProcedure,
+  clientProcedure,
+  coachProcedure,
+  ownsResource,
+} from '../trpc/procedures.ts';
 
 export const invitesRouter = router({
   // `01` — seat-checked, collision-retried code generation (`03`), and
@@ -35,6 +41,16 @@ export const invitesRouter = router({
       },
     }),
   ),
+
+  // `07` — the returning-client path: `clientProcedure`, not
+  // `authProcedure` above. The caller is already signed in as themselves
+  // (`accept-invite-as-existing-client.ts`'s own doc comment on why that's
+  // the identity proof here, not a fresh password), so this needs no
+  // `ownsResource` — `ctx.user.clientProfileId` is the only client id ever
+  // touched, never one from `input`.
+  acceptAsExistingClient: clientProcedure
+    .input(invitesSchemas.acceptInviteAsExistingClientInput)
+    .mutation(({ ctx, input }) => acceptInviteAsExistingClient(ctx.db, ctx, input)),
 
   // `05` — `ownsResource` guards the id (`security-and-privacy` skill §1:
   // every procedure taking an id resolving to a coach's own resource passes

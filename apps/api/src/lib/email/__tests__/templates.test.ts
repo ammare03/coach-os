@@ -2,8 +2,10 @@
 // on a string" — the rendered HTML and plaintext, not `sendEmail`, which
 // never touches Resend in a test.
 import { renderEmailHtml, toPlainText } from '../client.ts';
+import { DeletionRecoveryEmail } from '../templates/deletion-recovery.ts';
 import { GuardianAccessEndedEmail } from '../templates/guardian-access-ended.ts';
 import { GuardianConsentEmail } from '../templates/guardian-consent.ts';
+import { GuardianExportNoticeEmail } from '../templates/guardian-export-notice.ts';
 import { InviteEmail } from '../templates/invite.ts';
 import { PasswordResetEmail } from '../templates/password-reset.ts';
 
@@ -125,11 +127,71 @@ describe('InviteEmail', () => {
   });
 });
 
+describe('DeletionRecoveryEmail', () => {
+  const DEEP_LINK_URL = 'coachos://settings';
+  const HTTPS_FALLBACK_URL = 'https://app.coachos.test/account';
+
+  it('renders both the coachos:// deep link and the https fallback', () => {
+    const html = renderEmailHtml(
+      DeletionRecoveryEmail({
+        scheduledPurgeDate: 'September 5, 2026',
+        deepLinkUrl: DEEP_LINK_URL,
+        httpsFallbackUrl: HTTPS_FALLBACK_URL,
+      }),
+    );
+    expect(html).toContain(DEEP_LINK_URL);
+    expect(html).toContain(HTTPS_FALLBACK_URL);
+  });
+
+  it('renders the https fallback as the primary button, not the deep link', () => {
+    const html = renderEmailHtml(
+      DeletionRecoveryEmail({
+        scheduledPurgeDate: 'September 5, 2026',
+        deepLinkUrl: DEEP_LINK_URL,
+        httpsFallbackUrl: HTTPS_FALLBACK_URL,
+      }),
+    );
+    expect(html).toContain(`href="${HTTPS_FALLBACK_URL}"`);
+  });
+
+  it('states the scheduled purge date', () => {
+    const html = renderEmailHtml(
+      DeletionRecoveryEmail({
+        scheduledPurgeDate: 'September 5, 2026',
+        deepLinkUrl: DEEP_LINK_URL,
+        httpsFallbackUrl: HTTPS_FALLBACK_URL,
+      }),
+    );
+    expect(html).toContain('September 5, 2026');
+  });
+
+  it('contains no remotely-loaded image and no tracking pixel', () => {
+    const html = renderEmailHtml(
+      DeletionRecoveryEmail({
+        scheduledPurgeDate: 'September 5, 2026',
+        deepLinkUrl: DEEP_LINK_URL,
+        httpsFallbackUrl: HTTPS_FALLBACK_URL,
+      }),
+    );
+    expect(html).not.toMatch(/<img/i);
+  });
+});
+
 describe('GuardianAccessEndedEmail', () => {
   it('renders a different body for the client than for the guardian', () => {
     const clientHtml = renderEmailHtml(GuardianAccessEndedEmail({ recipient: 'client' }));
     const guardianHtml = renderEmailHtml(GuardianAccessEndedEmail({ recipient: 'guardian' }));
     expect(clientHtml).not.toBe(guardianHtml);
     expect(guardianHtml).toMatch(/guardian access/i);
+  });
+});
+
+describe('GuardianExportNoticeEmail', () => {
+  it('names the minor and needs no action from them, with no remotely-loaded image', () => {
+    const html = renderEmailHtml(GuardianExportNoticeEmail({ name: 'Alex' }));
+    expect(html).toContain('Alex');
+    expect(html).toMatch(/no action/i);
+    expect(html).not.toMatch(/<img/i);
+    expect(html).not.toMatch(/\{\{.*?\}\}|\$\{.*?\}/);
   });
 });

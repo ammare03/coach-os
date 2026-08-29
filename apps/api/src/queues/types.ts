@@ -40,3 +40,20 @@ export interface WebhookProcessorJobData {
 export interface AiGenerationJobData {
   generationId: string;
 }
+
+/** `account-lifecycle/04` — the DB§19.2 transactional purge, one job per account. */
+export interface AccountDeletionJobData {
+  userId: string;
+}
+
+/**
+ * `account-lifecycle/09` — walks the DB§19.2 table inventory for one user,
+ * packages it, uploads to `exports/`, and emails the subject. Keyed on the
+ * `export_requests` row's own id, not `userId` — unlike account deletion,
+ * a user may have more than one export row over time (a new one every 24h,
+ * `account-lifecycle/10`), so the subject of this job is the specific
+ * request, not the account.
+ */
+export interface DataExportJobData {
+  exportId: string;
+}

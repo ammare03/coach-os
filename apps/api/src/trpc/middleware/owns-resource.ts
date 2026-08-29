@@ -103,6 +103,28 @@ async function resolveOwnership(ctx: Context, kind: ResourceKind, ids: string[])
         );
       }
       ownedAmongUncached = await entry.coachOwnedIds(ctx.db, { coachProfileId }, uncachedIds);
+      // Three independent, additive ownership paths beyond current
+      // ownership — `account-lifecycle/06`'s 30-day former-coach grace
+      // window, and `account-lifecycle/07`'s two returning-client re-grants
+      // (training history, nutrition). Each is `null` for a kind it
+      // structurally cannot reach (`resource-registry.ts`'s own doc on each
+      // field) and unions in, never replaces, what `coachOwnedIds` found —
+      // a coach is never one of these paths at a time, but nothing here
+      // assumes that; each just runs against whatever `coachOwnedIds`
+      // didn't already grant.
+      for (const grant of [
+        entry.formerCoachOwnedIds,
+        entry.historySharedOwnedIds,
+        entry.nutritionSharedOwnedIds,
+      ]) {
+        if (!grant) continue;
+        const stillIdsToCheck = uncachedIds.filter((id) => !ownedAmongUncached.has(id));
+        if (stillIdsToCheck.length === 0) break;
+        const granted = await grant(ctx.db, { coachProfileId }, stillIdsToCheck);
+        for (const id of granted) {
+          ownedAmongUncached.add(id);
+        }
+      }
       break;
     }
     case 'client': {

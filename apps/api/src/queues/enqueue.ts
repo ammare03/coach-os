@@ -1,6 +1,8 @@
 import {
+  accountDeletionQueue,
   aiGenerationQueue,
   checkinSchedulerQueue,
+  dataExportQueue,
   digestEmailQueue,
   mediaTranscodeQueue,
   notificationsQueue,
@@ -77,4 +79,26 @@ export function enqueueAiGeneration(data: { generationId: string }) {
   return aiGenerationQueue.add('ai-generation', data, {
     jobId: `ai-generation.${data.generationId}`,
   });
+}
+
+/**
+ * `jobId`: `purge.{userId}` — at most one purge of a given account in
+ * flight at a time (`account-lifecycle/04`). `sweep-deletion-requests.ts`
+ * re-enqueues the same subject on every sweep run until the account is
+ * actually gone; BullMQ's own dedup is what makes that safe rather than
+ * queuing a second purge on top of one still running.
+ */
+export function enqueuePurgeAccount(data: { userId: string }) {
+  return accountDeletionQueue.add('purge', data, { jobId: `purge.${data.userId}` });
+}
+
+/**
+ * `jobId`: `export.{exportId}` — one build in flight per export request
+ * (`account-lifecycle/09`). DB§15's own prose writes the example as
+ * `export:{exportId}`; corrected to `.` here for the same reason every
+ * other derivation in this file already is — `.`, not `:`, per this
+ * comment block's own note above.
+ */
+export function enqueueDataExport(data: { exportId: string }) {
+  return dataExportQueue.add('export', data, { jobId: `export.${data.exportId}` });
 }

@@ -4,6 +4,7 @@ import { databaseErrorBoundary } from '../db/error-boundary.ts';
 import { publicProcedure as basePublicProcedure } from './init.ts';
 import { coachOrClientRole, hasRole } from './middleware/has-role.ts';
 import { isAuthed } from './middleware/is-authed.ts';
+import { isOperatorMiddleware } from './middleware/is-operator.ts';
 import { RATE_LIMIT_TIERS } from './middleware/rate-limit-config.ts';
 import { authRateLimit, rateLimit } from './middleware/rate-limit.ts';
 import { requestContext } from './middleware/request-context.ts';
@@ -61,6 +62,12 @@ export const protectedProcedure = publicProcedure.use(isAuthed);
 export const coachProcedure = protectedProcedure.use(hasRole('coach'));
 export const clientProcedure = protectedProcedure.use(hasRole('client'));
 export const coachOrClientProcedure = protectedProcedure.use(coachOrClientRole);
+
+// `account-lifecycle/12` — SUPPORT.md SU§2's admin gate: `users.internal_
+// operator`, direct-DB-access only, never set by any application surface.
+// Every procedure built on this belongs in the authorisation enumeration
+// test's allowlist with a stated reason (SU§2's own rule).
+export const operatorProcedure = protectedProcedure.use(isOperatorMiddleware);
 
 // `03-owns-resource.md`: re-exported here so a router file imports every
 // guard from the same module as its procedure builders, never from

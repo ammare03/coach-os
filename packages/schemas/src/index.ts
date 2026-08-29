@@ -28,4 +28,5 @@ export * as metrics from './metrics.ts';
 export * as notifications from './notifications.ts';
 export * as nutrition from './nutrition.ts';
 export * as programs from './programs.ts';
+export * as support from './support.ts';
 export * as workouts from './workouts.ts';

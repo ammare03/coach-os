@@ -33,7 +33,10 @@ export interface AcceptInviteInput {
   device: SocialSignInDevice;
 }
 
-function inviteNotFound() {
+// Exported for `account-lifecycle/07`'s `accept-invite-as-existing-client.ts`
+// — same code, same terminal states, a different acceptance path once
+// validated. One implementation of "what does this code mean right now."
+export function inviteNotFound() {
   return appError('INVITE_NOT_FOUND', 'This invite code is not valid.', {});
 }
 
@@ -44,7 +47,7 @@ function inviteNotFound() {
  * revoked, each with its own catalogued code so the mobile client can show
  * a message that actually matches what happened.
  */
-async function loadAndValidateInvite(db: DbClient, code: string) {
+export async function loadAndValidateInvite(db: DbClient, code: string) {
   const [invite] = await db
     .select()
     .from(schema.invites)

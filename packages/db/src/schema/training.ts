@@ -313,9 +313,12 @@ export const workoutSessions = trainingSchema.table(
     // (derived-data/02, migrations/0022_guard_triggers.sql) — an UPDATE
     // outside a transaction with `SET LOCAL app.allow_owner_change = true`
     // is rejected.
-    coachId: uuid('coach_id')
-      .notNull()
-      .references(() => coachProfiles.id, { onDelete: 'cascade' }),
+    // Nullable (`account-lifecycle/06`) — nulled by `detachClient` when the
+    // client leaves; the 30-day former-coach grace window is a read-time
+    // join against `client_profiles.former_coach_id`/`detached_at`
+    // (`resource-registry.ts`), never a stale copy of this column left to
+    // silently keep matching the departed coach forever.
+    coachId: uuid('coach_id').references(() => coachProfiles.id, { onDelete: 'cascade' }),
     // A session survives its assignment being removed; ad-hoc sessions (no
     // assignment at all) are allowed per §8.4.
     assignmentId: uuid('assignment_id').references(() => assignments.id, { onDelete: 'set null' }),

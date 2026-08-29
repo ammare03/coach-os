@@ -74,6 +74,29 @@ export const APP_ERROR_CODES = [
   // Distinct from `AUTH_REQUIRED`: this is a token the *provider* refused,
   // not a CoachOS session.
   'SOCIAL_TOKEN_INVALID',
+  // account-lifecycle/06 — `client.leaveCoach` called with no current
+  // coach to leave, or `coach.clients.release` targeting an already-
+  // detached client. A caller-state bug the router should have prevented
+  // (both check `coachId IS NOT NULL` first), guarded here in case it
+  // hasn't.
+  'CLIENT_HAS_NO_COACH',
+  // account-lifecycle/10 — the export request procedure's two gates. The
+  // first is a dedupe signal, not a failure ("here's the one already
+  // running"); the second is the 24h-per-completion throttle that never
+  // drops below the 30-day legal floor (ERRORS.md ER§1.9a).
+  'EXPORT_ALREADY_RUNNING',
+  'EXPORT_RATE_LIMITED',
+  // account-lifecycle/10 — `me.exportStatus`/`exportHistory` polling a
+  // non-existent or another user's `exportId`. `NOT_FOUND` in both cases,
+  // same enumeration-oracle reasoning `INVITE_NOT_FOUND` already
+  // established, never `FORBIDDEN` (`security-and-privacy` skill §1).
+  'EXPORT_NOT_FOUND',
+  // account-lifecycle/12 — the guardian export path. Covers every
+  // ineligible case in one code (not a client, not a minor, no consent,
+  // wrong email, aged out past 18): `NOT_FOUND`, never `FORBIDDEN`, same
+  // enumeration-oracle reasoning `EXPORT_NOT_FOUND` already established —
+  // a guardian probing ids must not learn *which* condition failed.
+  'DEPENDENT_NOT_FOUND',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -127,6 +150,11 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   GUARDIAN_CONSENT_PENDING: 'FORBIDDEN',
   SOCIAL_ACCOUNT_EXISTS: 'CONFLICT',
   SOCIAL_TOKEN_INVALID: 'UNAUTHORIZED',
+  CLIENT_HAS_NO_COACH: 'CONFLICT',
+  EXPORT_ALREADY_RUNNING: 'BAD_REQUEST',
+  EXPORT_RATE_LIMITED: 'TOO_MANY_REQUESTS',
+  EXPORT_NOT_FOUND: 'NOT_FOUND',
+  DEPENDENT_NOT_FOUND: 'NOT_FOUND',
 };
 
 /**
@@ -180,6 +208,27 @@ export interface AppErrorPayloads {
   // the colliding email (DB§18) — the client already knows it, it just sent it.
   SOCIAL_ACCOUNT_EXISTS: { provider: 'apple' | 'google' };
   SOCIAL_TOKEN_INVALID: EmptyErrorPayload;
+  CLIENT_HAS_NO_COACH: EmptyErrorPayload;
+  // The in-flight request's own id and status — enough for the client to
+  // point "View status" at it without a second round trip. `status` is
+  // typed as the full `export_status` enum, not narrowed to
+  // `'queued' | 'building'`, because the value flows straight from a
+  // `platform.export_requests` row select — narrowing it here would need a
+  // cast at the one call site that constructs this payload
+  // (`../../apps/api/src/services/export/request.ts`) for a guarantee this
+  // type can't itself enforce; the WHERE clause that produced the row is
+  // what actually guarantees it's one of the two in-flight values.
+  EXPORT_ALREADY_RUNNING: {
+    exportId: string;
+    status: 'queued' | 'building' | 'ready' | 'failed' | 'expired';
+  };
+  // Never the raw completion timestamp — `retryAfterSeconds` is what
+  // `RATE_LIMITED` already uses, and ER§1.9a's copy computes "days
+  // remaining" from it client-side rather than the server formatting a
+  // sentence into a payload field.
+  EXPORT_RATE_LIMITED: { retryAfterSeconds: number };
+  EXPORT_NOT_FOUND: EmptyErrorPayload;
+  DEPENDENT_NOT_FOUND: EmptyErrorPayload;
 }
 
 /**
