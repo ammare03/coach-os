@@ -25,12 +25,21 @@ import { workoutsRouter } from './workouts.ts';
 // spreads, no dynamic imports: a merge conflict here should be a one-line
 // conflict, and the reflective walk this feeds (../authorization-middleware/04)
 // is only as complete as this list is honest.
+//
+// `clientApp`, not `client`: `createTRPCReact` (`apps/mobile/src/lib/
+// trpc.ts`) reserves `.client` on its own returned object for the raw
+// vanilla tRPC client, so a top-level router literally named `client`
+// silently corrupts every type this hook infers — invisible from the API
+// side (nothing here imports the react-query bindings), only surfacing
+// once mobile code actually calls `api.<anything>` (`account-lifecycle/08`'s
+// `UnitRow.tsx`, the first real consumer). `client.ts`'s own export stays
+// `clientRouter` — only this map key changes.
 export const appRouter = router({
   health: healthRouter,
   auth: authRouter,
   billing: billingRouter,
   checkins: checkinsRouter,
-  client: clientRouter,
+  clientApp: clientRouter,
   coach: coachRouter,
   comments: commentsRouter,
   exercises: exercisesRouter,
