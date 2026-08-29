@@ -3,7 +3,7 @@ import { router } from '../trpc/init.ts';
 import { authRouter } from './auth.ts';
 import { billingRouter } from './billing.ts';
 import { checkinsRouter } from './checkins.ts';
-import { clientRouter } from './client.ts';
+import { clientAppRouter } from './clientApp.ts';
 import { coachRouter } from './coach.ts';
 import { commentsRouter } from './comments.ts';
 import { exercisesRouter } from './exercises.ts';
@@ -32,14 +32,15 @@ import { workoutsRouter } from './workouts.ts';
 // silently corrupts every type this hook infers — invisible from the API
 // side (nothing here imports the react-query bindings), only surfacing
 // once mobile code actually calls `api.<anything>` (`account-lifecycle/08`'s
-// `UnitRow.tsx`, the first real consumer). `client.ts`'s own export stays
-// `clientRouter` — only this map key changes.
+// `UnitRow.tsx`, the first real consumer). The file and export are renamed
+// to match (`clientApp.ts`, `clientAppRouter`), not just this map key —
+// `router-registry.test.ts` derives the expected key from the filename.
 export const appRouter = router({
   health: healthRouter,
   auth: authRouter,
   billing: billingRouter,
   checkins: checkinsRouter,
-  clientApp: clientRouter,
+  clientApp: clientAppRouter,
   coach: coachRouter,
   comments: commentsRouter,
   exercises: exercisesRouter,

@@ -13,7 +13,7 @@ import { clientProcedure } from '../trpc/procedures.ts';
 // shape as `coach.ts`'s `clients.list` stub note: real name, real path,
 // filled here rather than waiting on the phase that owns the rest of this
 // router.
-export const clientRouter = router({
+export const clientAppRouter = router({
   // No input — a client can only ever leave their own coach; `ctx.user`
   // supplies `clientProfileId`, never a caller-provided id
   // (`api-conventions` §2: no `ownsResource` needed, same reasoning as
