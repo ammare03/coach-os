@@ -268,7 +268,7 @@ export async function buildDataExport(db: DbClient, exportId: string): Promise<v
       metadata: { exportId },
     });
 
-    await sendExportReadyEmail(db, request.userId);
+    await sendExportReadyEmail(db, request);
 
     // Step 9's own log discipline: exportId, counts, byte size, duration —
     // never a filename, food name, or media key (Approach step 9).

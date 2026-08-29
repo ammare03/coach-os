@@ -18,6 +18,7 @@ import { metricsRouter } from './metrics.ts';
 import { notificationsRouter } from './notifications.ts';
 import { nutritionRouter } from './nutrition.ts';
 import { programsRouter } from './programs.ts';
+import { supportRouter } from './support.ts';
 import { workoutsRouter } from './workouts.ts';
 
 // Data, not code — see routers/README.md for the pattern. `health` first,
@@ -54,6 +55,7 @@ export const appRouter = router({
   notifications: notificationsRouter,
   nutrition: nutritionRouter,
   programs: programsRouter,
+  support: supportRouter,
   workouts: workoutsRouter,
 });
 

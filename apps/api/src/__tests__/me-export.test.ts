@@ -64,7 +64,7 @@ afterAll(async () => {
   await pgContainer.stop();
 });
 
-async function insertUser() {
+async function insertUser(overrides: Partial<typeof schema.users.$inferInsert> = {}) {
   const [user] = await db
     .insert(schema.users)
     .values({
@@ -74,10 +74,15 @@ async function insertUser() {
       role: 'client',
       timezone: 'UTC',
       emailVerifiedAt: new Date(),
+      ...overrides,
     })
     .returning();
   if (!user) throw new Error('no user row');
   return user;
+}
+
+async function insertMinor(guardianEmail: string) {
+  return insertUser({ isMinor: true, guardianEmail, guardianConsentAt: new Date() });
 }
 
 function callerFor(user: typeof schema.users.$inferSelect) {
@@ -157,6 +162,68 @@ describe('me.exportStatus / me.exportDownloadUrl', () => {
     });
     await expect(caller.me.exportStatus({ exportId: queued.id })).resolves.toMatchObject({
       progressPercent: 0,
+    });
+  });
+});
+
+describe('account-lifecycle/12 — guardian access to a dependent’s export', () => {
+  it('lets a confirmed guardian poll, download, and see a dependent’s export in history', async () => {
+    const guardian = await insertUser();
+    const minor = await insertMinor(guardian.email);
+    const [row] = await db
+      .insert(schema.exportRequests)
+      .values({
+        userId: minor.id,
+        requestedByUserId: guardian.id,
+        status: 'ready',
+        objectKey: `exports/${minor.id}/x.zip`,
+      })
+      .returning();
+    if (!row) throw new Error('no export_requests row');
+
+    const caller = callerFor(guardian);
+    await expect(caller.me.exportStatus({ exportId: row.id })).resolves.toMatchObject({
+      progressPercent: 100,
+    });
+    const download = await caller.me.exportDownloadUrl({ exportId: row.id });
+    expect(download.downloadUrl).toBe('https://example.com/signed-download');
+
+    const history = await caller.me.exportHistory({});
+    expect(history.items.map((item) => item.id)).toContain(row.id);
+  });
+
+  it('never lets an unrelated caller reach a dependent’s export, even if they also requested one that day', async () => {
+    const guardian = await insertUser();
+    const minor = await insertMinor(guardian.email);
+    const stranger = await insertUser();
+    const [row] = await db
+      .insert(schema.exportRequests)
+      .values({ userId: minor.id, requestedByUserId: guardian.id, status: 'ready' })
+      .returning();
+    if (!row) throw new Error('no export_requests row');
+
+    await expect(callerFor(stranger).me.exportStatus({ exportId: row.id })).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+    const strangerHistory = await callerFor(stranger).me.exportHistory({});
+    expect(strangerHistory.items.map((item) => item.id)).not.toContain(row.id);
+  });
+
+  it('loses guardian access the moment is_minor clears, even for an export it already requested', async () => {
+    const guardian = await insertUser();
+    const formerMinor = await insertUser({
+      isMinor: false,
+      guardianEmail: guardian.email,
+      guardianConsentAt: new Date(),
+    });
+    const [row] = await db
+      .insert(schema.exportRequests)
+      .values({ userId: formerMinor.id, requestedByUserId: guardian.id, status: 'ready' })
+      .returning();
+    if (!row) throw new Error('no export_requests row');
+
+    await expect(callerFor(guardian).me.exportStatus({ exportId: row.id })).rejects.toMatchObject({
+      code: 'NOT_FOUND',
     });
   });
 });

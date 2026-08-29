@@ -91,6 +91,12 @@ export const APP_ERROR_CODES = [
   // same enumeration-oracle reasoning `INVITE_NOT_FOUND` already
   // established, never `FORBIDDEN` (`security-and-privacy` skill §1).
   'EXPORT_NOT_FOUND',
+  // account-lifecycle/12 — the guardian export path. Covers every
+  // ineligible case in one code (not a client, not a minor, no consent,
+  // wrong email, aged out past 18): `NOT_FOUND`, never `FORBIDDEN`, same
+  // enumeration-oracle reasoning `EXPORT_NOT_FOUND` already established —
+  // a guardian probing ids must not learn *which* condition failed.
+  'DEPENDENT_NOT_FOUND',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -148,6 +154,7 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   EXPORT_ALREADY_RUNNING: 'BAD_REQUEST',
   EXPORT_RATE_LIMITED: 'TOO_MANY_REQUESTS',
   EXPORT_NOT_FOUND: 'NOT_FOUND',
+  DEPENDENT_NOT_FOUND: 'NOT_FOUND',
 };
 
 /**
@@ -221,6 +228,7 @@ export interface AppErrorPayloads {
   // sentence into a payload field.
   EXPORT_RATE_LIMITED: { retryAfterSeconds: number };
   EXPORT_NOT_FOUND: EmptyErrorPayload;
+  DEPENDENT_NOT_FOUND: EmptyErrorPayload;
 }
 
 /**

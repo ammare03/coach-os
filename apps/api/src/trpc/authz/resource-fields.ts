@@ -51,4 +51,20 @@ export const NON_RESOURCE_ID_FIELDS: Record<string, string> = {
   // above — `ownsResource`'s coach/client sharing model doesn't apply to
   // "is this my own row".
   exportId: "Always the caller's own export request; scoped by ctx.user.id, not ownership.",
+  // `me.requestExportForDependent` (`account-lifecycle/12`) — never the
+  // caller's own id. Eligibility is a manual, re-verified-every-call check
+  // (`isConfirmedGuardianOf`, `../../services/export/delegated.ts`): a
+  // real, non-deleted client, currently a minor, with guardian consent
+  // recorded, whose `guardian_email` matches the caller's own verified
+  // email. `ownsResource`'s coach/client sharing model doesn't apply — this
+  // is a guardian/dependent relationship, a different kind of ownership
+  // entirely.
+  dependentUserId:
+    "The caller's confirmed dependent (a minor client whose guardian_email matches the caller), verified inline — not ownsResource.",
+  // `support.triggerUserExport` (`account-lifecycle/12`) — the operator
+  // path. Gated by `operatorProcedure` (SUPPORT.md SU§2), not `ownsResource`:
+  // an operator's authority to act here comes from `users.internal_operator`,
+  // never from a coach/client relationship to the subject.
+  subjectUserId:
+    'The export subject an operator names on a support ticket, gated by operatorProcedure — not ownsResource.',
 };

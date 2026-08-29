@@ -72,6 +72,17 @@ export const exportStatusInput = strictObject({
   exportId: id,
 });
 
+/**
+ * `me.requestExportForDependent` (`account-lifecycle/12`) — the guardian
+ * path. No delivery-address field, ever (that task's own governing rule):
+ * the destination is always the confirmed `guardian_email` already on the
+ * dependent's own row, resolved server-side, never a value this input could
+ * carry.
+ */
+export const requestExportForDependentInput = strictObject({
+  dependentUserId: id,
+});
+
 // `me.exportHistory`'s input is the package-root `paginationInput`
 // (`./pagination.ts`), imported directly at the router call site, never
 // redeclared here — this module's own layout test restricts every §6.1

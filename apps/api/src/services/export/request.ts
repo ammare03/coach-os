@@ -27,6 +27,23 @@ export interface RequestExportResult {
 }
 
 /**
+ * `account-lifecycle/12` — carried only by the guardian/operator call sites
+ * in `./delegated.ts`; the self-service `me.requestExport` never passes
+ * this. `destinationEmail` is resolved by the caller from already-verified,
+ * server-side state (the confirmed `guardian_email`, or the subject's own
+ * email) — never from caller input, per that task's "no destination
+ * parameter" rule. Recorded to `audit_log` below, never used to route mail
+ * itself (`../../jobs/send-export-ready-email.ts` re-derives the same
+ * destination independently at send time).
+ */
+export interface DelegationInfo {
+  relationship: 'guardian' | 'operator';
+  reason?: string;
+  ticketReference?: string;
+  destinationEmail: string;
+}
+
+/**
  * `me.requestExport`. Deliberately has no `clientId`/subject parameter
  * beyond `userId` — this is the self-service path only; a guardian or
  * operator request (`account-lifecycle/12`) is a different function that
@@ -42,6 +59,7 @@ export async function requestExport(
   db: DbClient,
   ctx: Pick<Context, 'user' | 'request'>,
   userId: string,
+  delegation?: DelegationInfo,
 ): Promise<RequestExportResult> {
   return db.transaction(async (tx) => {
     // Serialises concurrent calls for the SAME user for the lifetime of
@@ -103,12 +121,26 @@ export async function requestExport(
 
     // Requester and subject (Approach step 8) — identical here (self-
     // service); `account-lifecycle/12`'s guardian/operator paths are what
-    // make the two differ, and this is the same audit action they'll reuse.
+    // make the two differ, and this is the same audit action they reuse —
+    // `delegation` is what makes this record carry the relationship,
+    // reason, and destination that task's own AC requires on top of the
+    // requester/subject pair `writeAuditLog` already captures from `ctx`/
+    // `targetId`.
     await writeAuditLog(tx, ctx, {
       action: 'account.export_requested',
       targetType: 'user',
       targetId: userId,
-      metadata: { exportId: row.id },
+      metadata: {
+        exportId: row.id,
+        ...(delegation
+          ? {
+              relationship: delegation.relationship,
+              reason: delegation.reason,
+              ticketReference: delegation.ticketReference,
+              destination: delegation.destinationEmail,
+            }
+          : {}),
+      },
     });
 
     // Deliberately inside the transaction, after the insert it depends on

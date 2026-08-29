@@ -25,6 +25,7 @@ const ROUTERS = [
   'notifications',
   'nutrition',
   'programs',
+  'support',
   'workouts',
 ];
 

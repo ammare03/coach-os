@@ -29,6 +29,7 @@ import * as metricsModule from '../metrics.ts';
 import * as notificationsModule from '../notifications.ts';
 import * as nutritionModule from '../nutrition.ts';
 import * as programsModule from '../programs.ts';
+import * as supportModule from '../support.ts';
 import * as workoutsModule from '../workouts.ts';
 
 // The §6.1 input-schema modules — where a procedure's *caller-supplied*
@@ -54,6 +55,7 @@ const FEATURE_MODULES: Record<string, object> = {
   notifications: notificationsModule,
   nutrition: nutritionModule,
   programs: programsModule,
+  support: supportModule,
   workouts: workoutsModule,
 };
 

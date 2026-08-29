@@ -5,6 +5,7 @@ import { renderEmailHtml, toPlainText } from '../client.ts';
 import { DeletionRecoveryEmail } from '../templates/deletion-recovery.ts';
 import { GuardianAccessEndedEmail } from '../templates/guardian-access-ended.ts';
 import { GuardianConsentEmail } from '../templates/guardian-consent.ts';
+import { GuardianExportNoticeEmail } from '../templates/guardian-export-notice.ts';
 import { InviteEmail } from '../templates/invite.ts';
 import { PasswordResetEmail } from '../templates/password-reset.ts';
 
@@ -182,5 +183,15 @@ describe('GuardianAccessEndedEmail', () => {
     const guardianHtml = renderEmailHtml(GuardianAccessEndedEmail({ recipient: 'guardian' }));
     expect(clientHtml).not.toBe(guardianHtml);
     expect(guardianHtml).toMatch(/guardian access/i);
+  });
+});
+
+describe('GuardianExportNoticeEmail', () => {
+  it('names the minor and needs no action from them, with no remotely-loaded image', () => {
+    const html = renderEmailHtml(GuardianExportNoticeEmail({ name: 'Alex' }));
+    expect(html).toContain('Alex');
+    expect(html).toMatch(/no action/i);
+    expect(html).not.toMatch(/<img/i);
+    expect(html).not.toMatch(/\{\{.*?\}\}|\$\{.*?\}/);
   });
 });
