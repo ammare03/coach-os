@@ -17,6 +17,7 @@ import {
   jsonb,
   numeric,
   primaryKey,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -24,6 +25,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { id, platformSchema, timestamps } from './_shared.ts';
+import { exportStatus } from './enums.ts';
 import { coachProfiles, users } from './identity.ts';
 
 // `type` is deliberately bare `text`, not an enum — DB§5.5 transcribes it
@@ -220,5 +222,48 @@ export const metricSamples = platformSchema.table(
   },
   (t) => ({
     metricTimeIdx: index('metric_samples_metric_time').on(t.metric, t.sampledAt.desc()),
+  }),
+);
+
+// DB§5.5.2 — records THAT an export happened, never what was in it. 🟡
+// Personal. The archive itself lives at exports/{user_id}/{id}.zip (DB§16),
+// auto-deleted at 7 days; this row's own `object_key`/`expires_at` mirror
+// that lifecycle so `me.exportStatus` (account-lifecycle/10) never has to
+// guess whether the R2 object is still there.
+//
+// Built here (account-lifecycle/09) rather than by the request procedure
+// that later reads and writes it (account-lifecycle/10) — the builder job
+// is what actually populates `status`/`bytes`/`row_counts`/`object_key`, so
+// it needs the table to exist first; task 10 adds the request/dedupe/rate-
+// limit layer on top of a row this job already knows how to fill in.
+export const exportRequests = platformSchema.table(
+  'export_requests',
+  {
+    ...id, // the exportId in the R2 key
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    // Differs from userId for a guardian, operator, or nominee request
+    // (account-lifecycle/12) — that difference is the whole point of the
+    // audit_log row accompanying it.
+    requestedByUserId: uuid('requested_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    status: exportStatus('status').notNull().default('queued'),
+    formatVersion: smallint('format_version').notNull().default(1),
+    bytes: bigint('bytes', { mode: 'number' }),
+    rowCounts: jsonb('row_counts'), // per-file counts, for support — NEVER contents
+    objectKey: text('object_key'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    errorCode: text('error_code'), // an ERRORS.md code, never a message
+    createdAt: timestamps.createdAt, // no updated_at — DB§5.5.2 gives this row created_at/completed_at only
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (t) => ({
+    // "Is one already running for this user?" — account-lifecycle/10's
+    // dedupe check on every request.
+    activeIdx: index('export_requests_active')
+      .on(t.userId, t.createdAt.desc())
+      .where(sql`${t.status} IN ('queued', 'building')`),
   }),
 );

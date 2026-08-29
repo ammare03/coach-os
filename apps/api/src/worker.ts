@@ -2,12 +2,13 @@ import { createDbClient } from '@coachos/db';
 import { Worker } from 'bullmq';
 
 import { env } from './env.ts';
+import { buildDataExport } from './jobs/data-export.ts';
 import { purgeAccount } from './jobs/purge-account.ts';
 import { logger } from './lib/logger.ts';
 import { initSentry } from './lib/sentry.ts';
 import { queueConnection } from './queues/connection.ts';
 import { registerGracefulShutdown } from './queues/graceful-shutdown.ts';
-import type { AccountDeletionJobData } from './queues/types.ts';
+import type { AccountDeletionJobData, DataExportJobData } from './queues/types.ts';
 
 /**
  * The worker process entry point (`03-worker-process.md`) — genuinely
@@ -46,6 +47,17 @@ workers.push(
     'account-deletion',
     async (job) => {
       await purgeAccount(db, job.data.userId);
+    },
+    { connection: queueConnection },
+  ),
+);
+
+// `account-lifecycle/09`.
+workers.push(
+  new Worker<DataExportJobData>(
+    'data-export',
+    async (job) => {
+      await buildDataExport(db, job.data.exportId);
     },
     { connection: queueConnection },
   ),

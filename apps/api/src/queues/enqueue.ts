@@ -2,6 +2,7 @@ import {
   accountDeletionQueue,
   aiGenerationQueue,
   checkinSchedulerQueue,
+  dataExportQueue,
   digestEmailQueue,
   mediaTranscodeQueue,
   notificationsQueue,
@@ -89,4 +90,15 @@ export function enqueueAiGeneration(data: { generationId: string }) {
  */
 export function enqueuePurgeAccount(data: { userId: string }) {
   return accountDeletionQueue.add('purge', data, { jobId: `purge.${data.userId}` });
+}
+
+/**
+ * `jobId`: `export.{exportId}` — one build in flight per export request
+ * (`account-lifecycle/09`). DB§15's own prose writes the example as
+ * `export:{exportId}`; corrected to `.` here for the same reason every
+ * other derivation in this file already is — `.`, not `:`, per this
+ * comment block's own note above.
+ */
+export function enqueueDataExport(data: { exportId: string }) {
+  return dataExportQueue.add('export', data, { jobId: `export.${data.exportId}` });
 }

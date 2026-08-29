@@ -5,6 +5,7 @@ import type {
   AccountDeletionJobData,
   AiGenerationJobData,
   CheckinSchedulerJobData,
+  DataExportJobData,
   DigestEmailJobData,
   MediaTranscodeJobData,
   NotificationsJobData,
@@ -78,6 +79,12 @@ export const aiGenerationQueue = new Queue<AiGenerationJobData>('ai-generation',
 });
 
 export const accountDeletionQueue = new Queue<AccountDeletionJobData>('account-deletion', {
+  connection: queueConnection,
+  defaultJobOptions,
+});
+
+/** `account-lifecycle/09` — DB§15's `data-export` queue. */
+export const dataExportQueue = new Queue<DataExportJobData>('data-export', {
   connection: queueConnection,
   defaultJobOptions,
 });
