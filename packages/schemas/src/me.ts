@@ -66,3 +66,15 @@ export const updatePreferencesInput = strictObject({
 }).refine((value) => Object.keys(value).length > 0, {
   message: 'Provide at least one preference to update.',
 });
+
+/** `me.exportStatus` (`account-lifecycle/10`) — no `clientId`; a user only ever polls their own. */
+export const exportStatusInput = strictObject({
+  exportId: id,
+});
+
+// `me.exportHistory`'s input is the package-root `paginationInput`
+// (`./pagination.ts`), imported directly at the router call site, never
+// redeclared here — this module's own layout test restricts every §6.1
+// domain module to `zod` and `./primitives.ts` only, and `pagination.ts`
+// is deliberately outside that boundary as a shared, already-covered
+// infrastructure export (`layout.test.ts`'s own rule).

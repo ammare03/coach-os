@@ -44,4 +44,11 @@ export const NON_RESOURCE_ID_FIELDS: Record<string, string> = {
   // referenced media asset belongs to the caller is out of this task's
   // scope (its Scope section names only `me.get`/`me.update`).
   avatarAssetId: 'A value the caller sets on their own row; scoped by ctx.user.id, not ownership.',
+  // `me.exportStatus` (`account-lifecycle/10`) — a `platform.export_requests`
+  // row belonging to the caller's own account, never a coach/client
+  // cross-boundary resource. Scoped by a plain `userId` equality check in
+  // the resolver (`../../routers/me.ts`), same reasoning as `deviceId`
+  // above — `ownsResource`'s coach/client sharing model doesn't apply to
+  // "is this my own row".
+  exportId: "Always the caller's own export request; scoped by ctx.user.id, not ownership.",
 };

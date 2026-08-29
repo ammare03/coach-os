@@ -13,6 +13,35 @@
  */
 export const EXPORT_FORMAT_VERSION = 1;
 
+/**
+ * Every key `../../jobs/data-export.ts` ever writes into `export_requests
+ * .row_counts` — the full set, across every role, not just the ones a
+ * given export actually populates (a coach's `sessions` stays absent, not
+ * zero, matching `../collect.ts`'s own null-vs-empty discipline). `account-
+ * lifecycle/10`'s `me.exportStatus` divides how many of these keys are
+ * present by this list's length to report real progress while the job is
+ * still `building`, rather than an indeterminate spinner (Approach step 6).
+ * Kept here, not duplicated in the router, so the two can never drift.
+ */
+export const EXPORT_ROW_COUNT_KEYS = [
+  'sessions',
+  'personalRecords',
+  'programs',
+  'meals',
+  'dailySummaries',
+  'waterLogs',
+  'mealPlans',
+  'mealPlanAssignments',
+  'checkins',
+  'bodyMetrics',
+  'habits',
+  'comments',
+  'messages',
+  'liveSessions',
+  'coachNotes',
+  'mediaAssets',
+] as const;
+
 export interface ExportManifest {
   formatVersion: number;
   generatedAt: string;

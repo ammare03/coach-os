@@ -88,32 +88,50 @@ export async function buildDataExport(db: DbClient, exportId: string): Promise<v
     const subject = await resolveExportSubject(db, request.userId);
     const root = `coachos-export-${new Date().toISOString().slice(0, 10)}`;
 
-    const [profile, training, nutrition, coaching, media] = await Promise.all([
-      collectProfile(db, subject),
-      collectTraining(db, subject),
-      collectNutrition(db, subject),
-      collectCoaching(db, subject),
-      collectMediaManifest(db, subject),
-    ]);
+    // Sequential, not `Promise.all` — each phase's counts are written to
+    // the row as soon as it's known, so `me.exportStatus`
+    // (`account-lifecycle/10`) can report real progress against
+    // `EXPORT_ROW_COUNT_KEYS` while the job is still `building`, instead of
+    // an indeterminate spinner (Approach step 6). The small concurrency
+    // this gives up is cheap next to a user who requests a second export
+    // because the first LOOKS hung (that task's own Risks section).
+    const rowCounts: Record<string, number> = {};
+    async function reportProgress(): Promise<void> {
+      await db
+        .update(schema.exportRequests)
+        .set({ rowCounts })
+        .where(eq(schema.exportRequests.id, exportId));
+    }
 
-    const rowCounts: Record<string, number> = {
-      sessions: training.sessions.length,
-      personalRecords: training.personalRecords.length,
-      programs: training.programs.length,
-      meals: nutrition.meals.length,
-      dailySummaries: nutrition.dailySummaries.length,
-      waterLogs: nutrition.waterLogs.length,
-      mealPlans: nutrition.mealPlans.length,
-      mealPlanAssignments: nutrition.mealPlanAssignments.length,
-      checkins: coaching.checkins.length,
-      bodyMetrics: coaching.bodyMetrics.length,
-      habits: coaching.habits.length,
-      comments: coaching.comments.length,
-      messages: coaching.messages.length,
-      liveSessions: coaching.liveSessions.length,
-      coachNotes: coaching.coachNotes.length,
-      mediaAssets: media.length,
-    };
+    const profile = await collectProfile(db, subject);
+
+    const training = await collectTraining(db, subject);
+    rowCounts.sessions = training.sessions.length;
+    rowCounts.personalRecords = training.personalRecords.length;
+    rowCounts.programs = training.programs.length;
+    await reportProgress();
+
+    const nutrition = await collectNutrition(db, subject);
+    rowCounts.meals = nutrition.meals.length;
+    rowCounts.dailySummaries = nutrition.dailySummaries.length;
+    rowCounts.waterLogs = nutrition.waterLogs.length;
+    rowCounts.mealPlans = nutrition.mealPlans.length;
+    rowCounts.mealPlanAssignments = nutrition.mealPlanAssignments.length;
+    await reportProgress();
+
+    const coaching = await collectCoaching(db, subject);
+    rowCounts.checkins = coaching.checkins.length;
+    rowCounts.bodyMetrics = coaching.bodyMetrics.length;
+    rowCounts.habits = coaching.habits.length;
+    rowCounts.comments = coaching.comments.length;
+    rowCounts.messages = coaching.messages.length;
+    rowCounts.liveSessions = coaching.liveSessions.length;
+    rowCounts.coachNotes = coaching.coachNotes.length;
+    await reportProgress();
+
+    const media = await collectMediaManifest(db, subject);
+    rowCounts.mediaAssets = media.length;
+    await reportProgress();
 
     // Video links are minted now, at build time — a fresh, correctly-scoped
     // signature every time the archive is (re)built, never reused past its

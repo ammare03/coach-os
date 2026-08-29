@@ -60,6 +60,9 @@ function describeCode(code: AppErrorCode): string {
     case 'SOCIAL_ACCOUNT_EXISTS':
     case 'SOCIAL_TOKEN_INVALID':
     case 'CLIENT_HAS_NO_COACH':
+    case 'EXPORT_ALREADY_RUNNING':
+    case 'EXPORT_RATE_LIMITED':
+    case 'EXPORT_NOT_FOUND':
       return code;
     default:
       return assertNever(code);
