@@ -159,6 +159,38 @@ export const rir = boundedInt(0, 10);
 // Pagination
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+/**
+ * A minimum length only — `CLAUDE.md` has no stated composition policy
+ * (no forced digit/symbol), which matches current NIST guidance that
+ * composition rules push users toward predictable substitutions instead of
+ * real entropy. The upper bound is defensive, not a UX opinion: Argon2id's
+ * cost scales with input size, and an unbounded password is a way to make
+ * one request expensive to hash. Promoted here from `auth.ts` on its second
+ * consumer (`invites/04`'s `acceptInviteInput`) per `code-conventions` §1.
+ */
+export const password = z.string().min(8).max(256);
+
+/**
+ * Carried by every procedure that opens a session (`auth.signUp`,
+ * `auth.signIn`, `invites.accept`, …) — needs `deviceId` (omitted on a
+ * device's first sign-in) and `platform` on every call; `appVersion`/
+ * `osVersion` are informational only. Not `strictObject` on its own — it's
+ * always spread into a `strictObject` caller, and a nested `strictObject`
+ * would reject the very keys the outer schema is trying to merge in.
+ * Promoted here from `auth.ts` on its second consumer, same as
+ * {@link password}.
+ */
+export const deviceFields = {
+  deviceId: id.optional(),
+  platform: z.enum(['ios', 'android', 'web']),
+  appVersion: z.string().max(50).optional(),
+  osVersion: z.string().max(50).optional(),
+};
+
 /**
  * The keyset pagination cursor — the last item's `created_at`, opaque to
  * the caller. DB§22 bans `OFFSET` on any list that grows, so every list

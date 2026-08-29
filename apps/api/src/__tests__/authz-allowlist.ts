@@ -98,4 +98,12 @@ export const PUBLIC_ALLOWLIST: readonly PublicAllowlistEntry[] = [
     addedBy: 'phase-03-identity-and-auth/social-sign-in/03-provider-linkage.md',
     addedOn: '2026-08-28',
   },
+
+  {
+    path: 'invites.accept',
+    reason:
+      "The only place a client account is ever created (CLAUDE.md §8.1: clients cannot self-register, so there is no prior session to require). Identity is established by the presented invite code plus the new credentials themselves, same shape as auth.signUp — the code's own state (not found / expired / already accepted / revoked) is validated inside the resolver, not by authz.",
+    addedBy: 'phase-03-identity-and-auth/invites/04-invite-acceptance.md',
+    addedOn: '2026-08-28',
+  },
 ];

@@ -39,6 +39,9 @@ function describeCode(code: AppErrorCode): string {
     case 'CHECKIN_ALREADY_SUBMITTED':
     case 'CLIENT_ALREADY_HAS_COACH':
     case 'INVITE_EXPIRED':
+    case 'INVITE_NOT_FOUND':
+    case 'INVITE_ALREADY_ACCEPTED':
+    case 'INVITE_REVOKED':
     case 'RECORDING_CONSENT_REQUIRED':
     case 'SYNC_CONFLICT':
     case 'VALIDATION_FAILED':

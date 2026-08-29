@@ -4,6 +4,7 @@
 // client" row of the matrix. Every later authorization test in the plan
 // tree imports this rather than re-seeding its own.
 import { schema, type DbClient } from '@coachos/db';
+import { generateInviteCode } from '@coachos/utils';
 
 interface ClientFixture {
   userId: string;
@@ -21,6 +22,7 @@ interface CoachFixture {
   userId: string;
   profileId: string;
   programId: string;
+  inviteId: string;
 }
 
 export interface TwoCoachesFixture {
@@ -63,7 +65,17 @@ async function insertCoach(db: DbClient, emailLocal: string): Promise<CoachFixtu
     .returning({ id: schema.programs.id });
   if (!program) throw new Error('seed insert into programs did not return a row');
 
-  return { userId, profileId: profile.id, programId: program.id };
+  const [invite] = await db
+    .insert(schema.invites)
+    .values({
+      coachId: profile.id,
+      email: `${emailLocal}-invite@two-coaches-fixture.com`,
+      code: generateInviteCode(),
+    })
+    .returning({ id: schema.invites.id });
+  if (!invite) throw new Error('seed insert into invites did not return a row');
+
+  return { userId, profileId: profile.id, programId: program.id, inviteId: invite.id };
 }
 
 async function insertClient(

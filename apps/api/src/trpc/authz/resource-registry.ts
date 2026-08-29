@@ -8,6 +8,7 @@ import { and, eq, inArray, or } from 'drizzle-orm';
 export type ResourceKind =
   | 'client'
   | 'coachNote'
+  | 'invite'
   | 'program'
   | 'workoutSession'
   | 'setLog'
@@ -86,6 +87,20 @@ export const RESOURCE_REGISTRY: Record<ResourceKind, ResourceKindEntry> = {
               eq(schema.coachClientNotes.coachId, coachProfileId),
             ),
           ),
+      ),
+    clientOwnedIds: null,
+  },
+
+  // A client never sees an invite — it's a coach's own pending-invitation
+  // record, gone (converted to a `client_profiles` row) the moment it's
+  // useful to anyone else. `clientOwnedIds` is `null`, same as `coachNote`.
+  invite: {
+    coachOwnedIds: async (db, { coachProfileId }, ids) =>
+      idsOf(
+        await db
+          .select({ id: schema.invites.id })
+          .from(schema.invites)
+          .where(and(inArray(schema.invites.id, ids), eq(schema.invites.coachId, coachProfileId))),
       ),
     clientOwnedIds: null,
   },

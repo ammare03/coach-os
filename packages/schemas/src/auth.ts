@@ -10,33 +10,19 @@
 // exempts from both for the same reason.
 import { z } from 'zod';
 
-import { calendarDate, email, id, strictObject, timezone } from './primitives.ts';
+import {
+  calendarDate,
+  deviceFields,
+  email,
+  password,
+  strictObject,
+  timezone,
+} from './primitives.ts';
 
-/**
- * A minimum length only — `CLAUDE.md` has no stated composition policy
- * (no forced digit/symbol), which matches current NIST guidance that
- * composition rules push users toward predictable substitutions instead of
- * real entropy. The upper bound is defensive, not a UX opinion: Argon2id's
- * cost scales with input size, and an unbounded password is a way to make
- * one request expensive to hash.
- */
-export const password = z.string().min(8).max(256);
-
-/**
- * Carried by every procedure that opens a session (`signUp`, `signIn`, and
- * later `refresh` continuing the same device) — `03`'s device-identity flow
- * needs `deviceId` (omitted on a device's first sign-in) and `platform` on
- * every call; `appVersion`/`osVersion` are informational only. Not
- * `strictObject` on its own — it's always spread into a `strictObject`
- * caller, and a nested `strictObject` would reject the very keys the outer
- * schema is trying to merge in.
- */
-const deviceFields = {
-  deviceId: id.optional(),
-  platform: z.enum(['ios', 'android', 'web']),
-  appVersion: z.string().max(50).optional(),
-  osVersion: z.string().max(50).optional(),
-};
+// Re-exported for existing call sites keyed off `auth.password` — the
+// definition itself lives in `./primitives.ts` now that `invites/04`'s
+// `acceptInviteInput` is a second consumer (`code-conventions` §1).
+export { password };
 
 /**
  * `auth.signUp` — coaches only (`02`'s "Why this exists": clients cannot

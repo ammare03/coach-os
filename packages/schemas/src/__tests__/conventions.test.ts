@@ -20,6 +20,7 @@ import * as coachModule from '../coach.ts';
 import * as commentsModule from '../comments.ts';
 import * as exercisesModule from '../exercises.ts';
 import * as habitsModule from '../habits.ts';
+import * as invitesModule from '../invites.ts';
 import * as liveModule from '../live.ts';
 import * as meModule from '../me.ts';
 import * as mediaModule from '../media.ts';
@@ -44,6 +45,7 @@ const FEATURE_MODULES: Record<string, object> = {
   comments: commentsModule,
   exercises: exercisesModule,
   habits: habitsModule,
+  invites: invitesModule,
   live: liveModule,
   me: meModule,
   media: mediaModule,

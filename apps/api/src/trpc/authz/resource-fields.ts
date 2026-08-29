@@ -9,6 +9,7 @@ import type { ResourceKind } from './resource-registry.ts';
 export const RESOURCE_FIELD_KIND: Record<string, ResourceKind> = {
   clientId: 'client',
   coachNoteId: 'coachNote',
+  inviteId: 'invite',
   programId: 'program',
   workoutSessionId: 'workoutSession',
   setLogId: 'setLog',
