@@ -18,6 +18,9 @@ export type MeProfile = Pick<
   | 'locale'
   | 'onboardingCompletedAt'
   | 'createdAt'
+  // `account-lifecycle/08` — display only, needed here so a settings
+  // screen has something to read before it can call `updatePreferences`.
+  | 'weightUnit'
 >;
 
 const ME_PROFILE_COLUMNS = {
@@ -30,6 +33,7 @@ const ME_PROFILE_COLUMNS = {
   locale: schema.users.locale,
   onboardingCompletedAt: schema.users.onboardingCompletedAt,
   createdAt: schema.users.createdAt,
+  weightUnit: schema.users.weightUnit,
 } as const;
 
 /**

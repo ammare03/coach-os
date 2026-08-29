@@ -93,6 +93,7 @@ describe('getMe', () => {
       locale: 'en-GB',
       onboardingCompletedAt: null,
       createdAt: expect.any(Date),
+      weightUnit: 'kg',
     });
     expect(profile).not.toHaveProperty('passwordHash');
   });
