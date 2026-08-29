@@ -1,6 +1,8 @@
 import { me as meSchemas } from '@coachos/schemas';
 
+import { cancelDeletion } from '../features/me/cancel-deletion.ts';
 import { getMe } from '../features/me/get-me.ts';
+import { requestDeletion } from '../features/me/request-deletion.ts';
 import { updateMe } from '../features/me/update-me.ts';
 import { updatePreferences } from '../features/me/update-preferences.ts';
 import { router } from '../trpc/init.ts';
@@ -26,4 +28,17 @@ export const meRouter = router({
       await updatePreferences(ctx.db, ctx.user.id, input);
       return { success: true } as const;
     }),
+
+  // `03` — no input: identity and email both come from `ctx.user`, never a
+  // caller-supplied id (§21.4: no email input is required to delete).
+  requestDeletion: protectedProcedure.mutation(({ ctx }) =>
+    requestDeletion(ctx.db, ctx, ctx.user.id, ctx.user.email, ctx.user.timezone),
+  ),
+
+  // `03` — the recovery path, reached identically from the email link or
+  // directly in the app.
+  cancelDeletion: protectedProcedure.mutation(async ({ ctx }) => {
+    await cancelDeletion(ctx.db, ctx, ctx.user.id);
+    return { success: true } as const;
+  }),
 });

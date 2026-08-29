@@ -2,6 +2,7 @@
 // on a string" — the rendered HTML and plaintext, not `sendEmail`, which
 // never touches Resend in a test.
 import { renderEmailHtml, toPlainText } from '../client.ts';
+import { DeletionRecoveryEmail } from '../templates/deletion-recovery.ts';
 import { GuardianAccessEndedEmail } from '../templates/guardian-access-ended.ts';
 import { GuardianConsentEmail } from '../templates/guardian-consent.ts';
 import { InviteEmail } from '../templates/invite.ts';
@@ -117,6 +118,56 @@ describe('InviteEmail', () => {
     const html = renderEmailHtml(
       InviteEmail({
         coachName: 'Coach Sam',
+        deepLinkUrl: DEEP_LINK_URL,
+        httpsFallbackUrl: HTTPS_FALLBACK_URL,
+      }),
+    );
+    expect(html).not.toMatch(/<img/i);
+  });
+});
+
+describe('DeletionRecoveryEmail', () => {
+  const DEEP_LINK_URL = 'coachos://settings';
+  const HTTPS_FALLBACK_URL = 'https://app.coachos.test/account';
+
+  it('renders both the coachos:// deep link and the https fallback', () => {
+    const html = renderEmailHtml(
+      DeletionRecoveryEmail({
+        scheduledPurgeDate: 'September 5, 2026',
+        deepLinkUrl: DEEP_LINK_URL,
+        httpsFallbackUrl: HTTPS_FALLBACK_URL,
+      }),
+    );
+    expect(html).toContain(DEEP_LINK_URL);
+    expect(html).toContain(HTTPS_FALLBACK_URL);
+  });
+
+  it('renders the https fallback as the primary button, not the deep link', () => {
+    const html = renderEmailHtml(
+      DeletionRecoveryEmail({
+        scheduledPurgeDate: 'September 5, 2026',
+        deepLinkUrl: DEEP_LINK_URL,
+        httpsFallbackUrl: HTTPS_FALLBACK_URL,
+      }),
+    );
+    expect(html).toContain(`href="${HTTPS_FALLBACK_URL}"`);
+  });
+
+  it('states the scheduled purge date', () => {
+    const html = renderEmailHtml(
+      DeletionRecoveryEmail({
+        scheduledPurgeDate: 'September 5, 2026',
+        deepLinkUrl: DEEP_LINK_URL,
+        httpsFallbackUrl: HTTPS_FALLBACK_URL,
+      }),
+    );
+    expect(html).toContain('September 5, 2026');
+  });
+
+  it('contains no remotely-loaded image and no tracking pixel', () => {
+    const html = renderEmailHtml(
+      DeletionRecoveryEmail({
+        scheduledPurgeDate: 'September 5, 2026',
         deepLinkUrl: DEEP_LINK_URL,
         httpsFallbackUrl: HTTPS_FALLBACK_URL,
       }),

@@ -435,3 +435,26 @@ export const invites = identitySchema.table(
     acceptedByIdx: index('invites_accepted_by_user_id_idx').on(t.acceptedByUserId),
   }),
 );
+
+// Added by `phase-03-identity-and-auth/account-lifecycle/03` — a separate
+// table rather than a `deletion_requested_at` column on `users` above, so
+// this late addition doesn't reopen P01's already-reviewed `users` DDL
+// (that task's own Risks section). `userId` as the primary key — not a
+// generated `id` — makes "at most one pending request per user" a database
+// guarantee rather than an application check: a second `INSERT` collides on
+// the constraint instead of silently creating a duplicate.
+export const deletionRequests = identitySchema.table('deletion_requests', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
+  // §21.4's 7-day grace, enforced as a database default rather than
+  // computed in application code — same "never trust the app layer alone"
+  // reasoning as `invites.expiresAt` above. `03`'s Approach step 2: a
+  // repeat `requestDeletion` call while a row already exists must leave
+  // this unchanged, never reset it — the resolver upserts with
+  // `ON CONFLICT (user_id) DO NOTHING` rather than `DO UPDATE`.
+  scheduledPurgeAt: timestamp('scheduled_purge_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now() + interval '7 days'`),
+});

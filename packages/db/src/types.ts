@@ -35,6 +35,7 @@ import type {
   clientProfiles,
   coachClientNotes,
   coachProfiles,
+  deletionRequests,
   devices,
   invites,
   refreshTokens,
@@ -99,6 +100,9 @@ export type NewCoachClientNote = typeof coachClientNotes.$inferInsert;
 
 export type Invite = typeof invites.$inferSelect;
 export type NewInvite = typeof invites.$inferInsert;
+
+export type DeletionRequest = typeof deletionRequests.$inferSelect;
+export type NewDeletionRequest = typeof deletionRequests.$inferInsert;
 
 export type Exercise = typeof exercises.$inferSelect;
 export type NewExercise = typeof exercises.$inferInsert;
