@@ -27,3 +27,34 @@ export const updateMeInput = strictObject({
 }).refine((value) => Object.keys(value).length > 0, {
   message: 'Provide at least one field to update.',
 });
+
+/** Mirrors `platform.notification_preferences.channel`'s `CHECK (channel IN ('push','email'))`. */
+export const notificationChannel = z.enum(['push', 'email']);
+
+/**
+ * `platform.notification_preferences.type` (DB§5.8) is a free-text column
+ * with no `CHECK` — deliberately open, since the set of notification types
+ * grows with `phase-15-notifications` and nothing in this phase closes it.
+ * Bounded here for shape only, never as a closed list.
+ */
+export const notificationPreferenceType = z.string().trim().min(1).max(64);
+
+const notificationPreferenceInput = strictObject({
+  channel: notificationChannel,
+  type: notificationPreferenceType,
+  enabled: z.boolean(),
+});
+
+/**
+ * `me.updatePreferences` (`account-lifecycle/02`) — every field optional so a
+ * caller can change one thing without resending the rest (this task's Approach
+ * step 3). `notifications` is a partial list: only the `{channel, type}` tuples
+ * present are touched, upserted against their composite primary key.
+ */
+export const updatePreferencesInput = strictObject({
+  analyticsOptOut: z.boolean().optional(),
+  aiProcessingOptOut: z.boolean().optional(),
+  notifications: z.array(notificationPreferenceInput).max(50).optional(),
+}).refine((value) => Object.keys(value).length > 0, {
+  message: 'Provide at least one preference to update.',
+});

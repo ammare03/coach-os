@@ -2,6 +2,7 @@ import { me as meSchemas } from '@coachos/schemas';
 
 import { getMe } from '../features/me/get-me.ts';
 import { updateMe } from '../features/me/update-me.ts';
+import { updatePreferences } from '../features/me/update-preferences.ts';
 import { router } from '../trpc/init.ts';
 import { protectedProcedure } from '../trpc/procedures.ts';
 
@@ -15,4 +16,14 @@ export const meRouter = router({
   update: protectedProcedure
     .input(meSchemas.updateMeInput)
     .mutation(({ ctx, input }) => updateMe(ctx.db, ctx.user.id, input)),
+
+  // `02` — the two `users` opt-out booleans plus a partial notification-
+  // preference upsert, one transaction (`update-preferences.ts`'s own doc
+  // comment).
+  updatePreferences: protectedProcedure
+    .input(meSchemas.updatePreferencesInput)
+    .mutation(async ({ ctx, input }) => {
+      await updatePreferences(ctx.db, ctx.user.id, input);
+      return { success: true } as const;
+    }),
 });
