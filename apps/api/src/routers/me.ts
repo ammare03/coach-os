@@ -1,5 +1,18 @@
-import { router } from '../trpc/init.ts';
+import { me as meSchemas } from '@coachos/schemas';
 
-// Filled by phase-03-identity-and-auth (account-lifecycle). Registered
-// empty now so the tree's shape is visible from api-scaffold onward.
-export const meRouter = router({});
+import { getMe } from '../features/me/get-me.ts';
+import { updateMe } from '../features/me/update-me.ts';
+import { router } from '../trpc/init.ts';
+import { protectedProcedure } from '../trpc/procedures.ts';
+
+export const meRouter = router({
+  // `01` — no `ownsResource` needed: a user always owns their own record by
+  // definition (this task's Interfaces section).
+  get: protectedProcedure.query(({ ctx }) => getMe(ctx.db, ctx.user.id)),
+
+  // `01` — the allowlist lives in `updateMeInput` (`packages/schemas/src/me.ts`);
+  // this procedure never accepts a wider shape than that schema admits.
+  update: protectedProcedure
+    .input(meSchemas.updateMeInput)
+    .mutation(({ ctx, input }) => updateMe(ctx.db, ctx.user.id, input)),
+});

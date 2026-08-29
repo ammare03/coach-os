@@ -38,4 +38,10 @@ export const NON_RESOURCE_ID_FIELDS: Record<string, string> = {
   // The offline-outbox idempotency key (DB§14) — a value the client
   // generates, not an id that resolves to a row anyone owns.
   clientLocalId: 'Idempotency key, not a row reference.',
+  // `me.update` (`account-lifecycle/01`) writes this onto the caller's own
+  // `users` row — it is a value being *set*, not a resource being *read*,
+  // so there is nothing for `ownsResource` to check against. Whether the
+  // referenced media asset belongs to the caller is out of this task's
+  // scope (its Scope section names only `me.get`/`me.update`).
+  avatarAssetId: 'A value the caller sets on their own row; scoped by ctx.user.id, not ownership.',
 };
