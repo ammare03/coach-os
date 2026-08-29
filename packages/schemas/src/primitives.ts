@@ -200,3 +200,21 @@ export const deviceFields = {
  * and not here — this file is primitives, not policy.
  */
 export const paginationCursor = z.iso.datetime();
+
+/**
+ * The three options and two toggles `account-lifecycle/07`'s acceptance
+ * step and settings screen both offer — shared between
+ * `invites.acceptAsExistingClient` and `client.updateHistorySharing` so the
+ * two surfaces can never drift into accepting different shapes. Lives here,
+ * not in `client.ts`, because the module-layout rule above restricts every
+ * router module to importing `zod` or `./primitives.ts` — a router module
+ * cannot import another router module. `z.strictObject` directly, not this
+ * file's own re-exported `strictObject` — importing `./strict.ts` here
+ * would itself violate the same rule this file is bound by (the layout
+ * test checks `primitives.ts`, not just the router modules).
+ */
+export const historySharingInput = z.strictObject({
+  historySharing: z.enum(['twelve_weeks', 'everything', 'nothing']),
+  shareMetrics: z.boolean(),
+  shareNutrition: z.boolean(),
+});

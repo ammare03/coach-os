@@ -7,6 +7,7 @@ import {
   calendarDate,
   deviceFields,
   email,
+  historySharingInput,
   id,
   password,
   strictObject,
@@ -58,6 +59,17 @@ export const acceptInviteInput = strictObject({
   ...deviceFields,
 });
 export type AcceptInviteInput = z.infer<typeof acceptInviteInput>;
+
+/**
+ * `invites.acceptAsExistingClient` (`07`) — no `password`/`name`/`dateOfBirth`:
+ * the caller is already an authenticated, existing client. Only the code
+ * and the sharing decision are theirs to supply.
+ */
+export const acceptInviteAsExistingClientInput = strictObject({
+  code: inviteCode,
+  ...historySharingInput.shape,
+});
+export type AcceptInviteAsExistingClientInput = z.infer<typeof acceptInviteAsExistingClientInput>;
 
 /** `invites.revoke` (`05`) — `ownsResource('invite', ...)` confirms the id belongs to the calling coach before this ever reaches the resolver. */
 export const revokeInviteInput = strictObject({

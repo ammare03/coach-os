@@ -5,7 +5,12 @@
 // half-consistent detachment paths is how a client ends up visible to a
 // coach they left (this task's own Risks section) — there is exactly one
 // `detachClient`.
-import { schema, type DbClient } from '@coachos/db';
+//
+// `account-lifecycle/07` adds `attachClient`, the other half: a returning
+// client (one with `former_coach_id` set) joining a new coach on their
+// existing account, never a new one — there is no coach-to-coach transfer
+// path anywhere, deliberately (that task's own Risks section).
+import { schema, type DbClient, type Transaction } from '@coachos/db';
 import { and, eq, sql } from 'drizzle-orm';
 
 import { appError } from '../lib/app-error.ts';
@@ -44,7 +49,7 @@ export interface DetachClientResult {
  * draws between itself and `send-invite-email.ts`).
  */
 export async function detachClient(
-  db: DbClient,
+  db: DbClient | Transaction,
   ctx: Pick<Context, 'user' | 'request'>,
   params: { clientProfileId: string; initiatedBy: DetachInitiator },
 ): Promise<DetachClientResult> {
@@ -170,4 +175,155 @@ export async function notifyRelationshipEnded(result: DetachClientResult): Promi
       react: RelationshipEndedEmail({ recipientRole: 'client', otherPartyName: result.coachName }),
     }),
   ]);
+}
+
+// `account-lifecycle/07` — the three options the acceptance step and the
+// settings screen both offer (that task's own Approach step 2). A union,
+// never a boolean or a stored duration — see `computeHistorySharedFrom`'s
+// own comment for why a duration is the one shortcut this task's Risks
+// section calls out by name.
+export type HistorySharing = 'twelve_weeks' | 'everything' | 'nothing';
+
+const TWELVE_WEEKS_MS = 12 * 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * A timestamp, computed once at the moment of the decision — never stored
+ * as a duration, which would silently widen the shared window every day
+ * that passes (`account-lifecycle/07`'s Risks section, verbatim). "Everything"
+ * resolves to the client's own account creation date, not `epoch` or
+ * `-Infinity`, so it remains a real, comparable timestamp `gte()` can use.
+ */
+function computeHistorySharedFrom(
+  sharing: HistorySharing,
+  accountCreatedAt: Date,
+  now: Date,
+): Date {
+  switch (sharing) {
+    case 'everything':
+      return accountCreatedAt;
+    case 'nothing':
+      return now;
+    case 'twelve_weeks':
+      return new Date(now.getTime() - TWELVE_WEEKS_MS);
+  }
+}
+
+export interface HistorySharingDecision {
+  historySharing: HistorySharing;
+  shareMetrics: boolean;
+  shareNutrition: boolean;
+}
+
+async function applySharingDecision(
+  tx: Transaction,
+  clientProfileId: string,
+  clientUserId: string,
+  decision: HistorySharingDecision,
+): Promise<void> {
+  const [userRow] = await tx
+    .select({ createdAt: schema.users.createdAt })
+    .from(schema.users)
+    .where(eq(schema.users.id, clientUserId));
+  if (!userRow) {
+    throw new Error('applySharingDecision: users row vanished within the same transaction');
+  }
+
+  const now = new Date();
+  const historySharedFrom = computeHistorySharedFrom(
+    decision.historySharing,
+    userRow.createdAt,
+    now,
+  );
+
+  await tx
+    .update(schema.clientProfiles)
+    .set({
+      historySharedFrom,
+      // Off-by-default polarity (`resource-registry.ts`'s own note): a
+      // toggle turned off stores `null`, not a stale timestamp a future
+      // re-enable would otherwise resurrect unexpectedly.
+      metricsSharedFrom: decision.shareMetrics ? historySharedFrom : null,
+      nutritionSharedFrom: decision.shareNutrition ? historySharedFrom : null,
+    })
+    .where(eq(schema.clientProfiles.id, clientProfileId));
+}
+
+/**
+ * `invites.acceptAsExistingClient` calls this for a returning client — the
+ * one place a `client_profiles` row's `coach_id` is set to a value that
+ * isn't null, other than the original (out-of-scope-here) first-time
+ * acceptance path. Deliberately never touches `former_coach_id` /
+ * `detached_at`: that coach's 30-day grace window runs entirely
+ * independently of whoever the client joins next (`account-lifecycle/07`'s
+ * own Verification: "the two windows do not interact").
+ */
+export async function attachClient(
+  db: DbClient | Transaction,
+  ctx: Pick<Context, 'user' | 'request'>,
+  params: { clientProfileId: string; newCoachId: string } & HistorySharingDecision,
+): Promise<void> {
+  const { clientProfileId, newCoachId, ...decision } = params;
+
+  await db.transaction(async (tx) => {
+    const [client] = await tx
+      .select({ coachId: schema.clientProfiles.coachId, userId: schema.clientProfiles.userId })
+      .from(schema.clientProfiles)
+      .where(eq(schema.clientProfiles.id, clientProfileId));
+    if (!client) {
+      throw new Error(`attachClient: client_profiles ${clientProfileId} not found`);
+    }
+    if (client.coachId !== null) {
+      // The router checks this first — reaching here means it didn't, or
+      // two acceptances raced. There is no coach-to-coach transfer path;
+      // a client already coached stays with who they have until they
+      // leave, deliberately (task's own Risks section).
+      throw appError('CLIENT_ALREADY_HAS_COACH', 'This account is already bound to a coach.', {});
+    }
+
+    await applySharingDecision(tx, clientProfileId, client.userId, decision);
+
+    await tx
+      .update(schema.clientProfiles)
+      .set({ coachId: newCoachId, coachSince: new Date() })
+      .where(eq(schema.clientProfiles.id, clientProfileId));
+
+    await writeAuditLog(tx, ctx, {
+      action: 'coaching.client_attached',
+      targetType: 'client_profile',
+      targetId: clientProfileId,
+    });
+  });
+}
+
+/**
+ * The settings-screen counterpart (`account-lifecycle/07`'s Approach step
+ * 6) — widens or narrows the CURRENT relationship's sharing. Narrowing
+ * takes effect for the next read, same as every other `ownsResource`
+ * check here (a live comparison, never a cache); it does not and cannot
+ * claw back a comment/session a coach already opened.
+ */
+export async function updateHistorySharing(
+  db: DbClient | Transaction,
+  ctx: Pick<Context, 'user' | 'request'>,
+  params: { clientProfileId: string } & HistorySharingDecision,
+): Promise<void> {
+  const { clientProfileId, ...decision } = params;
+
+  await db.transaction(async (tx) => {
+    const [client] = await tx
+      .select({ coachId: schema.clientProfiles.coachId, userId: schema.clientProfiles.userId })
+      .from(schema.clientProfiles)
+      .where(eq(schema.clientProfiles.id, clientProfileId));
+    if (!client || client.coachId === null) {
+      throw appError('CLIENT_HAS_NO_COACH', "You're not currently working with a coach.", {});
+    }
+
+    await applySharingDecision(tx, clientProfileId, client.userId, decision);
+
+    await writeAuditLog(tx, ctx, {
+      action: 'coaching.history_sharing_updated',
+      targetType: 'client_profile',
+      targetId: clientProfileId,
+    });
+  });
 }

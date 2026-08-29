@@ -1,4 +1,10 @@
-import { detachClient, notifyRelationshipEnded } from '../services/coach-client-transition.ts';
+import { client as clientSchemas } from '@coachos/schemas';
+
+import {
+  detachClient,
+  notifyRelationshipEnded,
+  updateHistorySharing,
+} from '../services/coach-client-transition.ts';
 import { router } from '../trpc/init.ts';
 import { clientProcedure } from '../trpc/procedures.ts';
 
@@ -23,4 +29,19 @@ export const clientRouter = router({
     void notifyRelationshipEnded(result).catch(() => {});
     return { success: true } as const;
   }),
+
+  // `07` — "Settings → what {coach} can see". No `ownsResource` needed for
+  // the same reason as `leaveCoach` above.
+  updateHistorySharing: clientProcedure
+    .input(clientSchemas.updateHistorySharingInput)
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.clientProfileId === null) {
+        throw new Error('updateHistorySharing: authenticated client has no clientProfileId');
+      }
+      await updateHistorySharing(ctx.db, ctx, {
+        clientProfileId: ctx.user.clientProfileId,
+        ...input,
+      });
+      return { success: true } as const;
+    }),
 });

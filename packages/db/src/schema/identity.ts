@@ -304,6 +304,38 @@ export const clientProfiles = identitySchema.table(
       onDelete: 'set null',
     }),
     detachedAt: timestamp('detached_at', { withTimezone: true }),
+    // `account-lifecycle/07` — when the CURRENT coach relationship began.
+    // Null for a client on their first-ever coach: there is no prior
+    // relationship to wall off, so `ownsResource` treats null as
+    // unrestricted. Set only by `attachClient` (a returning client); the
+    // original invite-acceptance path never sets it, deliberately — a
+    // first-time client has nothing to hide from the only coach they've
+    // ever had. This is what keeps a NEW coach from seeing a PREVIOUS
+    // coach's comments and check-ins via the live join those two kinds use
+    // (`resource-registry.ts`'s own note on why they, unlike the
+    // denormalised-column kinds, need this rather than relying on a
+    // nulled `coach_id`).
+    coachSince: timestamp('coach_since', { withTimezone: true }),
+    // `account-lifecycle/07` — how much of a RETURNING client's training
+    // history (workout_sessions, set_logs) the new coach may see. A
+    // timestamp, never a boolean or a stored duration (that task's own
+    // Risks section: a duration silently slides as time passes). Null
+    // means the same as `coach_since` null: unrestricted, because there is
+    // no returning-client decision to apply. "Everything" stores the
+    // client's account creation date; "nothing" stores the moment of
+    // attachment; "last 12 weeks" (the default) stores that moment minus
+    // 12 weeks.
+    historySharedFrom: timestamp('history_shared_from', { withTimezone: true }),
+    // Opt-in, off by default — unlike `historySharedFrom` above, null here
+    // means NOT shared, not "unrestricted". Body metrics; wired into
+    // `ownsResource` once `phase-18-habits-metrics-photos` adds the
+    // `bodyMetric` resource kind — the column exists now so `attachClient`
+    // has somewhere to record the decision made at acceptance time.
+    metricsSharedFrom: timestamp('metrics_shared_from', { withTimezone: true }),
+    // Same shape and same off-by-default polarity as `metricsSharedFrom`,
+    // for nutrition (`meal`) — wired into `ownsResource` now, since `meal`
+    // already exists as a resource kind.
+    nutritionSharedFrom: timestamp('nutrition_shared_from', { withTimezone: true }),
     status: clientStatus('status').notNull().default('invited'),
     invitedAt: timestamp('invited_at', { withTimezone: true }).notNull().defaultNow(),
     activatedAt: timestamp('activated_at', { withTimezone: true }),
