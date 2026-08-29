@@ -15,6 +15,10 @@ export interface NotificationPreferenceUpdate {
 export interface UpdatePreferencesInput {
   analyticsOptOut?: boolean | undefined;
   aiProcessingOptOut?: boolean | undefined;
+  // `account-lifecycle/08` — display only. Every stored weight stays kg
+  // regardless of this value; nothing downstream of this write ever reads
+  // it as an input to a computation (`CLAUDE.md` §5.1.1).
+  weightUnit?: 'kg' | 'lb' | undefined;
   notifications?: NotificationPreferenceUpdate[] | undefined;
 }
 
@@ -43,6 +47,9 @@ export async function updatePreferences(
     }
     if (input.aiProcessingOptOut !== undefined) {
       userUpdates.aiProcessingOptOut = input.aiProcessingOptOut;
+    }
+    if (input.weightUnit !== undefined) {
+      userUpdates.weightUnit = input.weightUnit;
     }
     if (Object.keys(userUpdates).length > 0) {
       await tx.update(schema.users).set(userUpdates).where(eq(schema.users.id, userId));

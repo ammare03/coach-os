@@ -83,6 +83,15 @@ describe('updatePreferences', () => {
     expect(user?.aiProcessingOptOut).toBe(true);
   });
 
+  it('updates weightUnit — display only, never a stored weight itself (account-lifecycle/08)', async () => {
+    const userId = await insertUser();
+
+    await updatePreferences(db, userId, { weightUnit: 'lb' });
+
+    const [user] = await db.select().from(schema.users).where(eq(schema.users.id, userId));
+    expect(user?.weightUnit).toBe('lb');
+  });
+
   it('leaves unspecified users booleans unchanged', async () => {
     const userId = await insertUser();
     await updatePreferences(db, userId, { analyticsOptOut: true });

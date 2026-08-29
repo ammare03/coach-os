@@ -51,9 +51,17 @@ const notificationPreferenceInput = strictObject({
  * step 3). `notifications` is a partial list: only the `{channel, type}` tuples
  * present are touched, upserted against their composite primary key.
  */
+/**
+ * `identity.users.weight_unit` (DB§5.1.1) — display only. Never an input
+ * to any computation; every stored weight stays kg regardless of this
+ * value (`account-lifecycle/08`, `CLAUDE.md` §5.1.1).
+ */
+export const weightUnit = z.enum(['kg', 'lb']);
+
 export const updatePreferencesInput = strictObject({
   analyticsOptOut: z.boolean().optional(),
   aiProcessingOptOut: z.boolean().optional(),
+  weightUnit: weightUnit.optional(),
   notifications: z.array(notificationPreferenceInput).max(50).optional(),
 }).refine((value) => Object.keys(value).length > 0, {
   message: 'Provide at least one preference to update.',
