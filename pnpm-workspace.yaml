@@ -8,6 +8,13 @@ packages:
 # actually uses. Declined (false): skips their native builds rather than
 # compiling crypto acceleration nobody exercises here.
 allowBuilds:
+  # `ui-primitives-data/02`. Its postinstall (`scripts/install-libs.js`) only
+  # COPIES the prebuilt Skia binaries out of the `react-native-skia-android` /
+  # `-apple-*` sibling packages into the package's own `libs/` — it compiles
+  # nothing and downloads nothing. Declining it leaves `libs/` empty and the
+  # native build fails at link time with a missing framework, which reads like
+  # a project misconfiguration and is not one. Allowed (true).
+  '@shopify/react-native-skia': true
   cpu-features: false
   esbuild: true
   # bullmq's msgpack encoder (`background-jobs/01-bullmq-setup.md`) — unlike

@@ -5,6 +5,7 @@ export * from './adherence.ts';
 export * from './color/brand-ramp.ts';
 export * from './dates.ts';
 export * from './invite-code.ts';
+export * from './nutrition/macros.ts';
 export * from './numeric.ts';
 export * from './seat-limit.ts';
 export * from './units/weight.ts';

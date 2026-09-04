@@ -8,6 +8,7 @@ export {
   tapTarget,
   elevation,
   glass,
+  dataviz,
   selectionPill,
   duration,
   easing,

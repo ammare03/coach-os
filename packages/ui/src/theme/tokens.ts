@@ -307,6 +307,12 @@ export const control = {
   /** Stepper's brighter hairline (§9). */
   borderBright: 'rgba(255,229,218,0.16)',
   /**
+   * The stepper key's inset top edge — §9's `inset 0 1px 0
+   * rgba(255,255,255,.14)`, rendered as a faked hairline (§12). Dimmer than
+   * `primaryHighlight` because the fill underneath is dark rather than peach.
+   */
+  stepperHighlight: 'rgba(255,255,255,0.14)',
+  /**
    * The primary button's two inset edges (§9). Brighter and heavier than a
    * card's, because the surface underneath is light rather than dark — this
    * is what makes the fill read as a physical, pressable key. The press
@@ -331,6 +337,61 @@ export const control = {
   },
 } as const;
 
+// §7 — data visualisation. Three values §2's elevation ladder does not
+// already carry, because a chart's own wells are a shade deeper than a
+// card's: `elevation.inset` is rgba(19,26,41,0.5) and `control.track` is
+// 0.6, and §7 pins a ring's remainder and a progress bar's track to two
+// different values again. Written down here rather than inlined at the two
+// call sites, for the same reason as everything else in this file.
+//
+// `overTarget` is the whole of §7's overflow rule: going past a target is
+// NOT a failure state and never renders in `urgent`. §7 says "over-target
+// is muted #3F4B62, never red" — that is `border.strong`, reached through
+// this alias so a reader of `ProgressRing` or `MacroBar` sees the intent
+// rather than a border token doing a job it was not named for. A coach
+// scanning a client list must not see a red macro bar and read it as an
+// off-track client (`ui-primitives-data/02`).
+export const dataviz = {
+  /** §7 ring — the remainder arc behind the value sweep. */
+  ringTrack: 'rgba(22,30,47,0.55)',
+  /** §7 progress bar — the well the fill sits in. */
+  barTrack: 'rgba(19,26,41,0.7)',
+  /** §7 — over-target fill and the dashed target reference line. Never red. */
+  overTarget: colors.border.strong,
+
+  // ── §7 line / area chart (`ui-primitives-data/04`) ────────────────────
+  /** §7 — the series stroke. 2.5px in a full chart, 2px in a list row. */
+  seriesStroke: 2.5,
+  sparkStroke: 2,
+  /**
+   * §7's area fill: `#FFA586` from `stop-opacity .34` down to `0`. The
+   * zero stop keeps the hue rather than becoming `transparent`, which is
+   * `rgba(0,0,0,0)` and interpolates through black on iOS — the same trap
+   * the skeleton sweep documents below.
+   */
+  seriesFill: ['rgba(255,165,134,0.34)', 'rgba(255,165,134,0)'] as const,
+  /**
+   * §7's gap treatment, and the second product failure this task exists to
+   * prevent: consecutive readings more than the cadence apart are joined
+   * dashed and dimmed, never solid. `3 5` is the only dash pattern §7
+   * states; `.5` is §7's own de-emphasis level for the same hue (the
+   * micro-spark's non-latest bars are `rgba(224,133,95,.5)`).
+   */
+  gapDash: [3, 5] as const,
+  gapOpacity: 0.5,
+  /** §7 — the reference/target line's dash. Solid axis, dashed reference. */
+  referenceDash: [3, 5] as const,
+  /** §7 — the latest point's dot, `4.5–5.5r`, `#FFFFFF`. */
+  latestPoint: colors.fg.bright,
+  latestPointRadius: 4.5,
+  /**
+   * The scrub crosshair's vertical rule. §7 names no colour for it — it is
+   * not data, so it takes the same weight as §7's non-data reference line
+   * rather than a hue of its own.
+   */
+  crosshair: colors.border.strong,
+} as const;
+
 // §4 — the selection pill inside a dock or segmented control. It MOVES
 // between options; the track itself never recolours.
 export const selectionPill = {
@@ -343,6 +404,17 @@ export const selectionPill = {
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
+} as const;
+
+// §9's Media placeholder pairs `bg.inset` with `bg.inset-alt` for "content
+// that is not here"; those are the two colours a loading skeleton sweeps
+// between (DESIGN-SYSTEM.md DS§6.7 — a slow, low-contrast sweep, never a
+// pulsing opacity). The sweep's second stop is `bg.inset-alt` at zero
+// alpha rather than `transparent`, which is rgba(0,0,0,0) and interpolates
+// through black on iOS.
+export const skeleton = {
+  base: colors.bg.inset,
+  sweep: [colors.bg['inset-alt'], 'rgba(29,38,57,0)'] as const,
 } as const;
 
 // §5 — five durations, seven curves. Nothing animates on a duration or a

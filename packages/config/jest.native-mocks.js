@@ -35,6 +35,11 @@ jest.mock('react-native-reanimated', () => {
     withTiming: identity,
     withSpring: identity,
     withDelay: (_delay, value) => value,
+    // `Skeleton` (`ui-primitives-data/06`) loops its shimmer sweep; the
+    // double resolves the loop to its target so nothing animates in a
+    // behavioural test, and cancellation is a no-op with nothing running.
+    withRepeat: (value) => value,
+    cancelAnimation: () => undefined,
     runOnJS: (fn) => fn,
     interpolate: (value) => value,
   };
@@ -70,5 +75,90 @@ jest.mock('@gorhom/bottom-sheet', () => {
     BottomSheetScrollView: passthrough,
     BottomSheetFlatList: passthrough,
     BottomSheetTextInput: passthrough,
+  };
+});
+
+// `@shopify/react-native-skia` (`ui-primitives-data/02`) is a native module —
+// its JS entry reaches for the Skia C++ bindings at import time, which Jest's
+// Node environment cannot provide.
+//
+// The library ships its own `jestSetup.js`, and it is deliberately NOT used:
+// it swaps in the CanvasKit WebAssembly build, which needs a custom Jest
+// environment (`jestEnv.js`), loads a multi-megabyte `.wasm` on every worker,
+// and buys a real rasteriser we then never look at — no test in this repo
+// asserts a pixel. What `ProgressRing` actually owes a test is its sweep
+// arithmetic (extracted as `progressRingSweep`, asserted directly) and its
+// accessibility contract (asserted on the rendered tree). Neither needs Skia
+// to draw anything, so the seam is the drawing itself.
+//
+// `Skia.Path.Make()` returns a chainable recorder rather than `undefined`
+// so a component that builds a path still runs its real geometry code — a
+// silent no-op here would let a `NaN` radius through a test that then passes.
+jest.mock('@shopify/react-native-skia', () => {
+  const { View } = jest.requireActual('react-native');
+  const { createElement } = jest.requireActual('react');
+  const passthrough = ({ children, ...rest }) => createElement(View, rest, children);
+  const nullRender = () => null;
+  // `Path` takes paint children (a gradient, a dash effect) but is not a
+  // layout box — rendering it as a `View` would put Skia's own props
+  // (`style="stroke"`, an `SkPath` object) through React Native's style
+  // handling. Rendering only its children keeps the tree identical to what
+  // it was when `Path` was a null render, for every component that passes
+  // none.
+  const childrenOnly = ({ children }) => children ?? null;
+
+  const makePath = () => {
+    const path = {
+      commands: [],
+      addCircle(...args) {
+        path.commands.push(['addCircle', ...args]);
+        return path;
+      },
+      addArc(...args) {
+        path.commands.push(['addArc', ...args]);
+        return path;
+      },
+      addRect(...args) {
+        path.commands.push(['addRect', ...args]);
+        return path;
+      },
+      // `LineChart`/`Sparkline` (`ui-primitives-data/04`) build their series
+      // from segments rather than from a single primitive, so the recorder
+      // has to accept them for the real geometry code to run — a missing
+      // method here would throw before the domain and gap rules were ever
+      // exercised.
+      moveTo(...args) {
+        path.commands.push(['moveTo', ...args]);
+        return path;
+      },
+      lineTo(...args) {
+        path.commands.push(['lineTo', ...args]);
+        return path;
+      },
+      close() {
+        path.commands.push(['close']);
+        return path;
+      },
+    };
+    return path;
+  };
+
+  return {
+    __esModule: true,
+    Canvas: passthrough,
+    Group: passthrough,
+    Path: childrenOnly,
+    Circle: nullRender,
+    Rect: nullRender,
+    RoundedRect: nullRender,
+    Line: nullRender,
+    // Paint children of a `<Path>` — the area fill's gradient and the
+    // dashed gap/reference strokes (`DESIGN.md` §7). They render nothing in
+    // a test; `Path` passes its children through so a missing one would be
+    // a mount error rather than a silent omission.
+    LinearGradient: nullRender,
+    DashPathEffect: nullRender,
+    vec: (x, y) => ({ x, y }),
+    Skia: { Path: { Make: makePath } },
   };
 });

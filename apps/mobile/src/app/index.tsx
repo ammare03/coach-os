@@ -1,8 +1,12 @@
 import {
+  AdherenceDot,
+  AdherenceDotRow,
   Avatar,
   AvatarStack,
   Badge,
   Button,
+  CHART_MIN_SPAN,
+  Calendar,
   Card,
   Chip,
   ConfirmModal,
@@ -11,14 +15,24 @@ import {
   GlassSurface,
   IconButton,
   Input,
+  LineChart,
+  MacroBar,
   Metric,
+  NumberStepper,
+  ProgressRing,
   SegmentedControl,
   Sheet,
   SheetFooter,
   SheetHeader,
+  Skeleton,
+  SkeletonCircle,
+  SkeletonText,
+  Sparkline,
   Text,
 } from '@coachos/ui';
+import type { CalendarMarker, CalendarRange, ChartPoint } from '@coachos/ui';
 import { colors } from '@coachos/ui/theme';
+import type { AdherenceState } from '@coachos/utils';
 import { Link } from 'expo-router';
 import { Plus, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
@@ -45,11 +59,168 @@ const PEOPLE = [
   { userId: 'u6', name: 'अनिल कुमार' },
 ];
 
+// A month of markers for the Calendar specimen. The colours are the
+// consumer's to choose — `Calendar` knows nothing about adherence — and
+// every marker carries a label, which is the non-colour channel DESIGN.md
+// §8 requires.
+const SEPTEMBER_MARKERS = new Map<string, CalendarMarker>([
+  ['2026-09-01', { color: colors.brand.DEFAULT, label: 'workout logged' }],
+  ['2026-09-03', { color: colors.brand.DEFAULT, label: 'workout logged' }],
+  ['2026-09-05', { color: colors.brand.mid, label: 'check-in due' }],
+  ['2026-09-08', { color: colors.brand.DEFAULT, label: 'workout logged' }],
+  ['2026-09-10', { color: colors.brand.DEFAULT, label: 'workout logged' }],
+  ['2026-09-12', { color: colors.fg.faint, label: 'rest day' }],
+  ['2026-09-15', { color: colors.brand.DEFAULT, label: 'workout logged' }],
+  ['2026-09-17', { color: colors.brand.mid, label: 'form check uploaded' }],
+  ['2026-09-22', { color: colors.brand.DEFAULT, label: 'workout logged' }],
+  ['2026-09-26', { color: colors.fg.faint, label: 'rest day' }],
+]);
+
+// `ui-primitives-data/03`'s visual proof. A fixed date rather than
+// `new Date()` so the strip is identical on every device and every run —
+// a real screen resolves today in the CLIENT's timezone via `toLocalDate()`
+// from `@coachos/utils`, never from the device clock (`code-conventions` §6).
+const SAMPLE_TODAY = '2026-09-04';
+const SAMPLE_WEEK = [
+  '2026-08-29',
+  '2026-08-30',
+  '2026-08-31',
+  '2026-09-01',
+  '2026-09-02',
+  '2026-09-03',
+  '2026-09-04',
+] as const;
+
+const SAMPLE_WEEKS: {
+  label: string;
+  metric: 'training' | 'nutrition';
+  states: AdherenceState[];
+}[] = [
+  {
+    label: 'Priya Sharma',
+    metric: 'training',
+    states: ['on-track', 'on-track', 'drifting', 'on-track', 'off-track', 'on-track', 'drifting'],
+  },
+  {
+    label: 'Nikhil Rao',
+    metric: 'training',
+    states: ['off-track', 'off-track', 'no-data', 'off-track', 'no-data', 'no-data', 'no-data'],
+  },
+  // The row this component exists to get right: a client invited an hour
+  // ago is seven dashed grey dots, never a row of red.
+  {
+    label: 'Leah Osei · invited',
+    metric: 'nutrition',
+    states: ['no-data', 'no-data', 'no-data', 'no-data', 'no-data', 'no-data', 'no-data'],
+  },
+];
+
+// `ui-primitives-data/02`'s visual proof. Four ring cases side by side —
+// 0%, 79%, exactly 100%, and 118% — because the only way to know the
+// excess arc is legible is to look at all four from arm's length, which is
+// the distance `DESIGN.md` §7 designs for.
+const RING_CASES: { label: string; proteinG: number; targetG: number | null }[] = [
+  { label: 'Protein', proteinG: 0, targetG: 180 },
+  { label: 'Protein', proteinG: 142, targetG: 180 },
+  { label: 'Protein', proteinG: 180, targetG: 180 },
+  { label: 'Protein', proteinG: 212, targetG: 180 },
+];
+
+// Three diary days at very different compositions. The all-zero row is the
+// one that matters: an untouched day is an empty track, never a full bar
+// and never a divide-by-zero.
+const DIARY_DAYS: {
+  day: string;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  targetKcal: number | null;
+}[] = [
+  { day: 'Mon', proteinG: 96, carbsG: 142, fatG: 48, targetKcal: 2340 },
+  { day: 'Tue', proteinG: 168, carbsG: 210, fatG: 92, targetKcal: 2340 },
+  { day: 'Wed', proteinG: 0, carbsG: 0, fatG: 0, targetKcal: 2340 },
+  { day: 'Thu', proteinG: 120, carbsG: 180, fatG: 60, targetKcal: null },
+];
+
+// `ui-primitives-data/04`'s "lying chart" pair, side by side, because the
+// point is that ONE component with no per-screen configuration has to get
+// both right. `WEIGHT_FALLING` drops 2.1kg over four weeks and must read
+// as unmistakable progress; `WEIGHT_STEADY` moves 200g over the same dates
+// and must NOT read as a cliff. Both carry the same eleven-day hole.
+const WEIGHT_DATES = [
+  '2026-06-01',
+  '2026-06-03',
+  '2026-06-05',
+  '2026-06-08',
+  '2026-06-19',
+  '2026-06-22',
+  '2026-06-24',
+  '2026-06-26',
+  '2026-06-29',
+] as const;
+
+function weightPoints(values: readonly number[]): ChartPoint[] {
+  return WEIGHT_DATES.map((dateISO, index) => ({ dateISO, value: values[index] ?? null }));
+}
+
+const WEIGHT_FALLING = weightPoints([84.2, 84.0, 83.9, 83.6, 83.1, 82.8, 82.6, 82.4, 82.1]);
+const WEIGHT_STEADY = weightPoints([82.3, 82.28, 82.32, 82.25, 82.22, 82.18, 82.15, 82.12, 82.1]);
+
+// The overlay: a check-in field against weight. The energy series has a
+// WEEKLY cadence, so it passes its own `gapDays` and draws solid where the
+// daily weigh-ins would have broken.
+const ENERGY_WEEKLY: ChartPoint[] = [
+  { dateISO: '2026-06-01', value: 7 },
+  { dateISO: '2026-06-08', value: 6 },
+  { dateISO: '2026-06-15', value: 6 },
+  { dateISO: '2026-06-22', value: 5 },
+  { dateISO: '2026-06-29', value: 5 },
+];
+
+function liftPoints(values: readonly (number | null)[]): ChartPoint[] {
+  return values.map((value, index) => ({
+    dateISO: `2026-05-${String(4 + index * 7).padStart(2, '0')}`,
+    value,
+  }));
+}
+
+// The coach prototype's "Working weights" rows. This is the shape the
+// dashboard scrolls a hundred of.
+const LIFT_ROWS: { name: string; workingKg: number; points: ChartPoint[] }[] = [
+  {
+    name: 'Bench press',
+    workingKg: 62.5,
+    points: liftPoints([55, 57.5, 57.5, 60, 60, 62.5, 62.5]),
+  },
+  { name: 'Squat', workingKg: 100, points: liftPoints([85, 87.5, 90, 92.5, 95, 97.5, 100]) },
+  { name: 'Barbell row', workingKg: 70, points: liftPoints([70, 70, 72.5, 70, 70, 72.5, 70]) },
+  {
+    name: 'Overhead press',
+    workingKg: 42.5,
+    points: liftPoints([40, 42.5, 42.5, 42.5, 42.5, 42.5, 42.5]),
+  },
+  // A lift with a hole in the middle: the spark BREAKS rather than drawing
+  // a segment across three missed weeks.
+  {
+    name: 'Lat pulldown',
+    workingKg: 55,
+    points: liftPoints([45, 47.5, null, null, null, 52.5, 55]),
+  },
+];
+
 export default function HomeScreen() {
   const ping = api.health.ping.useQuery();
   const [facet, setFacet] = useState<'training' | 'body' | 'habits'>('training');
   const [selectedChips, setSelectedChips] = useState<string[]>(['Needs you']);
   const [note, setNote] = useState('');
+  const [weightKg, setWeightKg] = useState(62.5);
+  const [reps, setReps] = useState(8);
+  const [rpe, setRpe] = useState(8);
+  const [pickedDay, setPickedDay] = useState<string | null>('2026-09-17');
+  const [pickedRange, setPickedRange] = useState<CalendarRange | null>({
+    start: '2026-09-07',
+    end: '2026-09-13',
+  });
   const [isSheetOpen, setSheetOpen] = useState(false);
   const [isConfirmOpen, setConfirmOpen] = useState(false);
 
@@ -203,6 +374,45 @@ export default function HomeScreen() {
         </FormField>
       </Section>
 
+      {/* The logger's core input, at both densities and at three of its
+          seven step sizes. Every acceptance criterion that matters here is
+          physical — 48px hit areas under the Android layout-bounds overlay,
+          a four-digit value unclipped at 200% text, and the value not
+          jittering as it crosses 99 → 100 — and none of them can be checked
+          in a simulator (`ui-conventions` §9). */}
+      <Section title="Steppers">
+        <NumberStepper
+          value={weightKg}
+          onChange={setWeightKg}
+          step={2.5}
+          min={0}
+          max={300}
+          unit="kg"
+          unitLabel="kilograms"
+          accessibilityLabel="weight"
+          testID="stepper-weight"
+        />
+        <NumberStepper
+          value={reps}
+          onChange={setReps}
+          step={1}
+          min={1}
+          max={50}
+          accessibilityLabel="reps"
+          testID="stepper-reps"
+        />
+        <NumberStepper
+          value={rpe}
+          onChange={setRpe}
+          step={0.5}
+          min={5}
+          max={10}
+          density="coach"
+          accessibilityLabel="RPE"
+          testID="stepper-rpe"
+        />
+      </Section>
+
       {/* A wrapping chip row — never horizontally scrolling, so a client
           choosing equipment or restrictions can see every option. */}
       <Section title="Chips, badges, segments">
@@ -231,6 +441,277 @@ export default function HomeScreen() {
           ]}
           value={facet}
           onChange={setFacet}
+        />
+      </Section>
+
+      {/* The month grid, both modes. `today` is passed in rather than
+          derived: deriving it would read the DEVICE timezone, and a coach
+          in Mumbai reviewing a client in Toronto would see the wrong day
+          ringed. Every value in and out is a "yyyy-MM-dd" string. */}
+      <Section title="Calendar">
+        <Calendar
+          initialMonth="2026-09-01"
+          today="2026-09-04"
+          selected={pickedDay}
+          onSelect={setPickedDay}
+          markers={SEPTEMBER_MARKERS}
+          minDate="2026-08-15"
+          maxDate="2026-10-15"
+          density="client"
+          testID="calendar-single"
+        />
+        <Text size="body-sm" tone="muted">
+          {pickedDay ?? 'No day picked'}
+        </Text>
+
+        <Calendar
+          mode="range"
+          initialMonth="2026-09-01"
+          today="2026-09-04"
+          selected={pickedRange}
+          onSelect={setPickedRange}
+          density="coach"
+          testID="calendar-range"
+        />
+        <Text size="body-sm" tone="muted">
+          {pickedRange
+            ? `${pickedRange.start} → ${pickedRange.end ?? 'pick the other end'}`
+            : 'No range picked'}
+        </Text>
+      </Section>
+
+      {/* `ui-primitives-data/02`. Four things can only be checked on
+          hardware: that 100% and 118% are still tellable apart at arm's
+          length (if not, the excess arc is too subtle), that a four-digit
+          calorie value stays inside the `md` ring at 200% OS text size,
+          that the ring track is still visible in light mode, and that
+          neither component reads as an adherence signal beside the dots
+          below. Nothing here animates, by design. */}
+      <Section title="Rings">
+        {/* 0%, 79%, exactly 100%, 118% — the excess arc is inset, muted,
+            and never red. The number keeps counting past the target. */}
+        <View style={styles.wrap}>
+          {RING_CASES.map((ring, index) => (
+            <ProgressRing
+              key={`${ring.proteinG}-${index}`}
+              value={ring.proteinG}
+              target={ring.targetG}
+              unit="g"
+              unitLabel="grams"
+              label="protein"
+              size="md"
+            />
+          ))}
+        </View>
+
+        {/* The client's calorie budget: the one `lg` ring on a screen. */}
+        <View style={styles.row}>
+          <ProgressRing
+            value={741}
+            target={2340}
+            unit="kcal"
+            unitLabel="kilocalories"
+            label="left"
+            size="lg"
+          />
+          {/* A target the coach has not set yet. An indeterminate track,
+              never a full ring and never 0%. */}
+          <ProgressRing value={64} target={null} unit="g" unitLabel="grams" label="fat" size="md" />
+          {/* `sm` — the habit-row size. No sub-line fits; the screen reader
+              still gets the full sentence. */}
+          <ProgressRing value={4} target={5} unit="sessions" size="sm" />
+        </View>
+      </Section>
+
+      {/* Four diary rows. The segments are sized by CALORIES contributed,
+          not by grams — so they deliberately do not match the numbers
+          printed under them, and 9 kcal/g makes fat wider than its gram
+          count suggests. The Wednesday row is an untouched day. */}
+      <Section title="Diary rows">
+        {DIARY_DAYS.map((entry) => (
+          <View key={entry.day} style={styles.diaryRow}>
+            <Text size="body-sm" tone="muted" style={styles.diaryDay}>
+              {entry.day}
+            </Text>
+            <View style={styles.diaryBar}>
+              <MacroBar
+                proteinG={entry.proteinG}
+                carbsG={entry.carbsG}
+                fatG={entry.fatG}
+                targetKcal={entry.targetKcal}
+                density="coach"
+              />
+            </View>
+          </View>
+        ))}
+        {/* Client density — 8px tall rather than 6px. */}
+        <MacroBar proteinG={96} carbsG={142} fatG={48} targetKcal={2340} density="client" />
+      </Section>
+
+      {/* `ui-primitives-data/04`. Four things can only be checked here, on
+          hardware: that the falling series and the steady one are BOTH
+          honest with the same component (the first must look like progress,
+          the second must not look like a cliff); that the eleven-day hole
+          reads as a hole to someone who has not been told there is one;
+          that setting the device to a timezone 12+ hours away moves no
+          point by a pixel (if one moves, a `Date` has crept in); and that
+          the axis labels reduce in COUNT rather than rotating or clipping
+          at 200% OS text size. Nothing here animates, by design. */}
+      <Section title="Charts">
+        {/* 2.1kg over four weeks. The y-domain pads around the data and is
+            never anchored at zero, so this is a visible slope and not a
+            flat line near the top of a 0-90 axis. */}
+        <Card density="coach">
+          <LineChart
+            series={[
+              {
+                points: WEIGHT_FALLING,
+                label: 'Weight',
+                unit: 'kg',
+                unitLabel: 'kilograms',
+                minSpan: CHART_MIN_SPAN.bodyWeightKg,
+                referenceValue: 82,
+              },
+            ]}
+            onRequestTable={() => undefined}
+          />
+        </Card>
+
+        {/* The same component, the same dates, 200g of movement. The
+            `minSpan` floor is what stops this reading as a collapse. */}
+        <Card density="coach">
+          <LineChart
+            series={[
+              {
+                points: WEIGHT_STEADY,
+                label: 'Weight',
+                unit: 'kg',
+                unitLabel: 'kilograms',
+                minSpan: CHART_MIN_SPAN.bodyWeightKg,
+              },
+            ]}
+          />
+        </Card>
+
+        {/* The overlay: one check-in field against weight, two scales, each
+            labelled on its own mark. A third series is not possible - the
+            prop is a tuple, so the compiler says no. */}
+        <Card density="coach">
+          <LineChart
+            height={140}
+            series={[
+              {
+                points: WEIGHT_FALLING,
+                label: 'Weight',
+                unit: 'kg',
+                unitLabel: 'kilograms',
+                minSpan: CHART_MIN_SPAN.bodyWeightKg,
+              },
+              {
+                points: ENERGY_WEEKLY,
+                label: 'Energy',
+                unitLabel: 'out of ten',
+                minSpan: CHART_MIN_SPAN.checkinScale,
+                range: { min: 1, max: 10 },
+                gapDays: 7,
+              },
+            ]}
+          />
+        </Card>
+
+        {/* A client with nothing logged yet. A designed empty state, never
+            a blank box - and never a chart of a fabricated range. */}
+        <Card density="coach">
+          <LineChart
+            series={[
+              {
+                points: [],
+                label: 'Weight',
+                unit: 'kg',
+                minSpan: CHART_MIN_SPAN.bodyWeightKg,
+              },
+            ]}
+          />
+        </Card>
+
+        {/* Five list rows, each with the mark from the coach prototype's
+            "Working weights" list. No touch, no state, no animation - the
+            ROW is what is tappable. The last lift has a three-week hole and
+            its line breaks rather than bridging it. */}
+        <Card density="coach">
+          {LIFT_ROWS.map((lift) => (
+            <View key={lift.name} style={styles.liftRow}>
+              <Text size="body-sm" style={styles.liftName}>
+                {lift.name}
+              </Text>
+              <Sparkline points={lift.points} accessibilityLabel={`${lift.name} working weight`} />
+              <Metric value={lift.workingKg} unit="kg" size="body-lg" tone="warm" />
+            </View>
+          ))}
+        </Card>
+      </Section>
+
+      {/* `ui-primitives-data/03`. Three things can only be checked here, on
+          hardware: that the four states are still distinguishable with the
+          OS greyscale filter on (turn it on — this is the important one),
+          that the dashed `not started` ring actually renders dashed on
+          Android rather than collapsing to solid, and that a week strip
+          survives 200% text size with its day letters shown. */}
+      <Section title="Adherence">
+        {/* All four states at both sizes, one row each, so the fill/hollow/
+            dashed channel is comparable rather than remembered. */}
+        {(['sm', 'md'] as const).map((size) => (
+          <View key={size} style={styles.row}>
+            {(['on-track', 'drifting', 'off-track', 'no-data'] as const).map((state) => (
+              <AdherenceDot key={state} state={state} size={size} />
+            ))}
+            <Text size="caption" tone="subtle">
+              {size === 'sm' ? '11px · coach row' : '12px · client detail'}
+            </Text>
+          </View>
+        ))}
+
+        {/* The key §8 requires wherever the state graphic appears more than
+            eight times in one view. */}
+        <View style={styles.wrap}>
+          <AdherenceDot state="on-track" label="On plan" />
+          <AdherenceDot state="drifting" label="Drifting" />
+          <AdherenceDot state="off-track" label="Off plan" />
+          <AdherenceDot state="no-data" label="Not started" />
+        </View>
+
+        {/* Three sample client rows. They must stay aligned down the column
+            — that alignment is the whole reason the strip pads to seven. */}
+        {SAMPLE_WEEKS.map((week) => (
+          <View key={week.label} style={styles.adherenceRow}>
+            <Text size="body-sm" tone="muted" numberOfLines={1} style={styles.adherenceName}>
+              {week.label}
+            </Text>
+            <AdherenceDotRow
+              days={week.states.map((state, index) => ({
+                dateISO: SAMPLE_WEEK[index] ?? SAMPLE_TODAY,
+                state,
+              }))}
+              metric={week.metric}
+              todayISO={SAMPLE_TODAY}
+              onPress={() => undefined}
+            />
+          </View>
+        ))}
+
+        {/* The same strip at `md` with day letters — today's letter is the
+            bright one, at the right-hand end. */}
+        <AdherenceDotRow
+          days={
+            SAMPLE_WEEKS[0]?.states.map((state, index) => ({
+              dateISO: SAMPLE_WEEK[index] ?? SAMPLE_TODAY,
+              state,
+            })) ?? []
+          }
+          metric="training"
+          todayISO={SAMPLE_TODAY}
+          size="md"
+          showDayLabels
         />
       </Section>
 
@@ -265,6 +746,32 @@ export default function HomeScreen() {
             Text on glass steps up to the glass ramp.
           </Text>
         </GlassSurface>
+      </Section>
+
+      {/* The two shapes every loading state is made of: a card and a list
+          row. Both reserve exactly the box the real content will take, so
+          nothing shifts when data lands. Toggle Reduce Motion on the device
+          — the sweep must stop and the static fill must stay. */}
+      <Section title="Loading">
+        <Card elevation="raised" density="client">
+          <View style={styles.skeletonCard}>
+            <SkeletonText size="eyebrow" lastLineWidth="34%" accessibilityLabel="Loading" />
+            <Skeleton height={30} width="58%" radius="control" />
+            <SkeletonText size="body-sm" lines={2} lastLineWidth="62%" />
+          </View>
+        </Card>
+        {[0, 1, 2].map((row) => (
+          <View key={row} style={styles.skeletonRow}>
+            <SkeletonCircle
+              diameter={36}
+              accessibilityLabel={row === 0 ? 'Loading clients' : undefined}
+            />
+            <View style={styles.skeletonRowBody}>
+              <SkeletonText size="body" lastLineWidth="62%" />
+              <SkeletonText size="caption" lastLineWidth="38%" />
+            </View>
+          </View>
+        ))}
       </Section>
 
       <Section title="Overlays">
@@ -335,11 +842,54 @@ const styles = StyleSheet.create({
   section: {
     gap: 12,
   },
+  // §9's list row: 66px tall, 12px gap, 36px avatar.
+  skeletonCard: {
+    gap: 11,
+  },
+  skeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 66,
+    gap: 12,
+  },
+  skeletonRowBody: {
+    flex: 1,
+    gap: 3,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     flexWrap: 'wrap',
+  },
+  adherenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  adherenceName: {
+    width: 132,
+  },
+  diaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  diaryDay: {
+    width: 36,
+  },
+  diaryBar: {
+    flex: 1,
+  },
+  // A list row at coach density: a name, a mark, and a number.
+  liftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    minHeight: 60,
+  },
+  liftName: {
+    flex: 1,
   },
   wrap: {
     flexDirection: 'row',

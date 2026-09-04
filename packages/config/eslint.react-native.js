@@ -100,9 +100,20 @@ const adherenceColorsOnlyRule = {
   ignores: [
     '**/theme/tokens.ts',
     '**/theme/schemes.ts',
-    // AdherenceDot doesn't exist yet (ui-primitives-data/03) — pre-declared
-    // so that task doesn't also have to touch this config file.
+    // The adherence family itself (ui-primitives-data/03) — the components
+    // DESIGN.md §8's warmth ramp exists for, and the only ones in
+    // `packages/ui` allowed to name `colors.state.*`. Each carries §8's
+    // second, non-colour channel alongside the hue (filled / hollow /
+    // dashed ring), so neither relies on colour alone; `AdherenceDotRow`
+    // reaches the ramp only through `AdherenceDot`, but is listed so a
+    // future strip-level treatment does not have to touch this file.
     '**/components/AdherenceDot.tsx',
+    '**/components/AdherenceDotRow.tsx',
+    // Their tests have to NAME the four ramp stops to prove each state maps
+    // to the right one and that `not started` is never `off plan` — same
+    // exemption class as `tokens.test.ts`.
+    '**/components/AdherenceDot.test.tsx',
+    '**/components/AdherenceDotRow.test.tsx',
     '**/adherence.ts',
     '**/adherence.test.ts',
     // Assert every token key exists, including the adherence ones — testing

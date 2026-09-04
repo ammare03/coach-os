@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import {
   Pressable as RNPressable,
   type AccessibilityState,
+  type GestureResponderEvent,
   type PressableProps as RNPressableProps,
   type StyleProp,
   type ViewStyle,
@@ -22,13 +23,29 @@ export interface PressableRenderState {
 export interface PressableProps extends Pick<
   RNPressableProps,
   | 'onLongPress'
+  | 'onPressIn'
+  | 'onPressOut'
   | 'hitSlop'
   | 'testID'
   | 'accessibilityLabel'
   | 'accessibilityHint'
   | 'accessibilityRole'
+  // `adjustable` controls (`NumberStepper`) need a value and the
+  // increment/decrement actions to be reachable by a screen reader without
+  // the visual buttons. Pass-through only — this component adds nothing.
+  | 'accessibilityValue'
+  | 'accessibilityActions'
+  | 'onAccessibilityAction'
 > {
   onPress?: (() => void) | undefined;
+  /**
+   * DESIGN.md §5 puts press feedback at `scale(.92–.98)`. `.97` is the
+   * product default (§9's primary button); the logger's stepper keys press
+   * to `.92` in §9 and in all three prototypes, which is the only reason
+   * this is a prop rather than a constant. Anything outside §5's range is a
+   * design decision, not a tuning knob.
+   */
+  pressScale?: number;
   disabled?: boolean;
   accessibilityState?: AccessibilityState | undefined;
   children: ReactNode | ((state: PressableRenderState) => ReactNode);
@@ -63,6 +80,9 @@ export function Pressable({
   containerStyle,
   accessibilityState,
   onPress,
+  onPressIn,
+  onPressOut,
+  pressScale = 0.97,
   hitSlop,
   ...rest
 }: PressableProps) {
@@ -74,14 +94,16 @@ export function Pressable({
   // (`scale`, from `useSharedValue`) inside a hook's own callback. These
   // are plain functions handed to `RNPressable`, which is not memoised, so
   // the wrapper bought nothing anyway.
-  const handlePressIn = () => {
+  const handlePressIn = (event: GestureResponderEvent) => {
     setPressed(true);
-    scale.value = withTiming(0.97, { duration: duration.press, easing: PRESS_EASING });
+    scale.value = withTiming(pressScale, { duration: duration.press, easing: PRESS_EASING });
+    onPressIn?.(event);
   };
 
-  const handlePressOut = () => {
+  const handlePressOut = (event: GestureResponderEvent) => {
     setPressed(false);
     scale.value = withTiming(1, { duration: duration.press, easing: PRESS_EASING });
+    onPressOut?.(event);
   };
 
   const animatedStyle = useAnimatedStyle(() => ({
