@@ -59,6 +59,40 @@ export { SheetFooter, type SheetFooterProps } from './components/SheetFooter.tsx
 export { Modal, type ModalProps } from './components/Modal.tsx';
 export { ConfirmModal, type ConfirmModalProps } from './components/ConfirmModal.tsx';
 
+// ── Toasts ──────────────────────────────────────────────────────────────
+// `CLAUDE.md` §7.5 / `ui-conventions` §5's undo rule, made real: a
+// destructive action performs immediately and offers a five-second window —
+// it does not ask first. A confirm dialog interrupts the flow and gets
+// dismissed reflexively without being read; an undo toast is the opposite
+// trade.
+//
+// The two exceptions §7.5 names — account deletion and client archival —
+// use `ConfirmModal`'s typed confirmation above and never `useUndoToast`.
+// Both are irreversible in a way five seconds cannot honestly cover.
+//
+// `ToastProvider` mounts once at the app root. The optimistic change is the
+// caller's; the server mutation is deferred until the window closes, so
+// `onUndo` only has to put local state back — there is nothing to reverse
+// server-side.
+export {
+  ToastProvider,
+  useToast,
+  MAX_VISIBLE_TOASTS,
+  TOAST_BOTTOM_OFFSET,
+  TOAST_DEFAULT_DURATION_MS,
+  type ToastProviderProps,
+  type ToastContextValue,
+  type ToastResolution,
+  type ShowToastOptions,
+} from './toast/ToastProvider.tsx';
+export { Toast, type ToastProps, type ToastAction } from './toast/Toast.tsx';
+export {
+  useUndoToast,
+  UNDO_WINDOW_MS,
+  type UndoToastOptions,
+  type ShowUndoToast,
+} from './toast/useUndoToast.ts';
+
 // ── Small labelled shapes ───────────────────────────────────────────────
 export { Chip, type ChipProps } from './components/Chip.tsx';
 export { Badge, type BadgeProps, type BadgeSize, type BadgeTone } from './components/Badge.tsx';
