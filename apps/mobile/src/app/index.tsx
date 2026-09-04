@@ -1,4 +1,6 @@
 import {
+  AdherenceDot,
+  AdherenceDotRow,
   Avatar,
   AvatarStack,
   Badge,
@@ -23,6 +25,7 @@ import {
   Text,
 } from '@coachos/ui';
 import { colors } from '@coachos/ui/theme';
+import type { AdherenceState } from '@coachos/utils';
 import { Link } from 'expo-router';
 import { Plus, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
@@ -47,6 +50,45 @@ const PEOPLE = [
   { userId: 'u4', name: 'Ravi Iyer' },
   { userId: 'u5', name: 'Mei Tanaka' },
   { userId: 'u6', name: 'अनिल कुमार' },
+];
+
+// `ui-primitives-data/03`'s visual proof. A fixed date rather than
+// `new Date()` so the strip is identical on every device and every run —
+// a real screen resolves today in the CLIENT's timezone via `toLocalDate()`
+// from `@coachos/utils`, never from the device clock (`code-conventions` §6).
+const SAMPLE_TODAY = '2026-09-04';
+const SAMPLE_WEEK = [
+  '2026-08-29',
+  '2026-08-30',
+  '2026-08-31',
+  '2026-09-01',
+  '2026-09-02',
+  '2026-09-03',
+  '2026-09-04',
+] as const;
+
+const SAMPLE_WEEKS: {
+  label: string;
+  metric: 'training' | 'nutrition';
+  states: AdherenceState[];
+}[] = [
+  {
+    label: 'Priya Sharma',
+    metric: 'training',
+    states: ['on-track', 'on-track', 'drifting', 'on-track', 'off-track', 'on-track', 'drifting'],
+  },
+  {
+    label: 'Nikhil Rao',
+    metric: 'training',
+    states: ['off-track', 'off-track', 'no-data', 'off-track', 'no-data', 'no-data', 'no-data'],
+  },
+  // The row this component exists to get right: a client invited an hour
+  // ago is seven dashed grey dots, never a row of red.
+  {
+    label: 'Leah Osei · invited',
+    metric: 'nutrition',
+    states: ['no-data', 'no-data', 'no-data', 'no-data', 'no-data', 'no-data', 'no-data'],
+  },
 ];
 
 export default function HomeScreen() {
@@ -280,6 +322,70 @@ export default function HomeScreen() {
         />
       </Section>
 
+      {/* `ui-primitives-data/03`. Three things can only be checked here, on
+          hardware: that the four states are still distinguishable with the
+          OS greyscale filter on (turn it on — this is the important one),
+          that the dashed `not started` ring actually renders dashed on
+          Android rather than collapsing to solid, and that a week strip
+          survives 200% text size with its day letters shown. */}
+      <Section title="Adherence">
+        {/* All four states at both sizes, one row each, so the fill/hollow/
+            dashed channel is comparable rather than remembered. */}
+        {(['sm', 'md'] as const).map((size) => (
+          <View key={size} style={styles.row}>
+            {(['on-track', 'drifting', 'off-track', 'no-data'] as const).map((state) => (
+              <AdherenceDot key={state} state={state} size={size} />
+            ))}
+            <Text size="caption" tone="subtle">
+              {size === 'sm' ? '11px · coach row' : '12px · client detail'}
+            </Text>
+          </View>
+        ))}
+
+        {/* The key §8 requires wherever the state graphic appears more than
+            eight times in one view. */}
+        <View style={styles.wrap}>
+          <AdherenceDot state="on-track" label="On plan" />
+          <AdherenceDot state="drifting" label="Drifting" />
+          <AdherenceDot state="off-track" label="Off plan" />
+          <AdherenceDot state="no-data" label="Not started" />
+        </View>
+
+        {/* Three sample client rows. They must stay aligned down the column
+            — that alignment is the whole reason the strip pads to seven. */}
+        {SAMPLE_WEEKS.map((week) => (
+          <View key={week.label} style={styles.adherenceRow}>
+            <Text size="body-sm" tone="muted" numberOfLines={1} style={styles.adherenceName}>
+              {week.label}
+            </Text>
+            <AdherenceDotRow
+              days={week.states.map((state, index) => ({
+                dateISO: SAMPLE_WEEK[index] ?? SAMPLE_TODAY,
+                state,
+              }))}
+              metric={week.metric}
+              todayISO={SAMPLE_TODAY}
+              onPress={() => undefined}
+            />
+          </View>
+        ))}
+
+        {/* The same strip at `md` with day letters — today's letter is the
+            bright one, at the right-hand end. */}
+        <AdherenceDotRow
+          days={
+            SAMPLE_WEEKS[0]?.states.map((state, index) => ({
+              dateISO: SAMPLE_WEEK[index] ?? SAMPLE_TODAY,
+              state,
+            })) ?? []
+          }
+          metric="training"
+          todayISO={SAMPLE_TODAY}
+          size="md"
+          showDayLabels
+        />
+      </Section>
+
       {/* Four sizes and a fallback grid. The non-Latin name is here on
           purpose — grapheme-aware initials are easy to get wrong and easy
           not to notice if everyone testing has a Latin name. */}
@@ -426,6 +532,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     flexWrap: 'wrap',
+  },
+  adherenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  adherenceName: {
+    width: 132,
   },
   wrap: {
     flexDirection: 'row',

@@ -69,6 +69,24 @@ export {
   type SegmentedOptions,
 } from './components/SegmentedControl.tsx';
 
+// ── Adherence ───────────────────────────────────────────────────────────
+// The only components in `packages/ui` permitted to name `colors.state.*`
+// (`DESIGN.md` §8, enforced by the `adherence-colors-only` lint rule). Both
+// take a state NAME from `@coachos/utils`, never a score — the §8.2
+// thresholds live in `adherenceState()` and nowhere else.
+export {
+  AdherenceDot,
+  ADHERENCE_STATE_LABEL,
+  type AdherenceDotProps,
+  type AdherenceDotSize,
+} from './components/AdherenceDot.tsx';
+export {
+  AdherenceDotRow,
+  type AdherenceDotRowProps,
+  type AdherenceDay,
+  type AdherenceMetric,
+} from './components/AdherenceDotRow.tsx';
+
 // ── People ──────────────────────────────────────────────────────────────
 export {
   Avatar,
