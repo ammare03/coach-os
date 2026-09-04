@@ -67,14 +67,25 @@ export default function HomeScreen() {
           : 'Checking API…'}
       </Text>
 
-      <View style={styles.row}>
-        <Link href="/sign-in" style={styles.link}>
-          Sign in
-        </Link>
-        <Link href="/sign-up" style={styles.link}>
-          Create account
-        </Link>
-      </View>
+      {/* Every route in the app, so each screen is reachable for visual
+          review before `phase-05-app-shell/router-skeleton/` builds the
+          real navigation. None of these needs the API to render. */}
+      <Section title="Screens">
+        <View style={styles.wrap}>
+          {(
+            [
+              ['/sign-in', 'Sign in'],
+              ['/sign-up', 'Create account'],
+              ['/complete-social-signup', 'Complete social sign-up'],
+              ['/your-data', 'Your data'],
+            ] as const
+          ).map(([href, label]) => (
+            <Link key={href} href={href} style={styles.link}>
+              {label}
+            </Link>
+          ))}
+        </View>
+      </Section>
 
       {/* Type scale — every size and its pinned face, plus a Metric with
           its unit stepped down and tabular numerals. */}

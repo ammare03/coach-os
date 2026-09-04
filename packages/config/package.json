@@ -10,7 +10,8 @@
     "./prettier.json": "./prettier.json",
     "./jest.base": "./jest.base.js",
     "./jest.node": "./jest.node.js",
-    "./jest.react-native": "./jest.react-native.js"
+    "./jest.react-native": "./jest.react-native.js",
+    "./jest.native-mocks": "./jest.native-mocks.js"
   },
   "peerDependencies": {
     "eslint": "^9.0.0",

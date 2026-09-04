@@ -126,7 +126,7 @@ export function UnitRow() {
 
 const styles = StyleSheet.create({
   section: {
-    gap: spacing(2),
+    gap: spacing(8),
   },
   sectionLabel: {
     fontFamily: 'System',
@@ -136,15 +136,15 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     textTransform: 'uppercase',
     color: colors.fg.muted,
-    paddingHorizontal: spacing(1),
+    paddingHorizontal: spacing(4),
   },
   card: {
     backgroundColor: colors.bg.raised,
     borderWidth: 1,
     borderColor: colors.border.soft,
     borderRadius: radius.card,
-    padding: spacing(5),
-    gap: spacing(4),
+    padding: spacing(20),
+    gap: spacing(16),
   },
   exampleCaption: {
     fontFamily: 'System',
@@ -154,13 +154,13 @@ const styles = StyleSheet.create({
   },
   tileRow: {
     flexDirection: 'row',
-    gap: spacing(3),
+    gap: spacing(12),
   },
   tile: {
     flex: 1,
     position: 'relative',
     borderRadius: radius.control,
-    padding: spacing(4),
+    padding: spacing(16),
     borderWidth: 1,
     minHeight: 48,
   },
@@ -174,8 +174,8 @@ const styles = StyleSheet.create({
   },
   checkBadge: {
     position: 'absolute',
-    top: spacing(3),
-    right: spacing(3),
+    top: spacing(12),
+    right: spacing(12),
   },
   tileLabel: {
     fontFamily: 'System',
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontVariant: ['tabular-nums'],
     color: colors.fg.DEFAULT,
-    marginTop: spacing(1),
+    marginTop: spacing(4),
   },
   tileValueIdle: {
     color: colors.fg.subtle,
@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: colors.fg.subtle,
-    marginTop: spacing(1),
+    marginTop: spacing(4),
   },
   footnote: {
     fontFamily: 'System',

@@ -40,7 +40,7 @@ export function AppearanceRow() {
 const styles = StyleSheet.create({
   row: {
     minHeight: 72,
-    paddingHorizontal: spacing(4),
+    paddingHorizontal: spacing(16),
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
   trailing: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing(2),
+    gap: spacing(8),
   },
   value: {
     fontFamily: 'System',

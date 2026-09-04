@@ -28,3 +28,8 @@
 ].forEach((name) => {
   void (globalThis as Record<string, unknown>)[name];
 });
+
+// Shared native-module stand-ins (Reanimated, @gorhom/bottom-sheet) — one
+// copy, in `@coachos/config`, since `packages/ui` needs exactly the same
+// two and a second copy would drift.
+require('@coachos/config/jest.native-mocks');

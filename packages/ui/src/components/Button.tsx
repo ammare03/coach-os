@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
   labelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing(8),
+    gap: spacing(32),
   },
   labelRowHidden: {
     opacity: 0,

@@ -23,8 +23,8 @@ const MESSAGE_LINE_HEIGHT = Number.parseInt(fontSize['body-sm'][1].lineHeight, 1
 // Density changes the label/control/message gap only — never the label's
 // `body-sm` size and never the message slot's reserved height.
 const GAP: Record<Density, number> = {
-  client: spacing(6),
-  coach: spacing(5),
+  client: spacing(24),
+  coach: spacing(20),
 };
 
 /**
@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
   messageRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: spacing(6),
+    gap: spacing(24),
   },
   messageGlyph: {
     marginTop: 2,
