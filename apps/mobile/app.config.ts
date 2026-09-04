@@ -57,6 +57,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // it ships no `app.plugin.js` at all (checked in its
     // `expo-module.config.json`); it's a plain autolinked native module,
     // same situation as `expo-secure-store` above.
+    //
+    // `@shopify/react-native-skia` (`ui-primitives-data/02`, `CLAUDE.md`
+    // §3.1) is the third of these: no `app.plugin.js`, no
+    // `expo-module.config.json`, just a podspec and a Gradle module that
+    // React Native autolinks. Nothing to configure here — but it IS native,
+    // so it needs a dev-client rebuild and can never arrive over OTA
+    // (`configuration` skill §8, `CLAUDE.md` §25.1, §25.11). Its own
+    // postinstall copies the prebuilt Skia binaries into place; that build
+    // script is allowed explicitly in `pnpm-workspace.yaml`.
     'expo-router',
     [
       'expo-splash-screen',

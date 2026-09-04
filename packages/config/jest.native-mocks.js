@@ -77,3 +77,60 @@ jest.mock('@gorhom/bottom-sheet', () => {
     BottomSheetTextInput: passthrough,
   };
 });
+
+// `@shopify/react-native-skia` (`ui-primitives-data/02`) is a native module —
+// its JS entry reaches for the Skia C++ bindings at import time, which Jest's
+// Node environment cannot provide.
+//
+// The library ships its own `jestSetup.js`, and it is deliberately NOT used:
+// it swaps in the CanvasKit WebAssembly build, which needs a custom Jest
+// environment (`jestEnv.js`), loads a multi-megabyte `.wasm` on every worker,
+// and buys a real rasteriser we then never look at — no test in this repo
+// asserts a pixel. What `ProgressRing` actually owes a test is its sweep
+// arithmetic (extracted as `progressRingSweep`, asserted directly) and its
+// accessibility contract (asserted on the rendered tree). Neither needs Skia
+// to draw anything, so the seam is the drawing itself.
+//
+// `Skia.Path.Make()` returns a chainable recorder rather than `undefined`
+// so a component that builds a path still runs its real geometry code — a
+// silent no-op here would let a `NaN` radius through a test that then passes.
+jest.mock('@shopify/react-native-skia', () => {
+  const { View } = jest.requireActual('react-native');
+  const { createElement } = jest.requireActual('react');
+  const passthrough = ({ children, ...rest }) => createElement(View, rest, children);
+  const nullRender = () => null;
+
+  const makePath = () => {
+    const path = {
+      commands: [],
+      addCircle(...args) {
+        path.commands.push(['addCircle', ...args]);
+        return path;
+      },
+      addArc(...args) {
+        path.commands.push(['addArc', ...args]);
+        return path;
+      },
+      addRect(...args) {
+        path.commands.push(['addRect', ...args]);
+        return path;
+      },
+      close() {
+        return path;
+      },
+    };
+    return path;
+  };
+
+  return {
+    __esModule: true,
+    Canvas: passthrough,
+    Group: passthrough,
+    Path: nullRender,
+    Circle: nullRender,
+    Rect: nullRender,
+    RoundedRect: nullRender,
+    Line: nullRender,
+    Skia: { Path: { Make: makePath } },
+  };
+});

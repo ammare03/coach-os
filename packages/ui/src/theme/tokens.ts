@@ -337,6 +337,29 @@ export const control = {
   },
 } as const;
 
+// §7 — data visualisation. Three values §2's elevation ladder does not
+// already carry, because a chart's own wells are a shade deeper than a
+// card's: `elevation.inset` is rgba(19,26,41,0.5) and `control.track` is
+// 0.6, and §7 pins a ring's remainder and a progress bar's track to two
+// different values again. Written down here rather than inlined at the two
+// call sites, for the same reason as everything else in this file.
+//
+// `overTarget` is the whole of §7's overflow rule: going past a target is
+// NOT a failure state and never renders in `urgent`. §7 says "over-target
+// is muted #3F4B62, never red" — that is `border.strong`, reached through
+// this alias so a reader of `ProgressRing` or `MacroBar` sees the intent
+// rather than a border token doing a job it was not named for. A coach
+// scanning a client list must not see a red macro bar and read it as an
+// off-track client (`ui-primitives-data/02`).
+export const dataviz = {
+  /** §7 ring — the remainder arc behind the value sweep. */
+  ringTrack: 'rgba(22,30,47,0.55)',
+  /** §7 progress bar — the well the fill sits in. */
+  barTrack: 'rgba(19,26,41,0.7)',
+  /** §7 — over-target fill and the dashed target reference line. Never red. */
+  overTarget: colors.border.strong,
+} as const;
+
 // §4 — the selection pill inside a dock or segmented control. It MOVES
 // between options; the track itself never recolours.
 export const selectionPill = {

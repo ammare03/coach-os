@@ -82,6 +82,30 @@ export {
 } from './components/Calendar.tsx';
 export type { WeekStart } from './components/calendar-grid.ts';
 
+// ── Proportion of a target ──────────────────────────────────────────────
+// Two components, deliberately not one with a `shape` prop: `ProgressRing`
+// answers "how much of *this one* target is left?" (one value, one target,
+// 1–4 per screen, drawn on a Skia canvas); `MacroBar` answers "how was
+// *this day* composed?" (three values against each other, one per row,
+// thirty rows per screen, three plain views). Neither may use
+// `colors.state.*` — going over a calorie target is not an adherence
+// signal and never renders red (`DESIGN.md` §7, §8).
+export {
+  ProgressRing,
+  progressRingSweep,
+  type ProgressRingProps,
+  type ProgressRingSize,
+  type ProgressRingSweep,
+} from './components/ProgressRing.tsx';
+export {
+  MacroBar,
+  macroBarSegments,
+  macroBarFill,
+  type MacroBarProps,
+  type MacroSegments,
+  type MacroBarFill,
+} from './components/MacroBar.tsx';
+
 // ── Adherence ───────────────────────────────────────────────────────────
 // The only components in `packages/ui` permitted to name `colors.state.*`
 // (`DESIGN.md` §8, enforced by the `adherence-colors-only` lint rule). Both

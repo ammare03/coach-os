@@ -14,8 +14,10 @@ import {
   GlassSurface,
   IconButton,
   Input,
+  MacroBar,
   Metric,
   NumberStepper,
+  ProgressRing,
   SegmentedControl,
   Sheet,
   SheetFooter,
@@ -108,6 +110,33 @@ const SAMPLE_WEEKS: {
     metric: 'nutrition',
     states: ['no-data', 'no-data', 'no-data', 'no-data', 'no-data', 'no-data', 'no-data'],
   },
+];
+
+// `ui-primitives-data/02`'s visual proof. Four ring cases side by side —
+// 0%, 79%, exactly 100%, and 118% — because the only way to know the
+// excess arc is legible is to look at all four from arm's length, which is
+// the distance `DESIGN.md` §7 designs for.
+const RING_CASES: { label: string; proteinG: number; targetG: number | null }[] = [
+  { label: 'Protein', proteinG: 0, targetG: 180 },
+  { label: 'Protein', proteinG: 142, targetG: 180 },
+  { label: 'Protein', proteinG: 180, targetG: 180 },
+  { label: 'Protein', proteinG: 212, targetG: 180 },
+];
+
+// Three diary days at very different compositions. The all-zero row is the
+// one that matters: an untouched day is an empty track, never a full bar
+// and never a divide-by-zero.
+const DIARY_DAYS: {
+  day: string;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  targetKcal: number | null;
+}[] = [
+  { day: 'Mon', proteinG: 96, carbsG: 142, fatG: 48, targetKcal: 2340 },
+  { day: 'Tue', proteinG: 168, carbsG: 210, fatG: 92, targetKcal: 2340 },
+  { day: 'Wed', proteinG: 0, carbsG: 0, fatG: 0, targetKcal: 2340 },
+  { day: 'Thu', proteinG: 120, carbsG: 180, fatG: 60, targetKcal: null },
 ];
 
 export default function HomeScreen() {
@@ -382,6 +411,74 @@ export default function HomeScreen() {
         </Text>
       </Section>
 
+      {/* `ui-primitives-data/02`. Four things can only be checked on
+          hardware: that 100% and 118% are still tellable apart at arm's
+          length (if not, the excess arc is too subtle), that a four-digit
+          calorie value stays inside the `md` ring at 200% OS text size,
+          that the ring track is still visible in light mode, and that
+          neither component reads as an adherence signal beside the dots
+          below. Nothing here animates, by design. */}
+      <Section title="Rings">
+        {/* 0%, 79%, exactly 100%, 118% — the excess arc is inset, muted,
+            and never red. The number keeps counting past the target. */}
+        <View style={styles.wrap}>
+          {RING_CASES.map((ring, index) => (
+            <ProgressRing
+              key={`${ring.proteinG}-${index}`}
+              value={ring.proteinG}
+              target={ring.targetG}
+              unit="g"
+              unitLabel="grams"
+              label="protein"
+              size="md"
+            />
+          ))}
+        </View>
+
+        {/* The client's calorie budget: the one `lg` ring on a screen. */}
+        <View style={styles.row}>
+          <ProgressRing
+            value={741}
+            target={2340}
+            unit="kcal"
+            unitLabel="kilocalories"
+            label="left"
+            size="lg"
+          />
+          {/* A target the coach has not set yet. An indeterminate track,
+              never a full ring and never 0%. */}
+          <ProgressRing value={64} target={null} unit="g" unitLabel="grams" label="fat" size="md" />
+          {/* `sm` — the habit-row size. No sub-line fits; the screen reader
+              still gets the full sentence. */}
+          <ProgressRing value={4} target={5} unit="sessions" size="sm" />
+        </View>
+      </Section>
+
+      {/* Four diary rows. The segments are sized by CALORIES contributed,
+          not by grams — so they deliberately do not match the numbers
+          printed under them, and 9 kcal/g makes fat wider than its gram
+          count suggests. The Wednesday row is an untouched day. */}
+      <Section title="Diary rows">
+        {DIARY_DAYS.map((entry) => (
+          <View key={entry.day} style={styles.diaryRow}>
+            <Text size="body-sm" tone="muted" style={styles.diaryDay}>
+              {entry.day}
+            </Text>
+            <View style={styles.diaryBar}>
+              <MacroBar
+                proteinG={entry.proteinG}
+                carbsG={entry.carbsG}
+                fatG={entry.fatG}
+                targetKcal={entry.targetKcal}
+                density="coach"
+              />
+            </View>
+          </View>
+        ))}
+        {/* Client density — 8px tall rather than 6px. */}
+        <MacroBar proteinG={96} carbsG={142} fatG={48} targetKcal={2340} density="client" />
+      </Section>
+
       {/* `ui-primitives-data/03`. Three things can only be checked here, on
           hardware: that the four states are still distinguishable with the
           OS greyscale filter on (turn it on — this is the important one),
@@ -600,6 +697,17 @@ const styles = StyleSheet.create({
   },
   adherenceName: {
     width: 132,
+  },
+  diaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  diaryDay: {
+    width: 36,
+  },
+  diaryBar: {
+    flex: 1,
   },
   wrap: {
     flexDirection: 'row',
