@@ -197,6 +197,20 @@ export {
   type EmptyStateAction,
 } from './components/EmptyState.tsx';
 
+// ── Haptics ─────────────────────────────────────────────────────────────
+// Three functions, and deliberately no generic `triggerHaptic`. `CLAUDE.md`
+// §7.5 sanctions exactly three haptics in the product — `Light` on set
+// logged, `Success` on session complete, `Warning` on validation failure —
+// and naming each for its USE CASE rather than its waveform is what makes a
+// fourth kind of feedback visible in review instead of arriving one
+// defensible call site at a time. Nothing outside `src/haptics/index.ts`
+// may import `expo-haptics`.
+export {
+  hapticSetLogged,
+  hapticSessionComplete,
+  hapticValidationFailure,
+} from './haptics/index.ts';
+
 // ── Theme ───────────────────────────────────────────────────────────────
 export {
   ThemeProvider,
