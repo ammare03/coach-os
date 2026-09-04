@@ -444,6 +444,9 @@ importers:
       jest:
         specifier: 30.4.2
         version: 30.4.2(@types/node@22.20.1)(supports-color@8.1.1)
+      nativewind:
+        specifier: 4.2.6
+        version: 4.2.6(b9b47190f46f8b76f1ac7ca9801e23dd)
       react:
         specifier: 19.2.3
         version: 19.2.3

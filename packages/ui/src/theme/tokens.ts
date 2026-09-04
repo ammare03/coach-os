@@ -95,5 +95,40 @@ export const spacingSteps: readonly number[] = Array.from(
   (_, i) => i + 1,
 );
 
+// DS§3 — Inter (UI, body) and Inter Tight (numerals, display). Each weight
+// is a separate family name (theme-tokens/03 approach §3) — React Native
+// does not reliably resolve `fontWeight` against a single family, so
+// `Text`/`Metric` pick a *family*, never a `fontWeight`.
+// Kebab-case keys — Tailwind emits `font-${key}` verbatim, so a camelCase
+// key here would produce an unusable `font-sansMedium` class.
+export const fontFamily = {
+  sans: 'Inter-Regular',
+  'sans-medium': 'Inter-Medium',
+  'sans-semibold': 'Inter-SemiBold',
+  display: 'InterTight-Medium',
+  'display-semibold': 'InterTight-SemiBold',
+  'display-bold': 'InterTight-Bold',
+} as const;
+
+// DS§3.1 — the closed ten-step scale. Each entry is `[size, { lineHeight,
+// letterSpacing }]`, Tailwind's tuple form for `fontSize`, which this
+// overrides wholesale, not extends (`text-3xl` and Tailwind's other
+// defaults must not exist). Letter-spacing is -0.02em on the three largest
+// display sizes and 0 everywhere else (DS§3.1).
+export const fontSize = {
+  display: [64, { lineHeight: '64px', letterSpacing: '-0.02em' }],
+  hero: [48, { lineHeight: '48px', letterSpacing: '-0.02em' }],
+  metric: [32, { lineHeight: '36px', letterSpacing: '-0.02em' }],
+  'metric-sm': [24, { lineHeight: '28px', letterSpacing: '0' }],
+  title: [20, { lineHeight: '28px', letterSpacing: '0' }],
+  heading: [17, { lineHeight: '24px', letterSpacing: '0' }],
+  body: [16, { lineHeight: '24px', letterSpacing: '0' }],
+  'body-sm': [15, { lineHeight: '22px', letterSpacing: '0' }],
+  label: [13, { lineHeight: '18px', letterSpacing: '0' }],
+  caption: [12, { lineHeight: '16px', letterSpacing: '0' }],
+} as const;
+
 export type ColorTokens = typeof colors;
 export type RadiusTokens = typeof radius;
+export type FontFamilyTokens = typeof fontFamily;
+export type TextSize = keyof typeof fontSize;

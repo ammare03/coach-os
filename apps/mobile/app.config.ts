@@ -56,6 +56,22 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         imageWidth: 76,
       },
     ],
+    // theme-tokens/03 — embeds the five faces natively at prebuild so
+    // there is no runtime load and no flash of a fallback face. A native
+    // change: adding a sixth weight needs a rebuild, never an OTA.
+    [
+      'expo-font',
+      {
+        fonts: [
+          './assets/fonts/Inter-Regular.ttf',
+          './assets/fonts/Inter-Medium.ttf',
+          './assets/fonts/Inter-SemiBold.ttf',
+          './assets/fonts/InterTight-Medium.ttf',
+          './assets/fonts/InterTight-SemiBold.ttf',
+          './assets/fonts/InterTight-Bold.ttf',
+        ],
+      },
+    ],
   ],
   experiments: {
     typedRoutes: true,

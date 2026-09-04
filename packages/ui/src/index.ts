@@ -11,10 +11,12 @@ export {
 } from './components/Button.tsx';
 export { FormField, type FormFieldProps } from './components/FormField.tsx';
 export { Input, type InputProps, type InputState } from './components/Input.tsx';
+export { Metric, type MetricProps } from './components/Metric.tsx';
 export { Pressable } from './components/Pressable.tsx';
+export { Text, type TextProps, type TextTone } from './components/Text.tsx';
 export {
   GlassSurface,
   type GlassSurfaceProps,
   type GlassSurfaceStyle,
 } from './surfaces/GlassSurface.tsx';
-export { colors, radius, spacing } from './theme/tokens.ts';
+export { colors, radius, spacing, fontFamily, fontSize } from './theme/tokens.ts';

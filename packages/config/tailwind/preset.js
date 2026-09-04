@@ -9,7 +9,14 @@
 // `theme-tokens/04`'s dark/light switch and P25's white-label override can
 // change what a variable holds without this preset — or any component —
 // changing at all.
-const { colors, radius, spacing, spacingSteps } = require('../../ui/src/theme/tokens.ts');
+const {
+  colors,
+  radius,
+  spacing,
+  spacingSteps,
+  fontFamily,
+  fontSize,
+} = require('../../ui/src/theme/tokens.ts');
 const { flattenColorChannels } = require('../../ui/src/theme/to-rgb-channels.ts');
 
 const channelNames = Object.keys(flattenColorChannels(colors));
@@ -44,6 +51,10 @@ module.exports = {
     colors: nest(cssVarColors),
     borderRadius: radius,
     spacing: Object.fromEntries(spacingSteps.map((step) => [step, `${spacing(step)}px`])),
+    // Both overridden wholesale (theme-tokens/03 approach §4) — Tailwind's
+    // `font-bold`/`text-3xl` and the rest of its defaults must not exist.
+    fontFamily,
+    fontSize,
     extend: {},
   },
   plugins: [],
