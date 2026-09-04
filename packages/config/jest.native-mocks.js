@@ -35,6 +35,11 @@ jest.mock('react-native-reanimated', () => {
     withTiming: identity,
     withSpring: identity,
     withDelay: (_delay, value) => value,
+    // `Skeleton` (`ui-primitives-data/06`) loops its shimmer sweep; the
+    // double resolves the loop to its target so nothing animates in a
+    // behavioural test, and cancellation is a no-op with nothing running.
+    withRepeat: (value) => value,
+    cancelAnimation: () => undefined,
     runOnJS: (fn) => fn,
     interpolate: (value) => value,
   };

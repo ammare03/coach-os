@@ -87,6 +87,14 @@ export {
   type AvatarFallback,
 } from './components/avatar-fallback.ts';
 
+// ── Loading ─────────────────────────────────────────────────────────────
+// `DESIGN.md` §5 forbids "spinners where a skeleton belongs". A skeleton is
+// shaped like the content it stands in for and reserves that content's box,
+// so nothing shifts when the data lands (`UI-UX.md` §UX4).
+export { Skeleton, type SkeletonProps, type SkeletonRadius } from './components/Skeleton.tsx';
+export { SkeletonText, type SkeletonTextProps } from './components/SkeletonText.tsx';
+export { SkeletonCircle, type SkeletonCircleProps } from './components/SkeletonCircle.tsx';
+
 // ── Theme ───────────────────────────────────────────────────────────────
 export {
   ThemeProvider,
@@ -108,6 +116,7 @@ export {
   elevation,
   glass,
   selectionPill,
+  skeleton,
   duration,
   easing,
   stagger,

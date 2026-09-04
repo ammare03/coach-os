@@ -17,6 +17,9 @@ import {
   Sheet,
   SheetFooter,
   SheetHeader,
+  Skeleton,
+  SkeletonCircle,
+  SkeletonText,
   Text,
 } from '@coachos/ui';
 import { colors } from '@coachos/ui/theme';
@@ -310,6 +313,32 @@ export default function HomeScreen() {
         </GlassSurface>
       </Section>
 
+      {/* The two shapes every loading state is made of: a card and a list
+          row. Both reserve exactly the box the real content will take, so
+          nothing shifts when data lands. Toggle Reduce Motion on the device
+          — the sweep must stop and the static fill must stay. */}
+      <Section title="Loading">
+        <Card elevation="raised" density="client">
+          <View style={styles.skeletonCard}>
+            <SkeletonText size="eyebrow" lastLineWidth="34%" accessibilityLabel="Loading" />
+            <Skeleton height={30} width="58%" radius="control" />
+            <SkeletonText size="body-sm" lines={2} lastLineWidth="62%" />
+          </View>
+        </Card>
+        {[0, 1, 2].map((row) => (
+          <View key={row} style={styles.skeletonRow}>
+            <SkeletonCircle
+              diameter={36}
+              accessibilityLabel={row === 0 ? 'Loading clients' : undefined}
+            />
+            <View style={styles.skeletonRowBody}>
+              <SkeletonText size="body" lastLineWidth="62%" />
+              <SkeletonText size="caption" lastLineWidth="38%" />
+            </View>
+          </View>
+        ))}
+      </Section>
+
       <Section title="Overlays">
         <View style={styles.row}>
           <Button onPress={() => setSheetOpen(true)}>Open sheet</Button>
@@ -377,6 +406,20 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: 12,
+  },
+  // §9's list row: 66px tall, 12px gap, 36px avatar.
+  skeletonCard: {
+    gap: 11,
+  },
+  skeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 66,
+    gap: 12,
+  },
+  skeletonRowBody: {
+    flex: 1,
+    gap: 3,
   },
   row: {
     flexDirection: 'row',

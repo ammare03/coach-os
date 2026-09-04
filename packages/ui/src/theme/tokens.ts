@@ -351,6 +351,17 @@ export const selectionPill = {
   },
 } as const;
 
+// §9's Media placeholder pairs `bg.inset` with `bg.inset-alt` for "content
+// that is not here"; those are the two colours a loading skeleton sweeps
+// between (DESIGN-SYSTEM.md DS§6.7 — a slow, low-contrast sweep, never a
+// pulsing opacity). The sweep's second stop is `bg.inset-alt` at zero
+// alpha rather than `transparent`, which is rgba(0,0,0,0) and interpolates
+// through black on iOS.
+export const skeleton = {
+  base: colors.bg.inset,
+  sweep: [colors.bg['inset-alt'], 'rgba(29,38,57,0)'] as const,
+} as const;
+
 // §5 — five durations, seven curves. Nothing animates on a duration or a
 // curve that is not here.
 export const duration = {
