@@ -69,6 +69,19 @@ export {
   type SegmentedOptions,
 } from './components/SegmentedControl.tsx';
 
+// ── Dates ───────────────────────────────────────────────────────────────
+// Every date crossing this boundary is a `"yyyy-MM-dd"` string, never a JS
+// `Date` — a `Date` is an instant, and an instant is a different calendar
+// day either side of midnight (`code-conventions` §6).
+export {
+  Calendar,
+  CALENDAR_CELL_GEOMETRY,
+  type CalendarProps,
+  type CalendarMarker,
+  type CalendarRange,
+} from './components/Calendar.tsx';
+export type { WeekStart } from './components/calendar-grid.ts';
+
 // ── Adherence ───────────────────────────────────────────────────────────
 // The only components in `packages/ui` permitted to name `colors.state.*`
 // (`DESIGN.md` §8, enforced by the `adherence-colors-only` lint rule). Both

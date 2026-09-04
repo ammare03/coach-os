@@ -5,6 +5,7 @@ import {
   AvatarStack,
   Badge,
   Button,
+  Calendar,
   Card,
   Chip,
   ConfirmModal,
@@ -24,6 +25,7 @@ import {
   SkeletonText,
   Text,
 } from '@coachos/ui';
+import type { CalendarMarker, CalendarRange } from '@coachos/ui';
 import { colors } from '@coachos/ui/theme';
 import type { AdherenceState } from '@coachos/utils';
 import { Link } from 'expo-router';
@@ -51,6 +53,23 @@ const PEOPLE = [
   { userId: 'u5', name: 'Mei Tanaka' },
   { userId: 'u6', name: 'अनिल कुमार' },
 ];
+
+// A month of markers for the Calendar specimen. The colours are the
+// consumer's to choose — `Calendar` knows nothing about adherence — and
+// every marker carries a label, which is the non-colour channel DESIGN.md
+// §8 requires.
+const SEPTEMBER_MARKERS = new Map<string, CalendarMarker>([
+  ['2026-09-01', { color: colors.brand.DEFAULT, label: 'workout logged' }],
+  ['2026-09-03', { color: colors.brand.DEFAULT, label: 'workout logged' }],
+  ['2026-09-05', { color: colors.brand.mid, label: 'check-in due' }],
+  ['2026-09-08', { color: colors.brand.DEFAULT, label: 'workout logged' }],
+  ['2026-09-10', { color: colors.brand.DEFAULT, label: 'workout logged' }],
+  ['2026-09-12', { color: colors.fg.faint, label: 'rest day' }],
+  ['2026-09-15', { color: colors.brand.DEFAULT, label: 'workout logged' }],
+  ['2026-09-17', { color: colors.brand.mid, label: 'form check uploaded' }],
+  ['2026-09-22', { color: colors.brand.DEFAULT, label: 'workout logged' }],
+  ['2026-09-26', { color: colors.fg.faint, label: 'rest day' }],
+]);
 
 // `ui-primitives-data/03`'s visual proof. A fixed date rather than
 // `new Date()` so the strip is identical on every device and every run —
@@ -99,6 +118,11 @@ export default function HomeScreen() {
   const [weightKg, setWeightKg] = useState(62.5);
   const [reps, setReps] = useState(8);
   const [rpe, setRpe] = useState(8);
+  const [pickedDay, setPickedDay] = useState<string | null>('2026-09-17');
+  const [pickedRange, setPickedRange] = useState<CalendarRange | null>({
+    start: '2026-09-07',
+    end: '2026-09-13',
+  });
   const [isSheetOpen, setSheetOpen] = useState(false);
   const [isConfirmOpen, setConfirmOpen] = useState(false);
 
@@ -320,6 +344,42 @@ export default function HomeScreen() {
           value={facet}
           onChange={setFacet}
         />
+      </Section>
+
+      {/* The month grid, both modes. `today` is passed in rather than
+          derived: deriving it would read the DEVICE timezone, and a coach
+          in Mumbai reviewing a client in Toronto would see the wrong day
+          ringed. Every value in and out is a "yyyy-MM-dd" string. */}
+      <Section title="Calendar">
+        <Calendar
+          initialMonth="2026-09-01"
+          today="2026-09-04"
+          selected={pickedDay}
+          onSelect={setPickedDay}
+          markers={SEPTEMBER_MARKERS}
+          minDate="2026-08-15"
+          maxDate="2026-10-15"
+          density="client"
+          testID="calendar-single"
+        />
+        <Text size="body-sm" tone="muted">
+          {pickedDay ?? 'No day picked'}
+        </Text>
+
+        <Calendar
+          mode="range"
+          initialMonth="2026-09-01"
+          today="2026-09-04"
+          selected={pickedRange}
+          onSelect={setPickedRange}
+          density="coach"
+          testID="calendar-range"
+        />
+        <Text size="body-sm" tone="muted">
+          {pickedRange
+            ? `${pickedRange.start} → ${pickedRange.end ?? 'pick the other end'}`
+            : 'No range picked'}
+        </Text>
       </Section>
 
       {/* `ui-primitives-data/03`. Three things can only be checked here, on
