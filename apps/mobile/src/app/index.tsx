@@ -1,4 +1,5 @@
 import { Metric, Text } from '@coachos/ui';
+import { colors } from '@coachos/ui/theme';
 import { Link } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
@@ -59,7 +60,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   link: {
-    color: '#6366F1',
+    // A `Link`'s `style` prop is RN Text style, not `className` — this is
+    // the one JS-side, non-Tailwind consumer `theme-tokens/04`'s `useTheme`
+    // exists for; this temporary screen predates that wiring, so it reads
+    // the default ramp directly instead. Replaced in `phase-05-app-shell`.
+    color: colors.brand.DEFAULT,
     fontWeight: '600',
   },
 });
