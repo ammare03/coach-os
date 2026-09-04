@@ -18,7 +18,9 @@
     // resolve those literally under `noEmit`.
     "allowImportingTsExtensions": true,
     // Needed for `*.test.tsx` to typecheck (mirrors `apps/mobile/tsconfig.json`).
-    "types": ["jest"]
+    // `nativewind/types` teaches `className` to RN's core components —
+    // `Text`/`Metric` (theme-tokens/03) are this package's first consumers.
+    "types": ["jest", "nativewind/types"]
   },
   "include": ["src"]
 }

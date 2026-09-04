@@ -5,6 +5,9 @@
 const rawExpoConfig = require('eslint-config-expo/flat');
 
 const base = require('./eslint.base');
+const noRawColor = require('./eslint-rules/no-raw-color.js');
+const adherenceColorsOnly = require('./eslint-rules/adherence-colors-only.js');
+const noArbitraryTailwind = require('./eslint-rules/no-arbitrary-tailwind.js');
 
 // eslint-config-expo bundles its own eslint-plugin-import registration in
 // several entries. `base` already registers `import` workspace-wide with no
@@ -19,5 +22,106 @@ const expoConfig = rawExpoConfig.map((entry) => {
   return deduped;
 });
 
+// theme-tokens/05 — the semantic-colour rule, made real. Named `theme`, not
+// `local` — `eslint.base.js` already registers a plugin called `local`
+// (`no-hand-written-row-type`), and flat config throws "Cannot redefine
+// plugin" if two *different* object instances claim the same name across
+// configs matching the same file. One object, reused by reference across
+// all three rule entries below, so they can still each carry their own
+// `ignores` (flat config's `ignores` is per config-object, not per-rule).
+const THEME_PLUGIN = {
+  theme: {
+    rules: {
+      'no-raw-color': noRawColor,
+      'adherence-colors-only': adherenceColorsOnly,
+      'no-arbitrary-tailwind': noArbitraryTailwind,
+    },
+  },
+};
+
+const noArbitraryTailwindRule = {
+  files: ['**/*.{ts,tsx}'],
+  plugins: THEME_PLUGIN,
+  rules: { 'theme/no-arbitrary-tailwind': 'error' },
+};
+
+// `no-raw-color` and `adherence-colors-only` each carry their own explicit
+// `ignores`/allowlist as rule options here, never as an inline
+// `eslint-disable` comment (approach §4: a single array someone can read in
+// one screen and challenge in review, the same discipline as CLAUDE.md
+// §18.3's authz allowlist).
+// `**/`-prefixed patterns throughout — this file is spread into both
+// apps/mobile/eslint.config.js and packages/ui/eslint.config.js, and flat
+// config resolves `files`/`ignores` relative to whichever one actually
+// invoked ESLint (its cwd), not to this file's own location. A repo-root-
+// relative path here silently never matches, exactly the trap
+// apps/mobile/eslint.config.js's own comment documents for
+// `noInlineInputSchemaRules` — verified by deliberately tripping it (§6
+// below) before trusting it.
+const noRawColorRule = {
+  files: ['**/*.{ts,tsx}'],
+  ignores: [
+    // The theme package itself — this is where a colour is written down.
+    '**/theme/tokens.ts',
+    '**/theme/schemes.ts',
+    // Native config/boot-time files — `app.config.ts`'s splash colour and
+    // `_layout.tsx`'s root-background call both run before any
+    // `<ThemeProvider>` exists to read a token from (theme-tokens/04).
+    '**/app.config.ts',
+    '**/app/_layout.tsx',
+    // Pre-existing Phase 3 screens, built ahead of this phase
+    // (theme-tokens/02's own header comment on packages/ui's original
+    // stub components). Out of scope for a theme-tokens PR under
+    // CLAUDE.md §0 rule 8 ("one PR, one concern") — migrate on next touch.
+    '**/CompleteSocialSignUpForm.tsx',
+    '**/GoogleSignInButton.tsx',
+    '**/SignInForm.tsx',
+    '**/SignUpForm.tsx',
+    '**/PulseRingBackground.tsx',
+    '**/UnitRow.tsx',
+    '**/app/(auth)/sign-in.tsx',
+    '**/app/(auth)/sign-up.tsx',
+    '**/app/(auth)/complete-social-signup.tsx',
+    // Asserts against the real token hex values by design.
+    '**/theme/useTheme.test.tsx',
+  ],
+  plugins: THEME_PLUGIN,
+  rules: { 'theme/no-raw-color': 'error' },
+};
+
+const adherenceColorsOnlyRule = {
+  files: ['**/*.{ts,tsx}'],
+  ignores: [
+    '**/theme/tokens.ts',
+    '**/theme/schemes.ts',
+    // AdherenceDot doesn't exist yet (ui-primitives-data/03) — pre-declared
+    // so that task doesn't also have to touch this config file.
+    '**/components/AdherenceDot.tsx',
+    '**/adherence.ts',
+    '**/adherence.test.ts',
+    // Assert every token key exists, including the adherence ones — testing
+    // the theme module, same exemption class as tokens.ts itself.
+    '**/theme/tokens.test.ts',
+    '**/theme/useTheme.test.tsx',
+    // Button's `danger` variant (packages/ui/src/components/Button.tsx) is
+    // the one pre-existing case theme-tokens/05's own doc names as *not*
+    // to be allowlisted — "the correct resolution is to change the
+    // variant's treatment (ui-primitives-core/01), not to widen the rule."
+    // Grandfathered here for the same "one PR, one concern" reason as the
+    // auth screens above, not because the current styling is correct:
+    // Button.tsx is `ui-primitives-core/01`'s real component, not this
+    // phase's, and redesigning its danger treatment belongs there.
+    '**/components/Button.tsx',
+  ],
+  plugins: THEME_PLUGIN,
+  rules: { 'theme/adherence-colors-only': 'error' },
+};
+
 /** @type {import('eslint').Linter.Config[]} */
-module.exports = [...base, ...expoConfig];
+module.exports = [
+  ...base,
+  ...expoConfig,
+  noArbitraryTailwindRule,
+  noRawColorRule,
+  adherenceColorsOnlyRule,
+];

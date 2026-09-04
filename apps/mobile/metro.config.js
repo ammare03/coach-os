@@ -10,6 +10,7 @@
 const path = require('node:path');
 
 const { getDefaultConfig } = require('expo/metro-config');
+const { withNativeWind } = require('nativewind/metro');
 
 const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, '../..');
@@ -26,4 +27,7 @@ config.resolver.nodeModulesPaths = [
 // package instead of the pinned version inside a workspace package.
 config.resolver.disableHierarchicalLookup = true;
 
-module.exports = config;
+// withNativeWind must wrap the config last — it compiles src/global.css and
+// injects the CSS transform Metro needs to turn `className` into styles
+// (theme-tokens/01).
+module.exports = withNativeWind(config, { input: './src/global.css' });

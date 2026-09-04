@@ -1,5 +1,7 @@
+import { Metric, Text } from '@coachos/ui';
+import { colors } from '@coachos/ui/theme';
 import { Link } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { api } from '../lib/trpc.ts';
 
@@ -27,6 +29,25 @@ export default function HomeScreen() {
       <Link href="/sign-up" style={styles.link}>
         Create account
       </Link>
+      {/* Proof the token pipeline is wired end to end (theme-tokens/02): if
+          the border but not the fill renders, global.css's variable block
+          is wrong; if neither renders, the preset isn't loading. Replaced by
+          real screens in phase-05-app-shell. */}
+      <View className="rounded-lg border border-border bg-bg-raised p-4">
+        <Text tone="muted">Token pipeline verified</Text>
+      </View>
+      {/* The type scale, rendered as proof (theme-tokens/03) — every DS§3.1
+          size and face, plus a Metric with its unit stepped down. Removed
+          once component-gallery/01 exists. */}
+      <View className="gap-1">
+        <Text size="title">Title</Text>
+        <Text size="heading">Heading</Text>
+        <Text size="body">Body</Text>
+        <Text size="body-sm">Body small</Text>
+        <Text size="label">Label</Text>
+        <Text size="caption">Caption</Text>
+        <Metric value={60} unit="kg" size="metric" />
+      </View>
     </View>
   );
 }
@@ -39,7 +60,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   link: {
-    color: '#6366F1',
+    // A `Link`'s `style` prop is RN Text style, not `className` — this is
+    // the one JS-side, non-Tailwind consumer `theme-tokens/04`'s `useTheme`
+    // exists for; this temporary screen predates that wiring, so it reads
+    // the default ramp directly instead. Replaced in `phase-05-app-shell`.
+    color: colors.brand.DEFAULT,
     fontWeight: '600',
   },
 });

@@ -13,7 +13,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   orientation: 'portrait',
   icon: './assets/images/icon.png',
   scheme: 'coachos',
-  userInterfaceStyle: 'automatic',
+  // Dark-first, forced (theme-tokens/04) — the OS chrome (status bar,
+  // keyboard, autofill sheets) must follow the app's scheme, not the
+  // device's, or a device in light mode gets black-on-black status text.
+  // `'automatic'` was the P00 scaffold default; there is no user-facing
+  // appearance setting in v1 (CLAUDE.md §7.1).
+  userInterfaceStyle: 'dark',
   ios: {
     // `social-sign-in/01` — the `com.apple.developer.applesignin`
     // entitlement. `expo-apple-authentication` ships no config plugin of
@@ -51,9 +56,28 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     [
       'expo-splash-screen',
       {
-        backgroundColor: '#208AEF',
+        // DS§2.2 `bg.DEFAULT` — was the P00 scaffold's brand blue, which
+        // painted a light-feeling frame between splash and first React
+        // paint (theme-tokens/04's "kill the white flash at every layer").
+        backgroundColor: '#0A0D12',
         image: './assets/images/splash-icon.png',
         imageWidth: 76,
+      },
+    ],
+    // theme-tokens/03 — embeds the five faces natively at prebuild so
+    // there is no runtime load and no flash of a fallback face. A native
+    // change: adding a sixth weight needs a rebuild, never an OTA.
+    [
+      'expo-font',
+      {
+        fonts: [
+          './assets/fonts/Inter-Regular.ttf',
+          './assets/fonts/Inter-Medium.ttf',
+          './assets/fonts/Inter-SemiBold.ttf',
+          './assets/fonts/InterTight-Medium.ttf',
+          './assets/fonts/InterTight-SemiBold.ttf',
+          './assets/fonts/InterTight-Bold.ttf',
+        ],
       },
     ],
   ],
