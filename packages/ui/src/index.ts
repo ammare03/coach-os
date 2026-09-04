@@ -106,6 +106,42 @@ export {
   type MacroBarFill,
 } from './components/MacroBar.tsx';
 
+// ── A line over time ────────────────────────────────────────────────────
+// Two components, deliberately not one with a `variant` prop: `LineChart`
+// is the full chart (axes, one reference line, touch-to-inspect, an
+// optional second series); `Sparkline` is the axis-less, touch-less,
+// state-less variant that sits in a list row, where `CLAUDE.md` §19 asks
+// for ≥55fps over 100 rows and every capability it lacks is a capability
+// that cannot cost a frame.
+//
+// Both refuse a `Date`. A point is a LOCAL CALENDAR DATE string, because a
+// weigh-in stored as an instant and bucketed in the device's timezone puts
+// a Sunday-night weigh-in on Monday for a coach in another country
+// (`code-conventions` §6, `CLAUDE.md` §25.5). Any phase passing timestamps
+// converts at its own boundary, never here.
+//
+// The two rules in `chartDomain.ts` are product decisions, not styling: the
+// y-domain never anchors at zero, and a line is never drawn through a gap.
+export {
+  LineChart,
+  type LineChartProps,
+  type LineChartSeries,
+  type LineChartSelection,
+} from './components/LineChart.tsx';
+export { Sparkline, type SparklineProps } from './components/Sparkline.tsx';
+export {
+  CHART_MIN_SPAN,
+  DEFAULT_GAP_DAYS,
+  chartSeriesShape,
+  chartSummary,
+  chartTrend,
+  chartYDomain,
+  type ChartDomain,
+  type ChartPoint,
+  type ChartSeriesShape,
+  type ChartTrend,
+} from './components/chartDomain.ts';
+
 // ── Adherence ───────────────────────────────────────────────────────────
 // The only components in `packages/ui` permitted to name `colors.state.*`
 // (`DESIGN.md` §8, enforced by the `adherence-colors-only` lint rule). Both

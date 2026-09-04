@@ -99,6 +99,13 @@ jest.mock('@shopify/react-native-skia', () => {
   const { createElement } = jest.requireActual('react');
   const passthrough = ({ children, ...rest }) => createElement(View, rest, children);
   const nullRender = () => null;
+  // `Path` takes paint children (a gradient, a dash effect) but is not a
+  // layout box — rendering it as a `View` would put Skia's own props
+  // (`style="stroke"`, an `SkPath` object) through React Native's style
+  // handling. Rendering only its children keeps the tree identical to what
+  // it was when `Path` was a null render, for every component that passes
+  // none.
+  const childrenOnly = ({ children }) => children ?? null;
 
   const makePath = () => {
     const path = {
@@ -115,7 +122,21 @@ jest.mock('@shopify/react-native-skia', () => {
         path.commands.push(['addRect', ...args]);
         return path;
       },
+      // `LineChart`/`Sparkline` (`ui-primitives-data/04`) build their series
+      // from segments rather than from a single primitive, so the recorder
+      // has to accept them for the real geometry code to run — a missing
+      // method here would throw before the domain and gap rules were ever
+      // exercised.
+      moveTo(...args) {
+        path.commands.push(['moveTo', ...args]);
+        return path;
+      },
+      lineTo(...args) {
+        path.commands.push(['lineTo', ...args]);
+        return path;
+      },
       close() {
+        path.commands.push(['close']);
         return path;
       },
     };
@@ -126,11 +147,18 @@ jest.mock('@shopify/react-native-skia', () => {
     __esModule: true,
     Canvas: passthrough,
     Group: passthrough,
-    Path: nullRender,
+    Path: childrenOnly,
     Circle: nullRender,
     Rect: nullRender,
     RoundedRect: nullRender,
     Line: nullRender,
+    // Paint children of a `<Path>` — the area fill's gradient and the
+    // dashed gap/reference strokes (`DESIGN.md` §7). They render nothing in
+    // a test; `Path` passes its children through so a missing one would be
+    // a mount error rather than a silent omission.
+    LinearGradient: nullRender,
+    DashPathEffect: nullRender,
+    vec: (x, y) => ({ x, y }),
     Skia: { Path: { Make: makePath } },
   };
 });

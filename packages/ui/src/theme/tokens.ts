@@ -358,6 +358,38 @@ export const dataviz = {
   barTrack: 'rgba(19,26,41,0.7)',
   /** §7 — over-target fill and the dashed target reference line. Never red. */
   overTarget: colors.border.strong,
+
+  // ── §7 line / area chart (`ui-primitives-data/04`) ────────────────────
+  /** §7 — the series stroke. 2.5px in a full chart, 2px in a list row. */
+  seriesStroke: 2.5,
+  sparkStroke: 2,
+  /**
+   * §7's area fill: `#FFA586` from `stop-opacity .34` down to `0`. The
+   * zero stop keeps the hue rather than becoming `transparent`, which is
+   * `rgba(0,0,0,0)` and interpolates through black on iOS — the same trap
+   * the skeleton sweep documents below.
+   */
+  seriesFill: ['rgba(255,165,134,0.34)', 'rgba(255,165,134,0)'] as const,
+  /**
+   * §7's gap treatment, and the second product failure this task exists to
+   * prevent: consecutive readings more than the cadence apart are joined
+   * dashed and dimmed, never solid. `3 5` is the only dash pattern §7
+   * states; `.5` is §7's own de-emphasis level for the same hue (the
+   * micro-spark's non-latest bars are `rgba(224,133,95,.5)`).
+   */
+  gapDash: [3, 5] as const,
+  gapOpacity: 0.5,
+  /** §7 — the reference/target line's dash. Solid axis, dashed reference. */
+  referenceDash: [3, 5] as const,
+  /** §7 — the latest point's dot, `4.5–5.5r`, `#FFFFFF`. */
+  latestPoint: colors.fg.bright,
+  latestPointRadius: 4.5,
+  /**
+   * The scrub crosshair's vertical rule. §7 names no colour for it — it is
+   * not data, so it takes the same weight as §7's non-data reference line
+   * rather than a hue of its own.
+   */
+  crosshair: colors.border.strong,
 } as const;
 
 // §4 — the selection pill inside a dock or segmented control. It MOVES

@@ -5,6 +5,7 @@ import {
   AvatarStack,
   Badge,
   Button,
+  CHART_MIN_SPAN,
   Calendar,
   Card,
   Chip,
@@ -14,6 +15,7 @@ import {
   GlassSurface,
   IconButton,
   Input,
+  LineChart,
   MacroBar,
   Metric,
   NumberStepper,
@@ -25,9 +27,10 @@ import {
   Skeleton,
   SkeletonCircle,
   SkeletonText,
+  Sparkline,
   Text,
 } from '@coachos/ui';
-import type { CalendarMarker, CalendarRange } from '@coachos/ui';
+import type { CalendarMarker, CalendarRange, ChartPoint } from '@coachos/ui';
 import { colors } from '@coachos/ui/theme';
 import type { AdherenceState } from '@coachos/utils';
 import { Link } from 'expo-router';
@@ -137,6 +140,72 @@ const DIARY_DAYS: {
   { day: 'Tue', proteinG: 168, carbsG: 210, fatG: 92, targetKcal: 2340 },
   { day: 'Wed', proteinG: 0, carbsG: 0, fatG: 0, targetKcal: 2340 },
   { day: 'Thu', proteinG: 120, carbsG: 180, fatG: 60, targetKcal: null },
+];
+
+// `ui-primitives-data/04`'s "lying chart" pair, side by side, because the
+// point is that ONE component with no per-screen configuration has to get
+// both right. `WEIGHT_FALLING` drops 2.1kg over four weeks and must read
+// as unmistakable progress; `WEIGHT_STEADY` moves 200g over the same dates
+// and must NOT read as a cliff. Both carry the same eleven-day hole.
+const WEIGHT_DATES = [
+  '2026-06-01',
+  '2026-06-03',
+  '2026-06-05',
+  '2026-06-08',
+  '2026-06-19',
+  '2026-06-22',
+  '2026-06-24',
+  '2026-06-26',
+  '2026-06-29',
+] as const;
+
+function weightPoints(values: readonly number[]): ChartPoint[] {
+  return WEIGHT_DATES.map((dateISO, index) => ({ dateISO, value: values[index] ?? null }));
+}
+
+const WEIGHT_FALLING = weightPoints([84.2, 84.0, 83.9, 83.6, 83.1, 82.8, 82.6, 82.4, 82.1]);
+const WEIGHT_STEADY = weightPoints([82.3, 82.28, 82.32, 82.25, 82.22, 82.18, 82.15, 82.12, 82.1]);
+
+// The overlay: a check-in field against weight. The energy series has a
+// WEEKLY cadence, so it passes its own `gapDays` and draws solid where the
+// daily weigh-ins would have broken.
+const ENERGY_WEEKLY: ChartPoint[] = [
+  { dateISO: '2026-06-01', value: 7 },
+  { dateISO: '2026-06-08', value: 6 },
+  { dateISO: '2026-06-15', value: 6 },
+  { dateISO: '2026-06-22', value: 5 },
+  { dateISO: '2026-06-29', value: 5 },
+];
+
+function liftPoints(values: readonly (number | null)[]): ChartPoint[] {
+  return values.map((value, index) => ({
+    dateISO: `2026-05-${String(4 + index * 7).padStart(2, '0')}`,
+    value,
+  }));
+}
+
+// The coach prototype's "Working weights" rows. This is the shape the
+// dashboard scrolls a hundred of.
+const LIFT_ROWS: { name: string; workingKg: number; points: ChartPoint[] }[] = [
+  {
+    name: 'Bench press',
+    workingKg: 62.5,
+    points: liftPoints([55, 57.5, 57.5, 60, 60, 62.5, 62.5]),
+  },
+  { name: 'Squat', workingKg: 100, points: liftPoints([85, 87.5, 90, 92.5, 95, 97.5, 100]) },
+  { name: 'Barbell row', workingKg: 70, points: liftPoints([70, 70, 72.5, 70, 70, 72.5, 70]) },
+  {
+    name: 'Overhead press',
+    workingKg: 42.5,
+    points: liftPoints([40, 42.5, 42.5, 42.5, 42.5, 42.5, 42.5]),
+  },
+  // A lift with a hole in the middle: the spark BREAKS rather than drawing
+  // a segment across three missed weeks.
+  {
+    name: 'Lat pulldown',
+    workingKg: 55,
+    points: liftPoints([45, 47.5, null, null, null, 52.5, 55]),
+  },
 ];
 
 export default function HomeScreen() {
@@ -479,6 +548,109 @@ export default function HomeScreen() {
         <MacroBar proteinG={96} carbsG={142} fatG={48} targetKcal={2340} density="client" />
       </Section>
 
+      {/* `ui-primitives-data/04`. Four things can only be checked here, on
+          hardware: that the falling series and the steady one are BOTH
+          honest with the same component (the first must look like progress,
+          the second must not look like a cliff); that the eleven-day hole
+          reads as a hole to someone who has not been told there is one;
+          that setting the device to a timezone 12+ hours away moves no
+          point by a pixel (if one moves, a `Date` has crept in); and that
+          the axis labels reduce in COUNT rather than rotating or clipping
+          at 200% OS text size. Nothing here animates, by design. */}
+      <Section title="Charts">
+        {/* 2.1kg over four weeks. The y-domain pads around the data and is
+            never anchored at zero, so this is a visible slope and not a
+            flat line near the top of a 0-90 axis. */}
+        <Card density="coach">
+          <LineChart
+            series={[
+              {
+                points: WEIGHT_FALLING,
+                label: 'Weight',
+                unit: 'kg',
+                unitLabel: 'kilograms',
+                minSpan: CHART_MIN_SPAN.bodyWeightKg,
+                referenceValue: 82,
+              },
+            ]}
+            onRequestTable={() => undefined}
+          />
+        </Card>
+
+        {/* The same component, the same dates, 200g of movement. The
+            `minSpan` floor is what stops this reading as a collapse. */}
+        <Card density="coach">
+          <LineChart
+            series={[
+              {
+                points: WEIGHT_STEADY,
+                label: 'Weight',
+                unit: 'kg',
+                unitLabel: 'kilograms',
+                minSpan: CHART_MIN_SPAN.bodyWeightKg,
+              },
+            ]}
+          />
+        </Card>
+
+        {/* The overlay: one check-in field against weight, two scales, each
+            labelled on its own mark. A third series is not possible - the
+            prop is a tuple, so the compiler says no. */}
+        <Card density="coach">
+          <LineChart
+            height={140}
+            series={[
+              {
+                points: WEIGHT_FALLING,
+                label: 'Weight',
+                unit: 'kg',
+                unitLabel: 'kilograms',
+                minSpan: CHART_MIN_SPAN.bodyWeightKg,
+              },
+              {
+                points: ENERGY_WEEKLY,
+                label: 'Energy',
+                unitLabel: 'out of ten',
+                minSpan: CHART_MIN_SPAN.checkinScale,
+                range: { min: 1, max: 10 },
+                gapDays: 7,
+              },
+            ]}
+          />
+        </Card>
+
+        {/* A client with nothing logged yet. A designed empty state, never
+            a blank box - and never a chart of a fabricated range. */}
+        <Card density="coach">
+          <LineChart
+            series={[
+              {
+                points: [],
+                label: 'Weight',
+                unit: 'kg',
+                minSpan: CHART_MIN_SPAN.bodyWeightKg,
+              },
+            ]}
+          />
+        </Card>
+
+        {/* Five list rows, each with the mark from the coach prototype's
+            "Working weights" list. No touch, no state, no animation - the
+            ROW is what is tappable. The last lift has a three-week hole and
+            its line breaks rather than bridging it. */}
+        <Card density="coach">
+          {LIFT_ROWS.map((lift) => (
+            <View key={lift.name} style={styles.liftRow}>
+              <Text size="body-sm" style={styles.liftName}>
+                {lift.name}
+              </Text>
+              <Sparkline points={lift.points} accessibilityLabel={`${lift.name} working weight`} />
+              <Metric value={lift.workingKg} unit="kg" size="body-lg" tone="warm" />
+            </View>
+          ))}
+        </Card>
+      </Section>
+
       {/* `ui-primitives-data/03`. Three things can only be checked here, on
           hardware: that the four states are still distinguishable with the
           OS greyscale filter on (turn it on — this is the important one),
@@ -707,6 +879,16 @@ const styles = StyleSheet.create({
     width: 36,
   },
   diaryBar: {
+    flex: 1,
+  },
+  // A list row at coach density: a name, a mark, and a number.
+  liftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    minHeight: 60,
+  },
+  liftName: {
     flex: 1,
   },
   wrap: {
