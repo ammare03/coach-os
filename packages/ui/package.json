@@ -14,12 +14,16 @@
     "test": "jest"
   },
   "peerDependencies": {
+    "expo-blur": "^57.0.0",
     "expo-glass-effect": "^57.0.0",
+    "expo-linear-gradient": "^57.0.0",
+    "lucide-react-native": "^1.40.0",
     "nativewind": "^4.2.0",
     "react": "^19.2.0",
     "react-native": "^0.86.0",
     "react-native-gesture-handler": "^2.32.0",
-    "react-native-reanimated": "^4.5.0"
+    "react-native-reanimated": "^4.5.0",
+    "react-native-svg": "^15.0.0"
   },
   "dependencies": {
     "@coachos/utils": "workspace:*"
@@ -28,14 +32,19 @@
     "@coachos/config": "workspace:*",
     "@testing-library/react-native": "13.3.3",
     "@types/jest": "30.0.0",
+    "@types/node": "22.20.1",
     "@types/react": "~19.2.2",
+    "expo-blur": "~57.0.2",
     "expo-glass-effect": "~57.0.1",
+    "expo-linear-gradient": "~57.0.1",
     "jest": "30.4.2",
+    "lucide-react-native": "^1.40.0",
     "nativewind": "4.2.6",
     "react": "19.2.3",
     "react-native": "0.86.2",
     "react-native-gesture-handler": "~2.32.0",
     "react-native-reanimated": "4.5.1",
+    "react-native-svg": "15.15.4",
     "typescript": "~6.0.3"
   }
 }

@@ -1,25 +1,46 @@
-// The two scheme tables — DESIGN-SYSTEM.md DS§2.2-2.6 (dark, verbatim
-// `tokens.ts`) and DS§2.3/2.5/2.6 (light). Dark is the designed scheme;
-// light is derived by inverting the *role*, not the hex (theme-tokens/04
-// approach §1) — `bg` becomes the lightest surface, `fg` the darkest text,
-// and so on. Where the two disagree, dark is right — light has no spec
-// behind it beyond DESIGN-SYSTEM.md and rots faster (theme-tokens/04 risks).
+// The two scheme tables. Dark is `DESIGN.md` §1.1 verbatim — it is the
+// designed scheme and the only one the thirteen built screens specify.
 //
-// Brand is scheme-invariant (DS§2.4 gives one ramp, not two) — `tokens.ts`
-// is still the source for it. `ThemeProvider` merges these tables with the
+// Light has NO spec behind it. `DESIGN.md` is a dark-first system whose
+// whole visual argument (warm text on dusk navy, lightness-as-depth, glass
+// over a dark canvas) does not survive inversion, so the light table below
+// is derived by inverting the ROLE, not the hex, and is explicitly a
+// fallback for a user who has forced light at the OS level — not a second
+// designed product. Where the two disagree, dark is right.
+//
+// Brand is scheme-invariant (§1.1 gives one ramp, not two) — `tokens.ts`
+// stays the source for it. `ThemeProvider` merges these tables with the
 // brand ramp; nothing outside `packages/ui/src/theme/` reads this file.
 import { colors } from './tokens.ts';
 
 export type Scheme = 'dark' | 'light';
 
 type SchemeColors = {
-  bg: { sunken: string; DEFAULT: string; raised: string; overlay: string; inset: string };
-  fg: { DEFAULT: string; muted: string; subtle: string; onBrand: string };
-  border: { subtle: string; DEFAULT: string; strong: string };
-  state: { onTrack: string; drifting: string; offTrack: string; noData: string };
-  realtime: string;
-  danger: string;
-  pr: string;
+  bg: {
+    outer: string;
+    DEFAULT: string;
+    raised: string;
+    'raised-end': string;
+    inset: string;
+    'inset-alt': string;
+  };
+  fg: {
+    bright: string;
+    DEFAULT: string;
+    glass: string;
+    warm: string;
+    'warm-muted': string;
+    muted: string;
+    subtle: string;
+    faint: string;
+    onBrand: string;
+  };
+  border: { soft: string; DEFAULT: string; strong: string; tinted: string };
+  state: { onPlan: string; drifting: string; offPlan: string; notStarted: string };
+  deep: string;
+  urgent: string;
+  'urgent-text': string;
+  'on-deep': string;
 };
 
 export const schemes: Record<Scheme, SchemeColors> = {
@@ -28,37 +49,54 @@ export const schemes: Record<Scheme, SchemeColors> = {
     fg: colors.fg,
     border: colors.border,
     state: colors.state,
-    realtime: colors.realtime,
-    danger: colors.danger,
-    pr: colors.pr,
+    deep: colors.deep,
+    urgent: colors.urgent,
+    'urgent-text': colors['urgent-text'],
+    'on-deep': colors['on-deep'],
   },
   light: {
+    // Roles inverted: `outer` stays the darkest ground behind the device,
+    // `DEFAULT` becomes the lightest canvas, and the card gradient runs the
+    // other way so a card still reads as lifted off its background.
     bg: {
-      sunken: '#EEF2F7',
-      DEFAULT: '#FFFFFF',
+      outer: '#DCE1EA',
+      DEFAULT: '#F7F8FB',
       raised: '#FFFFFF',
-      overlay: '#FFFFFF',
-      inset: '#F4F7FA',
+      'raised-end': '#F2F4F9',
+      inset: '#E9EDF4',
+      'inset-alt': '#DFE5EF',
     },
     fg: {
-      DEFAULT: '#0A0D12',
-      muted: '#566274',
-      subtle: '#8794A6',
-      onBrand: '#FFFFFF',
+      bright: '#0B1120',
+      DEFAULT: '#161E2F',
+      glass: '#161E2F',
+      warm: '#7A4530',
+      'warm-muted': '#8C5A44',
+      muted: '#59637A',
+      subtle: '#78829A',
+      faint: '#A8B1C4',
+      // Unchanged: the primary fill is the same peach gradient in both
+      // schemes, so its text stays the dark ink that reads 8.4:1 on it.
+      onBrand: colors.fg.onBrand,
     },
     border: {
-      subtle: '#EAEEF4',
-      DEFAULT: '#D9E0EA',
-      strong: '#B8C4D4',
+      soft: '#E4E8F0',
+      DEFAULT: '#D2D9E5',
+      strong: '#B4BECE',
+      tinted: '#C9A08C',
     },
+    // The warmth ramp darkens rather than changing hue — the §8 ordering
+    // (on-plan brightest, not-started faintest) has to survive the switch,
+    // and every consumer still carries the second non-colour channel.
     state: {
-      onTrack: '#059669',
-      drifting: '#D97706',
-      offTrack: '#E11D48',
-      noData: '#94A3B8',
+      onPlan: '#C4603A',
+      drifting: '#A8663F',
+      offPlan: '#B51A2B',
+      notStarted: '#A8B1C4',
     },
-    realtime: '#0891B2',
-    danger: '#E11D48',
-    pr: '#D97706',
+    deep: '#7A2C42',
+    urgent: '#9C1626',
+    'urgent-text': '#9C1626',
+    'on-deep': '#7A4530',
   },
 };

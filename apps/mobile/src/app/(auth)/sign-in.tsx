@@ -58,8 +58,8 @@ export default function SignInScreen() {
       <PulseRingBackground />
 
       <GlassSurface
-        style="regular"
-        containerStyle={[styles.navBar, { paddingTop: insets.top, height: 64 + insets.top }]}
+        tier="tier1"
+        style={[styles.navBar, { paddingTop: insets.top, height: 64 + insets.top }]}
       >
         <View style={styles.navBarContent}>
           <View style={styles.logoMark}>

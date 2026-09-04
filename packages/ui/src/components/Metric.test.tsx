@@ -16,9 +16,9 @@ describe('Metric', () => {
   });
 
   it('renders the unit one scale step down from the value, in a muted tone', () => {
-    render(<Metric value={60} unit="kg" size="metric" />);
+    render(<Metric value={60} unit="kg" size="stat" />);
     const unitText = screen.getByText('kg');
-    expect(unitText.props.className).toContain('text-metric-sm');
+    expect(unitText.props.className).toContain('text-h1-client');
     expect(unitText.props.className).toContain('text-fg-muted');
   });
 

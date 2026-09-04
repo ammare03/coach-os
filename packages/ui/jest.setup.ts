@@ -15,3 +15,8 @@
 ].forEach((name) => {
   void (globalThis as Record<string, unknown>)[name];
 });
+
+// The Reanimated and bottom-sheet stand-ins live in `@coachos/config` so
+// this package and `apps/mobile` cannot drift apart — see that file for why
+// each is needed.
+require('@coachos/config/jest.native-mocks');

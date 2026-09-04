@@ -2,27 +2,47 @@ import { Text as RNText, type TextProps as RNTextProps } from 'react-native';
 
 import type { TextSize } from '../theme/tokens.ts';
 
-// DS§3.1 pins a face AND a weight to every named size — there is no
-// independent `weight` prop to get wrong (theme-tokens/03). A component
-// that sets `fontWeight` directly does nothing useful on Android
-// (theme-tokens/03 risks); every weight change here is a family change.
+// `DESIGN.md` §1.2 pins a FACE and a WEIGHT to every named size — there is
+// no independent `weight` prop to get wrong. A component that sets
+// `fontWeight` directly does nothing useful on Android, so every weight
+// change here is a family change.
+//
+// Space Grotesk carries every numeral and heading; Instrument Sans carries
+// body, labels, and buttons. Headings sit in Space Grotesk even though they
+// are words — §1.2 is explicit that the split is heading/numeral vs
+// everything else, not number vs word.
 const SIZE_FONT_CLASS: Record<TextSize, string> = {
   display: 'font-display-bold',
-  hero: 'font-display-bold',
-  metric: 'font-display-semibold',
-  'metric-sm': 'font-display-semibold',
+  'numeral-xl': 'font-display-bold',
+  stat: 'font-display-semibold',
+  'h1-client': 'font-display-bold',
+  h1: 'font-display-bold',
+  h2: 'font-display-bold',
+  numeral: 'font-display-semibold',
   title: 'font-sans-semibold',
-  heading: 'font-sans-semibold',
+  'body-lg': 'font-sans',
   body: 'font-sans',
   'body-sm': 'font-sans',
   label: 'font-sans-medium',
   caption: 'font-sans',
+  micro: 'font-sans',
+  eyebrow: 'font-sans-medium',
 };
 
+// §1.1's warm text ramp. `subtle` is legal at ≥14px only and `faint` may
+// never carry meaning (§13) — both are stated here because the tone name is
+// where a caller decides, and the rule is unenforceable at the type level.
 const TONE_CLASS = {
+  bright: 'text-fg-bright', // hero numerals only
   default: 'text-fg',
+  glass: 'text-fg-glass', // body and icons ON a glass surface (§4)
+  warm: 'text-fg-warm',
+  'warm-muted': 'text-fg-warm-muted', // secondary text on glass
   muted: 'text-fg-muted',
-  subtle: 'text-fg-subtle',
+  subtle: 'text-fg-subtle', // ≥14px only
+  faint: 'text-fg-faint', // disabled, chevrons — never meaning
+  onBrand: 'text-fg-onBrand', // dark ink on the peach primary fill
+  urgent: 'text-urgent-text',
 } as const;
 
 export type TextTone = keyof typeof TONE_CLASS;
@@ -34,10 +54,13 @@ export type TextProps = RNTextProps & {
 };
 
 /**
- * The only text component the product uses (`ui-conventions` — no
- * component may set `fontWeight`). Defaults to `size="body"` (16pt), the
- * client-app floor (`CLAUDE.md` §7.1), so the lazy choice is the correct
- * one.
+ * The only text component the product uses — no component may set
+ * `fontWeight`, and no component renders a raw React Native `Text`.
+ * Defaults to `size="body"` (15pt) at `tone="default"`; a client-app screen
+ * uses `body-lg` (16pt) for its body floor (`DESIGN.md` §1.3).
+ *
+ * Numbers do NOT go through this — they go through `Metric`, which pins
+ * Space Grotesk and tabular numerals so figures never jitter (§1.2).
  */
 export function Text({ size = 'body', tone = 'default', className, ...rest }: TextProps) {
   const classes = [`text-${size}`, SIZE_FONT_CLASS[size], TONE_CLASS[tone], className]

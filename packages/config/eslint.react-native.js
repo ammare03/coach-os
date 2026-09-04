@@ -84,6 +84,12 @@ const noRawColorRule = {
     '**/app/(auth)/complete-social-signup.tsx',
     // Asserts against the real token hex values by design.
     '**/theme/useTheme.test.tsx',
+    // `GlassSurface` composes a white-label tint into an `rgba()` string at
+    // the contrast clamp — the alpha is computed, so no token can express
+    // the result. Its test supplies a synthetic brand hex for the same
+    // reason a brand-ramp test does.
+    '**/surfaces/GlassSurface.tsx',
+    '**/surfaces/GlassSurface.test.tsx',
   ],
   plugins: THEME_PLUGIN,
   rules: { 'theme/no-raw-color': 'error' },
@@ -103,15 +109,49 @@ const adherenceColorsOnlyRule = {
     // the theme module, same exemption class as tokens.ts itself.
     '**/theme/tokens.test.ts',
     '**/theme/useTheme.test.tsx',
-    // Button's `danger` variant (packages/ui/src/components/Button.tsx) is
-    // the one pre-existing case theme-tokens/05's own doc names as *not*
-    // to be allowlisted — "the correct resolution is to change the
-    // variant's treatment (ui-primitives-core/01), not to widen the rule."
-    // Grandfathered here for the same "one PR, one concern" reason as the
-    // auth screens above, not because the current styling is correct:
-    // Button.tsx is `ui-primitives-core/01`'s real component, not this
-    // phase's, and redesigning its danger treatment belongs there.
+    // `Button`'s `danger` variant. `DESIGN.md` §1.1 makes `urgent` the
+    // destructive colour and §9 makes the variant outlined-and-lettered
+    // rather than filled — a filled red rectangle reads as an adherence
+    // signal in a scrolled list, an outlined one reads as a warning
+    // attached to a specific control. That IS the sanctioned treatment, so
+    // this entry is no longer a grandfathering: it is the one component
+    // entitled to render a destructive affordance.
     '**/components/Button.tsx',
+    '**/components/IconButton.tsx',
+    // `Text`'s `tone="urgent"`. `DESIGN.md` §1.1 lists `urgent-text`
+    // (#FF8A9B) as a real member of the text ramp — "accent text on dark,
+    // for urgent labels" — so a form error, an overdue timestamp, and a
+    // "Live" label need a sanctioned way to reach it. Routing them through
+    // the one text primitive is strictly better than the alternative: deny
+    // it here and the next author writes an inline hex, which
+    // `no-raw-color` then catches one layer further from the decision.
+    //
+    // This widens the rule by exactly one named tone on one component, and
+    // §8's real requirement — that state never rides on hue alone — is
+    // unaffected: it binds the *consumer*, which must still carry a glyph,
+    // an outline, or a shape alongside the colour. `component-gallery/03`
+    // audits that by desaturating the gallery.
+    '**/components/Text.tsx',
+    // The two consumers that render §8's second channel alongside the hue:
+    // an error glyph plus a `border-strong` outline, and a pulsing dot
+    // beside a "Live" label. Neither uses colour alone.
+    '**/components/FormField.tsx',
+    '**/components/Badge.tsx',
+    // Test files that assert the rule itself — `avatar-fallback.test.ts`
+    // proves the fallback palette contains no adherence colour, and
+    // `Text`/`Input`'s tests prove the urgent tone reaches its token. Each
+    // has to NAME the colours to check they are absent or correctly wired,
+    // which is the same exemption class as `tokens.test.ts` above.
+    '**/components/avatar-fallback.test.ts',
+    '**/components/Text.test.tsx',
+    '**/components/Input.test.tsx',
+    '**/components/FormField.test.tsx',
+    '**/components/Badge.test.tsx',
+    // `GlassSurface` names the adherence hues in order to REJECT them as a
+    // white-label tint — DS§2.5's rule applied, not broken. The inverse of
+    // what this rule guards against, and the only way to enforce it.
+    '**/surfaces/GlassSurface.tsx',
+    '**/surfaces/GlassSurface.test.tsx',
   ],
   plugins: THEME_PLUGIN,
   rules: { 'theme/adherence-colors-only': 'error' },

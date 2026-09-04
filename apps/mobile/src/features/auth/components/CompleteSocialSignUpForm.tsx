@@ -43,7 +43,7 @@ interface CompleteSocialSignUpFormProps {
  * the pending signup record instead (`packages/schemas/src/auth.ts`'s own
  * comment on `completeSocialSignUpInput`). The identity row is a plain
  * opaque card (`GlassSurface`'s own DS§10 fallback tokens — `bg.raised` +
- * `border.subtle`), not real liquid glass: DS§12 restricts that to chrome,
+ * `border.soft`), not real liquid glass: DS§12 restricts that to chrome,
  * and Ammar's review confirmed only the nav bar carries it on this screen,
  * same as sign-in/sign-up.
  */

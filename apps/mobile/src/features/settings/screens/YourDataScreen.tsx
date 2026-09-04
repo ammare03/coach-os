@@ -56,7 +56,7 @@ function ProgressRing({ percent }: { percent: number }) {
           cx={60}
           cy={60}
           r={RING_RADIUS}
-          stroke={colors.border.subtle}
+          stroke={colors.border.soft}
           strokeWidth={8}
           fill="none"
         />
@@ -183,11 +183,8 @@ export function YourDataScreen({ onBack }: YourDataScreenProps) {
   return (
     <View style={styles.screen}>
       <GlassSurface
-        style="regular"
-        containerStyle={[
-          styles.navBar,
-          { paddingTop: insets.top, height: NAV_BAR_HEIGHT + insets.top },
-        ]}
+        tier="tier1"
+        style={[styles.navBar, { paddingTop: insets.top, height: NAV_BAR_HEIGHT + insets.top }]}
       >
         <View style={styles.navBarContent}>
           <Pressable
@@ -313,14 +310,14 @@ const styles = StyleSheet.create({
   navBarContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing(3),
-    paddingHorizontal: spacing(5),
-    paddingBottom: spacing(3),
+    gap: spacing(12),
+    paddingHorizontal: spacing(20),
+    paddingBottom: spacing(12),
   },
   backButton: { minWidth: 48, minHeight: 48, alignItems: 'flex-start', justifyContent: 'center' },
   navTitle: { fontSize: 20, lineHeight: 28, fontWeight: '600', color: colors.fg.DEFAULT },
-  content: { paddingHorizontal: spacing(5), gap: spacing(6) },
-  section: { gap: spacing(3) },
+  content: { paddingHorizontal: spacing(20), gap: spacing(24) },
+  section: { gap: spacing(12) },
   sectionLabel: {
     fontSize: 13,
     lineHeight: 18,
@@ -334,10 +331,10 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.bg.raised,
     borderWidth: 1,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    padding: spacing(5),
-    gap: spacing(3),
+    borderColor: colors.border.soft,
+    borderRadius: radius.card,
+    padding: spacing(20),
+    gap: spacing(12),
     alignItems: 'center',
   },
   cardTitle: { fontSize: 16, lineHeight: 22, fontWeight: '600', color: colors.fg.DEFAULT },
@@ -355,10 +352,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     minHeight: 48,
-    paddingVertical: spacing(3),
+    paddingVertical: spacing(12),
   },
-  rowDivider: { borderTopWidth: 1, borderTopColor: colors.border.subtle },
-  rowRight: { flexDirection: 'row', alignItems: 'center', gap: spacing(2) },
+  rowDivider: { borderTopWidth: 1, borderTopColor: colors.border.soft },
+  rowRight: { flexDirection: 'row', alignItems: 'center', gap: spacing(8) },
   rowDate: { fontSize: 15, lineHeight: 20, color: colors.fg.DEFAULT },
   rowStatus: { fontSize: 13, lineHeight: 18, color: colors.fg.muted },
   rowMuted: { color: colors.fg.subtle },
