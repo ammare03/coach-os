@@ -1,3 +1,47 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Dark-column values (DS§2.2/2.4/2.5/2.6), generated from
+   `packages/ui/src/theme/tokens.ts` — space-separated RGB channels so
+   Tailwind's `<alpha-value>` modifier works (`bg-brand/20`). CSS can't read
+   the TS source directly, so `tokens.test.ts` cross-checks this block
+   against `tokens.ts` on every run; a mismatch here is a failing test, not a
+   silent drift.
+   `theme-tokens/04` adds a light-scheme block under `.light`; P25 overrides
+   `--color-brand*` per coach at runtime. Nothing else may write a variable
+   here. */
+@layer base {
+  :root {
+    --color-bg-sunken: 6 8 11;
+    --color-bg-DEFAULT: 10 13 18;
+    --color-bg-raised: 18 22 29;
+    --color-bg-overlay: 26 31 40;
+    --color-bg-inset: 14 18 24;
+    --color-fg-DEFAULT: 242 245 249;
+    --color-fg-muted: 151 162 180;
+    --color-fg-subtle: 95 108 126;
+    --color-fg-onBrand: 255 255 255;
+    --color-border-subtle: 30 36 46;
+    --color-border-DEFAULT: 42 50 63;
+    --color-border-strong: 58 69 83;
+    --color-brand-50: 238 240 255;
+    --color-brand-100: 224 227 255;
+    --color-brand-200: 199 203 254;
+    --color-brand-300: 165 169 251;
+    --color-brand-400: 134 140 248;
+    --color-brand-500: 99 102 241;
+    --color-brand-600: 79 82 224;
+    --color-brand-700: 65 68 190;
+    --color-brand-800: 55 58 154;
+    --color-brand-900: 49 52 122;
+    --color-brand-DEFAULT: 99 102 241;
+    --color-state-onTrack: 16 185 129;
+    --color-state-drifting: 245 158 11;
+    --color-state-offTrack: 244 63 94;
+    --color-state-noData: 107 114 128;
+    --color-realtime: 6 182 212;
+    --color-danger: 244 63 94;
+    --color-pr: 251 191 36;
+  }
+}

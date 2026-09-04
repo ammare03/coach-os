@@ -27,11 +27,12 @@ export default function HomeScreen() {
       <Link href="/sign-up" style={styles.link}>
         Create account
       </Link>
-      {/* Throwaway proof the NativeWind pipeline compiles (theme-tokens/01).
-          Deliberately ugly and off-token — replaced by a real token-driven
-          card in theme-tokens/02. */}
-      <View className="bg-red-500 p-8">
-        <Text className="text-white">NativeWind is wired up</Text>
+      {/* Proof the token pipeline is wired end to end (theme-tokens/02): if
+          the border but not the fill renders, global.css's variable block
+          is wrong; if neither renders, the preset isn't loading. Replaced by
+          real screens in phase-05-app-shell. */}
+      <View className="rounded-lg border border-border bg-bg-raised p-4">
+        <Text className="text-fg">Token pipeline verified</Text>
       </View>
     </View>
   );

@@ -6,7 +6,7 @@
     "./tsconfig.base.json": "./tsconfig.base.json",
     "./eslint.base": "./eslint.base.js",
     "./eslint.react-native": "./eslint.react-native.js",
-    "./tailwind.base": "./tailwind.base.js",
+    "./tailwind": "./tailwind/preset.js",
     "./prettier.json": "./prettier.json",
     "./jest.base": "./jest.base.js",
     "./jest.node": "./jest.node.js",
