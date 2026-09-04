@@ -30,9 +30,5 @@
     "lint-staged": "17.3.0",
     "prettier": "3.9.6",
     "turbo": "2.10.11"
-  },
-  "dependencies": {
-    "expo-blur": "^57.0.2",
-    "expo-linear-gradient": "^57.0.1"
   }
 }

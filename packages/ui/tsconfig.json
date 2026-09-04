@@ -20,7 +20,12 @@
     // Needed for `*.test.tsx` to typecheck (mirrors `apps/mobile/tsconfig.json`).
     // `nativewind/types` teaches `className` to RN's core components —
     // `Text`/`Metric` (theme-tokens/03) are this package's first consumers.
-    "types": ["jest", "nativewind/types"]
+    // `node` is here for exactly one test: `theme/tokens.test.ts` reads
+    // `apps/mobile/src/global.css` off disk to prove it has not drifted
+    // from `tokens.ts`. CSS cannot import TS, so a filesystem read is the
+    // only way to check that, and nothing else in this package touches a
+    // Node builtin.
+    "types": ["jest", "node", "nativewind/types"]
   },
   "include": ["src"]
 }

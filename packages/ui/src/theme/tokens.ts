@@ -284,6 +284,53 @@ export const glass = {
 
 export type GlassTier = keyof typeof glass;
 
+// §9 — the control surfaces. These are the translucent fills and hairlines
+// the button and stepper specimens are built from, and they live here for
+// the same reason every other value does: this is the only file allowed to
+// hold one. `bg.inset` at a fraction is not expressible as a token colour
+// (Tailwind's `/40` modifier does not reach a React Native `StyleSheet`),
+// so the resolved rgba is written down once rather than inlined at six
+// call sites.
+export const control = {
+  /** Secondary button and stepper fill — `bg.inset` at 50%. */
+  surface: 'rgba(19,26,41,0.5)',
+  /** Disabled fill, every variant. The difference between variants stops mattering once a control cannot be pressed. */
+  surfaceDisabled: 'rgba(19,26,41,0.4)',
+  /** A well that must stay legible under text — the input's own field (§9). */
+  surfaceSubtle: 'rgba(19,26,41,0.2)',
+  /** The segmented-control track (§9). It never recolours; the pill moves. */
+  track: 'rgba(19,26,41,0.6)',
+  /** The bottom sheet's 42x5 grabber (§9). */
+  grabber: 'rgba(255,229,218,0.35)',
+  /** The warm 1px hairline on a secondary control. */
+  border: 'rgba(255,229,218,0.14)',
+  /** Stepper's brighter hairline (§9). */
+  borderBright: 'rgba(255,229,218,0.16)',
+  /**
+   * The primary button's two inset edges (§9). Brighter and heavier than a
+   * card's, because the surface underneath is light rather than dark — this
+   * is what makes the fill read as a physical, pressable key. The press
+   * treatment collapses them (`Pressable`).
+   */
+  primaryHighlight: 'rgba(255,255,255,0.9)',
+  primaryLowlight: 'rgba(22,30,47,0.16)',
+  /**
+   * The ring a dock badge or a presence dot wears so it reads against a
+   * photo or a glass surface of any brightness — `bg.DEFAULT` at 60% (§9).
+   */
+  ring: 'rgba(22,30,47,0.6)',
+  /** The pressed scrim on a surface that cannot scale (a full-width card). */
+  pressScrim: 'rgba(0,0,0,0.12)',
+  /** The primary button's peach glow. */
+  primaryGlow: {
+    shadowColor: colors.brand.DEFAULT,
+    shadowOpacity: 0.5,
+    shadowRadius: 11,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
+  },
+} as const;
+
 // §4 — the selection pill inside a dock or segmented control. It MOVES
 // between options; the track itself never recolours.
 export const selectionPill = {

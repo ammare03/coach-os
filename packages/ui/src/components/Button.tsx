@@ -1,16 +1,19 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+
 import {
-  ActivityIndicator,
-  StyleSheet,
-  Text,
-  View,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native';
+  colors,
+  control,
+  density,
+  radius,
+  spacing,
+  tapTarget,
+  type Density,
+} from '../theme/tokens.ts';
 
-import { colors, radius } from '../theme/tokens.ts';
-
-import { Pressable } from './Pressable.tsx';
+import { Pressable, type PressableRenderState } from './Pressable.tsx';
+import { Text } from './Text.tsx';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg';
@@ -18,6 +21,8 @@ export type ButtonSize = 'sm' | 'md' | 'lg';
 export interface ButtonProps {
   variant?: ButtonVariant;
   size?: ButtonSize;
+  /** `Density` from `tokens.ts` — drives `size="md"`'s height only (see `MD_HEIGHT` below). */
+  density?: Density;
   onPress?: () => void;
   disabled?: boolean;
   /**
@@ -33,63 +38,146 @@ export interface ButtonProps {
   children: ReactNode;
   accessibilityLabel?: string;
   testID?: string;
-  style?: StyleProp<ViewStyle>;
 }
 
-// `sm`/`md` reach the 48×48 tap floor via `hitSlop`, not by growing the
-// visible control — `ui-primitives-core/01`'s sizing table. `lg` is
-// already ≥48 and needs none.
-const SIZES: Record<
-  ButtonSize,
-  { height: number; fontSize: number; paddingHorizontal: number; hitSlop: number }
-> = {
-  sm: { height: 32, fontSize: 14, paddingHorizontal: 12, hitSlop: 8 },
-  md: { height: 44, fontSize: 16, paddingHorizontal: 16, hitSlop: 2 },
-  lg: { height: 56, fontSize: 16, paddingHorizontal: 20, hitSlop: 0 },
+// task doc `01`'s sizing table gives `sm`/`lg` a fixed height, reached at
+// 48px tappable via `hitSlop` (`sm`) or already ≥48 (`lg`). DESIGN.md §9's
+// primary-button literal ("height 46 coach / 52 client") is exactly
+// `density[d].button` from `tokens.ts` — so `size="md"` (the default) pulls
+// its height from `density` instead of a fixed number, and `sm`/`lg` stay
+// fixed across both densities, since DESIGN.md gives no density-specific
+// literal for either. This is CONTRACT.md's authority order in practice:
+// the task doc's 3-tier hit-mechanics system still governs (DESIGN.md is
+// silent on it), but the one literal DESIGN.md *does* give (md's height)
+// wins over the task doc's flat `44`.
+const FIXED_HEIGHT: Partial<Record<ButtonSize, number>> = {
+  sm: 32,
+  lg: 56,
 };
 
-function variantStyle(variant: ButtonVariant, pressed: boolean) {
+// §3's floor is `tapTarget.MIN` (44), not the visible box. `sm` (32) is
+// the only size that needs `hitSlop` to reach it; `md` (density-driven,
+// 46/52) and `lg` (56) already clear it on their own.
+const HIT_SLOP: Record<ButtonSize, number> = {
+  sm: Math.ceil((tapTarget.MIN - 32) / 2),
+  md: 0,
+  lg: 0,
+};
+
+// DESIGN.md §1.2's type table pins buttons to the `label` size (500,
+// 14–15/19–20) regardless of `size` — there is no button-specific size
+// variant in the spec, only a height/tap-target variant (above). `sm`
+// drops one step to `body-sm` (14pt) per the coach-only toolbar use case
+// task `01`'s AC calls out; `md`/`lg` use `label`.
+const FONT_SIZE: Record<ButtonSize, 'body-sm' | 'label'> = {
+  sm: 'body-sm',
+  md: 'label',
+  lg: 'label',
+};
+
+const PADDING_HORIZONTAL: Record<ButtonSize, number> = {
+  sm: 12,
+  md: 16,
+  lg: 20,
+};
+
+interface VariantVisuals {
+  useGradient: boolean;
+  showHairlines: boolean;
+  backgroundColor: string;
+  borderWidth: number;
+  borderColor?: string;
+  borderStyle?: 'solid' | 'dashed';
+  textColor: string;
+}
+
+/**
+ * Resolves the four-variant palette (CONTRACT.md §5 / DESIGN.md §9).
+ * Shared with `IconButton` so the two never drift apart.
+ *
+ * `danger` is outlined and lettered in `urgent-text` — never a filled red
+ * rectangle. Red/maroon fills are adherence state (`theme/adherence-
+ * colors-only`); a filled danger button would read as a status signal in
+ * a scanned list rather than a control's own affordance.
+ */
+export function resolveButtonVariantVisuals(
+  variant: ButtonVariant,
+  pressed: boolean,
+  disabled: boolean,
+): VariantVisuals {
+  if (disabled) {
+    // CONTRACT.md §5 — `bg.inset` at 40%, text `fg.faint`. One disabled
+    // treatment for every variant; the difference between variants stops
+    // mattering once a control can't be pressed.
+    return {
+      useGradient: false,
+      showHairlines: false,
+      backgroundColor: control.surfaceDisabled,
+      borderWidth: 0,
+      textColor: colors.fg.faint,
+    };
+  }
+
   switch (variant) {
     case 'primary':
       return {
-        backgroundColor: colors.brand.DEFAULT,
+        useGradient: true,
+        showHairlines: true,
+        backgroundColor: 'transparent',
         borderWidth: 0,
         textColor: colors.fg.onBrand,
       };
     case 'secondary':
+      // DESIGN.md §9 — `bg.inset` 45–50%, same value as `elevation.inset`
+      // in `tokens.ts`, + a 1px warm hairline border.
       return {
-        backgroundColor: pressed ? colors.bg.overlay : colors.bg.raised,
+        useGradient: false,
+        showHairlines: false,
+        backgroundColor: control.surface,
         borderWidth: 1,
-        borderColor: colors.border.DEFAULT,
-        textColor: colors.fg.DEFAULT,
+        borderColor: control.border,
+        borderStyle: 'solid',
+        textColor: colors.fg.glass,
       };
     case 'ghost':
+      // DASHED border, never solid — the visual signal that this is an
+      // "add" affordance, not a committed action. Press brightens the
+      // border toward `brand.DEFAULT` only; no fill, ever.
       return {
-        backgroundColor: pressed ? colors.bg.raised : 'transparent',
-        borderWidth: 0,
-        textColor: colors.fg.muted,
-      };
-    case 'danger':
-      // Outlined and lettered in red, never filled — red is adherence
-      // state (`ui-conventions` §2's semantic colour rule), and a filled
-      // red button reads as a status signal in a scanned list.
-      return {
+        useGradient: false,
+        showHairlines: false,
         backgroundColor: 'transparent',
         borderWidth: 1,
-        borderColor: colors.danger,
-        textColor: colors.danger,
+        borderColor: pressed ? colors.brand.DEFAULT : colors.border.strong,
+        borderStyle: 'dashed',
+        textColor: colors.brand.DEFAULT,
+      };
+    case 'danger':
+      return {
+        useGradient: false,
+        showHairlines: false,
+        backgroundColor: 'transparent',
+        borderWidth: 1,
+        borderColor: colors['urgent-text'],
+        borderStyle: 'solid',
+        textColor: colors['urgent-text'],
       };
   }
 }
 
 /**
  * Four variants × three sizes, no thirteenth (`ui-primitives-core/01`).
- * No haptics anywhere in this component — `screen-states/04` owns the
- * three haptic triggers in the product and "button press" is not one.
+ * `loading` and `disabled` both block `onPress`; only `loading` preserves
+ * width and full contrast (a spinner replaces the label without shrinking
+ * the button, so a thumb already moving toward the next control doesn't
+ * follow a layout shift). No haptics anywhere in this component —
+ * `screen-states/04` owns the three haptic triggers in the product and
+ * "button press" is not one of them.
  */
 export function Button({
   variant = 'primary',
   size = 'md',
+  density: densityProp = 'client',
   onPress,
   disabled = false,
   loading = false,
@@ -99,65 +187,110 @@ export function Button({
   children,
   accessibilityLabel,
   testID,
-  style,
 }: ButtonProps) {
-  const { height, fontSize, paddingHorizontal, hitSlop } = SIZES[size];
   const blocked = disabled || loading;
+  const height = size === 'md' ? density[densityProp].button : (FIXED_HEIGHT[size] ?? 44);
 
   return (
     <Pressable
       onPress={blocked ? undefined : onPress}
       disabled={blocked}
-      hitSlop={hitSlop}
+      hitSlop={HIT_SLOP[size]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled, busy: loading }}
       testID={testID}
-      style={({ pressed }) => {
-        const v = variantStyle(variant, pressed);
+      containerStyle={[
+        styles.outer,
+        fullWidth && styles.fullWidth,
+        variant === 'primary' && !disabled && styles.primaryShadow,
+      ]}
+      style={({ pressed }: PressableRenderState) => {
+        const v = resolveButtonVariantVisuals(variant, pressed, disabled);
         return [
           styles.base,
           {
             height,
-            paddingHorizontal,
+            paddingHorizontal: PADDING_HORIZONTAL[size],
+            borderRadius: radius.full,
             backgroundColor: v.backgroundColor,
             borderWidth: v.borderWidth,
-            borderColor: 'borderColor' in v ? v.borderColor : undefined,
-            borderRadius: radius.md,
-            opacity: disabled ? 0.5 : 1,
+            borderColor: v.borderColor,
+            borderStyle: v.borderStyle,
             width: fullWidth ? '100%' : undefined,
+            overflow: 'hidden',
           },
-          style,
         ];
       }}
     >
-      {(() => {
-        const v = variantStyle(variant, false);
+      {({ pressed }: PressableRenderState) => {
+        const v = resolveButtonVariantVisuals(variant, pressed, disabled);
         return (
-          <View style={styles.content}>
-            <View style={[styles.labelRow, { opacity: loading ? 0 : 1 }]}>
-              {iconLeft}
-              <Text style={{ fontSize, fontWeight: '600', color: v.textColor }} numberOfLines={1}>
-                {children}
-              </Text>
-              {iconRight}
-            </View>
-            {loading && (
-              <View style={styles.spinner}>
-                <ActivityIndicator color={v.textColor} size="small" />
-              </View>
+          <>
+            {v.useGradient && (
+              <LinearGradient
+                colors={[colors.primary.from, colors.primary.to]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
             )}
-          </View>
+            {v.showHairlines && (
+              <>
+                {/* the inset-edge trick (CONTRACT.md §4) — collapses on press */}
+                <View
+                  pointerEvents="none"
+                  style={[styles.hairlineTop, pressed && styles.hairlineHidden]}
+                />
+                <View
+                  pointerEvents="none"
+                  style={[styles.hairlineBottom, pressed && styles.hairlineHidden]}
+                />
+              </>
+            )}
+            <View style={styles.content}>
+              <View style={[styles.labelRow, loading && styles.labelRowHidden]}>
+                {iconLeft}
+                <Text size={FONT_SIZE[size]} numberOfLines={1} style={{ color: v.textColor }}>
+                  {children}
+                </Text>
+                {iconRight}
+              </View>
+              {loading && (
+                <View style={styles.spinner}>
+                  <ActivityIndicator color={v.textColor} size="small" />
+                </View>
+              )}
+            </View>
+          </>
         );
-      })()}
+      }}
     </Pressable>
   );
 }
 
+// DESIGN.md §9's primary-button glow: `0 10px 22px -8px rgba(255,165,134,.5)`.
+// `shadowColor` routes through `colors.brand.DEFAULT` rather than a bare
+// hex; the offset/radius geometry is component-specific (like `SIZES`
+// above) and isn't a reusable token.
 const styles = StyleSheet.create({
+  outer: {
+    alignSelf: 'flex-start',
+  },
+  fullWidth: {
+    alignSelf: 'stretch',
+  },
+  primaryShadow: {
+    shadowColor: colors.brand.DEFAULT,
+    shadowOpacity: 0.5,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+  },
   base: {
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: tapTarget.MIN,
   },
   content: {
     alignItems: 'center',
@@ -166,9 +299,31 @@ const styles = StyleSheet.create({
   labelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing(8),
+  },
+  labelRowHidden: {
+    opacity: 0,
   },
   spinner: {
     position: 'absolute',
+  },
+  hairlineTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: control.primaryHighlight,
+  },
+  hairlineBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: control.primaryLowlight,
+  },
+  hairlineHidden: {
+    opacity: 0,
   },
 });

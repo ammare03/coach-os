@@ -13,6 +13,7 @@ export {
   easing,
   stagger,
   scrim,
+  control,
   fontFamily,
   fontSize,
   type ColorTokens,
