@@ -307,6 +307,12 @@ export const control = {
   /** Stepper's brighter hairline (§9). */
   borderBright: 'rgba(255,229,218,0.16)',
   /**
+   * The stepper key's inset top edge — §9's `inset 0 1px 0
+   * rgba(255,255,255,.14)`, rendered as a faked hairline (§12). Dimmer than
+   * `primaryHighlight` because the fill underneath is dark rather than peach.
+   */
+  stepperHighlight: 'rgba(255,255,255,0.14)',
+  /**
    * The primary button's two inset edges (§9). Brighter and heavier than a
    * card's, because the surface underneath is light rather than dark — this
    * is what makes the fill read as a physical, pressable key. The press

@@ -43,6 +43,11 @@ export { useGlassAvailable, type GlassAvailability } from './surfaces/useGlassAv
 // ── Forms ───────────────────────────────────────────────────────────────
 export { Input, type InputProps, type InputState } from './components/Input.tsx';
 export { FormField, type FormFieldProps } from './components/FormField.tsx';
+// The core input of the workout logger. Controlled, one step size per
+// instance, no internal value state — the contract is documented on the
+// component and every consumer that wants a mode is asking for a slower
+// logger (`ui-primitives-data/01`).
+export { NumberStepper, type NumberStepperProps } from './components/NumberStepper.tsx';
 
 // ── Overlays ────────────────────────────────────────────────────────────
 // A sheet is for *doing* something; a modal is for *stopping* something.

@@ -12,6 +12,7 @@ import {
   IconButton,
   Input,
   Metric,
+  NumberStepper,
   SegmentedControl,
   Sheet,
   SheetFooter,
@@ -50,6 +51,9 @@ export default function HomeScreen() {
   const [facet, setFacet] = useState<'training' | 'body' | 'habits'>('training');
   const [selectedChips, setSelectedChips] = useState<string[]>(['Needs you']);
   const [note, setNote] = useState('');
+  const [weightKg, setWeightKg] = useState(62.5);
+  const [reps, setReps] = useState(8);
+  const [rpe, setRpe] = useState(8);
   const [isSheetOpen, setSheetOpen] = useState(false);
   const [isConfirmOpen, setConfirmOpen] = useState(false);
 
@@ -201,6 +205,45 @@ export default function HomeScreen() {
         <FormField label="Disabled" density="coach">
           <Input value="Locked" onChangeText={() => undefined} state="disabled" density="coach" />
         </FormField>
+      </Section>
+
+      {/* The logger's core input, at both densities and at three of its
+          seven step sizes. Every acceptance criterion that matters here is
+          physical — 48px hit areas under the Android layout-bounds overlay,
+          a four-digit value unclipped at 200% text, and the value not
+          jittering as it crosses 99 → 100 — and none of them can be checked
+          in a simulator (`ui-conventions` §9). */}
+      <Section title="Steppers">
+        <NumberStepper
+          value={weightKg}
+          onChange={setWeightKg}
+          step={2.5}
+          min={0}
+          max={300}
+          unit="kg"
+          unitLabel="kilograms"
+          accessibilityLabel="weight"
+          testID="stepper-weight"
+        />
+        <NumberStepper
+          value={reps}
+          onChange={setReps}
+          step={1}
+          min={1}
+          max={50}
+          accessibilityLabel="reps"
+          testID="stepper-reps"
+        />
+        <NumberStepper
+          value={rpe}
+          onChange={setRpe}
+          step={0.5}
+          min={5}
+          max={10}
+          density="coach"
+          accessibilityLabel="RPE"
+          testID="stepper-rpe"
+        />
       </Section>
 
       {/* A wrapping chip row — never horizontally scrolling, so a client
