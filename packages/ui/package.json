@@ -30,14 +30,14 @@
   },
   "devDependencies": {
     "@coachos/config": "workspace:*",
-    "@testing-library/react-native": "13.3.3",
+    "@testing-library/react-native": "14.0.1",
     "@types/jest": "30.0.0",
-    "@types/node": "22.20.1",
+    "@types/node": "26.4.0",
     "@types/react": "~19.2.2",
     "expo-blur": "~57.0.2",
     "expo-glass-effect": "~57.0.1",
     "expo-linear-gradient": "~57.0.1",
-    "jest": "30.4.2",
+    "jest": "30.5.1",
     "lucide-react-native": "^1.40.0",
     "nativewind": "4.2.6",
     "react": "19.2.3",
@@ -45,6 +45,6 @@
     "react-native-gesture-handler": "~2.32.0",
     "react-native-reanimated": "4.5.1",
     "react-native-svg": "15.15.4",
-    "typescript": "~6.0.3"
+    "typescript": "~7.0.2"
   }
 }
