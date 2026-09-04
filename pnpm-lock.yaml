@@ -425,6 +425,10 @@ importers:
         version: 6.0.3
 
   packages/ui:
+    dependencies:
+      '@coachos/utils':
+        specifier: workspace:*
+        version: link:../utils
     devDependencies:
       '@coachos/config':
         specifier: workspace:*

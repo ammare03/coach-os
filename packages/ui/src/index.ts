@@ -15,6 +15,13 @@ export { Metric, type MetricProps } from './components/Metric.tsx';
 export { Pressable } from './components/Pressable.tsx';
 export { Text, type TextProps, type TextTone } from './components/Text.tsx';
 export {
+  ThemeProvider,
+  type ThemeProviderProps,
+  type ThemeContextValue,
+} from './theme/ThemeProvider.tsx';
+export { useTheme } from './theme/useTheme.ts';
+export type { Scheme } from './theme/schemes.ts';
+export {
   GlassSurface,
   type GlassSurfaceProps,
   type GlassSurfaceStyle,

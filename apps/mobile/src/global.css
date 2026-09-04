@@ -8,9 +8,15 @@
    the TS source directly, so `tokens.test.ts` cross-checks this block
    against `tokens.ts` on every run; a mismatch here is a failing test, not a
    silent drift.
-   `theme-tokens/04` adds a light-scheme block under `.light`; P25 overrides
-   `--color-brand*` per coach at runtime. Nothing else may write a variable
-   here. */
+   This is the DEFAULT only — `ThemeProvider` (theme-tokens/04) overrides
+   every one of these variables at runtime via NativeWind's `vars()`, for
+   both the dark/light switch and P25's per-coach brand override. There is
+   no `.light:root` block here: NativeWind's `darkMode: 'class'` selector
+   convention always treats its toggle class as the *dark* override on a
+   light default, backwards for this dark-first product, so the scheme
+   switch is plain React state instead — see `ThemeProvider.tsx`'s own
+   comment. This block only matters before a `<ThemeProvider>` mounts, or
+   for tooling (the Tailwind CLI) that never renders one. */
 @layer base {
   :root {
     --color-bg-sunken: 6 8 11;
