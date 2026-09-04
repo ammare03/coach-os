@@ -47,7 +47,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg.raised,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.border.subtle,
+    borderColor: colors.border.soft,
   },
   label: {
     fontFamily: 'System',

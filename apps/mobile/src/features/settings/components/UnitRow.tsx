@@ -141,8 +141,8 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.bg.raised,
     borderWidth: 1,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
+    borderColor: colors.border.soft,
+    borderRadius: radius.card,
     padding: spacing(5),
     gap: spacing(4),
   },
@@ -159,14 +159,14 @@ const styles = StyleSheet.create({
   tile: {
     flex: 1,
     position: 'relative',
-    borderRadius: radius.md,
+    borderRadius: radius.control,
     padding: spacing(4),
     borderWidth: 1,
     minHeight: 48,
   },
   tileIdle: {
     backgroundColor: colors.bg.inset,
-    borderColor: colors.border.subtle,
+    borderColor: colors.border.soft,
   },
   tileSelected: {
     backgroundColor: 'rgba(99,102,241,0.08)',

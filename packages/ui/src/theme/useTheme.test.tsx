@@ -23,7 +23,7 @@ describe('useTheme', () => {
         <Probe />
       </ThemeProvider>,
     );
-    expect(getByTestId('probe').props.children).toBe('dark:#6366F1');
+    expect(getByTestId('probe').props.children).toBe('dark:#FFA586');
   });
 
   it('renders the light scheme only when explicitly asked', () => {
@@ -42,7 +42,7 @@ describe('useTheme', () => {
       </ThemeProvider>,
     );
     const [, brandDefault] = (getByTestId('probe').props.children as string).split(':');
-    expect(brandDefault).not.toBe('#6366F1');
+    expect(brandDefault).not.toBe('#FFA586');
   });
 
   it('falls back to the default ramp on an invalid brand colour, with no crash', () => {
@@ -51,6 +51,6 @@ describe('useTheme', () => {
         <Probe />
       </ThemeProvider>,
     );
-    expect(getByTestId('probe').props.children).toBe('dark:#6366F1');
+    expect(getByTestId('probe').props.children).toBe('dark:#FFA586');
   });
 });

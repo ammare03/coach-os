@@ -56,7 +56,7 @@ function ProgressRing({ percent }: { percent: number }) {
           cx={60}
           cy={60}
           r={RING_RADIUS}
-          stroke={colors.border.subtle}
+          stroke={colors.border.soft}
           strokeWidth={8}
           fill="none"
         />
@@ -183,11 +183,8 @@ export function YourDataScreen({ onBack }: YourDataScreenProps) {
   return (
     <View style={styles.screen}>
       <GlassSurface
-        style="regular"
-        containerStyle={[
-          styles.navBar,
-          { paddingTop: insets.top, height: NAV_BAR_HEIGHT + insets.top },
-        ]}
+        tier="tier1"
+        style={[styles.navBar, { paddingTop: insets.top, height: NAV_BAR_HEIGHT + insets.top }]}
       >
         <View style={styles.navBarContent}>
           <Pressable
@@ -334,8 +331,8 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.bg.raised,
     borderWidth: 1,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
+    borderColor: colors.border.soft,
+    borderRadius: radius.card,
     padding: spacing(5),
     gap: spacing(3),
     alignItems: 'center',
@@ -357,7 +354,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingVertical: spacing(3),
   },
-  rowDivider: { borderTopWidth: 1, borderTopColor: colors.border.subtle },
+  rowDivider: { borderTopWidth: 1, borderTopColor: colors.border.soft },
   rowRight: { flexDirection: 'row', alignItems: 'center', gap: spacing(2) },
   rowDate: { fontSize: 15, lineHeight: 20, color: colors.fg.DEFAULT },
   rowStatus: { fontSize: 13, lineHeight: 18, color: colors.fg.muted },
