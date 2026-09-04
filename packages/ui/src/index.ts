@@ -231,6 +231,40 @@ export {
   type EmptyStateAction,
 } from './components/EmptyState.tsx';
 
+// `LoadingState` is the first of the four and the one with a hard rule
+// behind it: `DESIGN.md` §5 forbids a spinner where a skeleton belongs, so
+// this composes `Skeleton` shapes and has none at any shape. Its
+// `accessibilityLabel` is required — it IS the loading region, and an
+// unlabelled region is silent to a screen reader (`accessibility` §2).
+export {
+  LoadingState,
+  type LoadingStateProps,
+  type LoadingShape,
+} from './components/LoadingState.tsx';
+
+// Two components, deliberately not one with a `reason` prop. `CLAUDE.md`
+// §9.2 requires an id-route to distinguish "this isn't here" from "this
+// isn't yours to open", and collapsing them into a generic error is the
+// shortcut a rushed feature takes — two components make the distinction
+// the path of least resistance. Both compose `EmptyState`, so both inherit
+// its single-action rule, and on both the recovery handler is REQUIRED:
+// neither state may be a dead end.
+//
+// The one sanctioned overlap runs the other way and is decided at the API:
+// `ERRORS.md` ER§2.1 makes another coach's resource return `NOT_FOUND`, so
+// it renders `NotFoundState`. A real 403 there would confirm the resource
+// exists and turn id-walking into an enumeration oracle.
+export {
+  NotFoundState,
+  NOT_FOUND_COPY,
+  type NotFoundStateProps,
+} from './components/NotFoundState.tsx';
+export {
+  ForbiddenState,
+  FORBIDDEN_COPY,
+  type ForbiddenStateProps,
+} from './components/ForbiddenState.tsx';
+
 // ── Haptics ─────────────────────────────────────────────────────────────
 // Three functions, and deliberately no generic `triggerHaptic`. `CLAUDE.md`
 // §7.5 sanctions exactly three haptics in the product — `Light` on set
