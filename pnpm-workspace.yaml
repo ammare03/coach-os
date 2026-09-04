@@ -55,3 +55,8 @@ overrides:
   jest-environment-node: '30.4.1'
   jest-environment-jsdom: '30.4.1'
   jest-mock: '30.4.1'
+  # GHSA-jqff-g426-hqxp and three related host-confusion/SSRF advisories —
+  # transitive via @commitlint/cli -> ajv, a devDependency never shipped.
+  # commitlint@21.2.2 is already latest and hasn't picked up a patched ajv;
+  # this forces the fix directly. Remove once commitlint's own tree clears 3.1.6.
+  fast-uri: '>=3.1.6'
