@@ -186,6 +186,17 @@ export { Skeleton, type SkeletonProps, type SkeletonRadius } from './components/
 export { SkeletonText, type SkeletonTextProps } from './components/SkeletonText.tsx';
 export { SkeletonCircle, type SkeletonCircleProps } from './components/SkeletonCircle.tsx';
 
+// ── Screen states ───────────────────────────────────────────────────────
+// `ui-conventions` §4 — every screen that loads data handles four states,
+// and a blank screen is not one of them. `EmptyState` takes exactly ONE
+// `primaryAction`, by type: the singular prop is what stops a later feature
+// phase shipping an empty state with two competing next steps, or none.
+export {
+  EmptyState,
+  type EmptyStateProps,
+  type EmptyStateAction,
+} from './components/EmptyState.tsx';
+
 // ── Theme ───────────────────────────────────────────────────────────────
 export {
   ThemeProvider,
