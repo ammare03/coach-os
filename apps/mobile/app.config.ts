@@ -30,6 +30,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     usesAppleSignIn: true,
   },
   android: {
+    // `ui-primitives-core/03` — `CLAUDE.md` §25.9: keyboard + a scrolling
+    // form on Android needs `adjustResize`, or the focused field ends up
+    // behind the keyboard instead of the window shrinking to fit it. A
+    // native change; ships with a dev-client rebuild, never an OTA.
+    softwareKeyboardLayoutMode: 'resize',
     adaptiveIcon: {
       backgroundColor: '#E6F4FE',
       foregroundImage: './assets/images/android-icon-foreground.png',
@@ -71,12 +76,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       'expo-font',
       {
         fonts: [
-          './assets/fonts/Inter-Regular.ttf',
-          './assets/fonts/Inter-Medium.ttf',
-          './assets/fonts/Inter-SemiBold.ttf',
-          './assets/fonts/InterTight-Medium.ttf',
-          './assets/fonts/InterTight-SemiBold.ttf',
-          './assets/fonts/InterTight-Bold.ttf',
+          // `DESIGN.md` §1.2 — two families, no third. Instrument Sans
+          // speaks, Space Grotesk counts (chosen for its tabular figures,
+          // which is why a running timer never jitters). Both SIL OFL.
+          './assets/fonts/InstrumentSans-Regular.ttf',
+          './assets/fonts/InstrumentSans-Medium.ttf',
+          './assets/fonts/InstrumentSans-SemiBold.ttf',
+          './assets/fonts/SpaceGrotesk-Medium.ttf',
+          './assets/fonts/SpaceGrotesk-SemiBold.ttf',
+          './assets/fonts/SpaceGrotesk-Bold.ttf',
         ],
       },
     ],

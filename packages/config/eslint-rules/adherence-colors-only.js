@@ -1,17 +1,23 @@
-// CLAUDE.md §7.2 / DESIGN-SYSTEM.md DS§2.5: green/amber/red mean adherence
-// state and nothing else. Flags a Tailwind utility or a token property
-// access naming one of the adherence/danger colours outside the allowlist
-// (theme-tokens/05) — registration passes the allowlist as `ignores`, this
-// rule just flags every use it sees.
+// `DESIGN.md` §8: the adherence warmth ramp means adherence state and
+// nothing else, and `urgent` means missed/overdue/record/destructive and is
+// never decorative. Flags a Tailwind utility or a token property access
+// naming one of those colours outside the allowlist — registration passes
+// the allowlist as `ignores`, this rule just flags every use it sees.
+//
+// The palette has NO GREEN (§8), so the old green/amber/red trio does not
+// exist any more; what needs guarding instead is the ramp, whose stops
+// (`onPlan` is literally `brand.DEFAULT`) would otherwise be reachable as
+// ordinary decoration and destroy the coach's colour scan.
 'use strict';
 
-// Matches e.g. `bg-state-onTrack`, `text-state-offTrack/20`, `border-danger`
+// Matches e.g. `bg-state-onPlan`, `text-state-offPlan/20`, `border-urgent`
 // — a Tailwind colour utility (bg/text/border/fill/stroke) naming a
 // restricted token, at any opacity.
 const CLASS_RE =
-  /\b(?:bg|text|border|fill|stroke)-(?:state-(?:onTrack|drifting|offTrack|noData)|danger)\b/;
-// Matches `colors.state.onTrack`, `colors.danger`, `theme.colors.state.offTrack` in JS.
-const PROPERTY_RE = /\bcolors\.(?:state\.(?:onTrack|drifting|offTrack|noData)|danger)\b/;
+  /\b(?:bg|text|border|fill|stroke)-(?:state-(?:onPlan|drifting|offPlan|notStarted)|urgent(?:-text)?)\b/;
+// Matches `colors.state.onPlan`, `colors.urgent`, `colors['urgent-text']` in JS.
+const PROPERTY_RE =
+  /\bcolors(?:\.state\.(?:onPlan|drifting|offPlan|notStarted)\b|\.urgent\b|\['urgent-text'\])/;
 
 /** @type {import('eslint').Rule.RuleModule} */
 const rule = {
@@ -19,12 +25,12 @@ const rule = {
     type: 'problem',
     docs: {
       description:
-        'Disallow success/warning/danger adherence colours outside adherence-state files (CLAUDE.md §7.2, DESIGN-SYSTEM.md DS§2.5).',
+        'Disallow the adherence warmth ramp and `urgent` outside adherence-state files (DESIGN.md §8).',
     },
     schema: [],
     messages: {
       adherenceColor:
-        '"{{value}}" is reserved for adherence state (DESIGN-SYSTEM.md DS§2.5) — it may not appear outside an adherence-state file. If this is genuinely an adherence surface, add the file to the allowlist in eslint.react-native.js with a comment explaining why.',
+        '"{{value}}" is reserved for adherence state (DESIGN.md §8) — it may not appear outside an adherence-state file, and it must always carry a second, non-colour channel. If this is genuinely an adherence surface, add the file to the allowlist in eslint.react-native.js with a comment explaining why.',
     },
   },
   create(context) {

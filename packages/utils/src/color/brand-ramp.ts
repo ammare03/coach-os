@@ -1,12 +1,17 @@
-// Regenerates the ten-stop brand ramp from one coach-supplied hex
-// (`theme-tokens/04`, `DESIGN-SYSTEM.md` DS§2.4). Lives here, not in
+// Regenerates the five-stop warm brand ramp from one coach-supplied hex
+// (`DESIGN.md` §1.1, white-label per `CLAUDE.md` §15.2). Lives here, not in
 // `packages/ui`, so the app and any future web dashboard agree
 // (`CLAUDE.md` §3.1).
 //
-// The saturation/lightness curve is extracted from the default indigo ramp
-// (`packages/ui/src/theme/tokens.ts`) — only the hue changes per coach, so
-// every generated ramp keeps the same coherent shape rather than a naive
-// per-stop lightness scale that goes muddy on a saturated input (DS§2.4 risk).
+// The saturation/lightness curve is extracted from the default ember-peach
+// ramp (`packages/ui/src/theme/tokens.ts`) — only the hue changes per coach,
+// so every generated ramp keeps the same coherent shape rather than a naive
+// per-stop lightness scale that goes muddy on a saturated input.
+//
+// The ramp is five NAMED stops, not ten numeric ones: `DESIGN.md` §1.1 gives
+// the accent plus two interpolated mid-tones because "the palette's single
+// accent cannot carry a multi-series chart". A ten-stop Tailwind-shaped ramp
+// would be four stops nobody uses and two the charts would have to guess at.
 const HEX_RE = /^#([0-9A-Fa-f]{6})$/;
 
 /** DB§5.1's `^#[0-9A-Fa-f]{6}$` check, exported so callers can decide "is this worth regenerating a ramp for" before calling `generateBrandRamp`. */
@@ -14,25 +19,23 @@ export function isValidHexColor(hex: string | null | undefined): hex is string {
   return typeof hex === 'string' && HEX_RE.test(hex);
 }
 
-export const BRAND_RAMP_STOPS = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
+// `DEFAULT` is the accent itself; `lift` is the brightest data point,
+// `mid`/`deep` the second and third chart series, `shade` the border on
+// dimmed and partial states (`DESIGN.md` §1.1).
+export const BRAND_RAMP_STOPS = ['lift', 'DEFAULT', 'mid', 'deep', 'shade'] as const;
 export type BrandRampStop = (typeof BRAND_RAMP_STOPS)[number];
-export type BrandRamp = Record<BrandRampStop, string> & { DEFAULT: string };
+export type BrandRamp = Record<BrandRampStop, string>;
 
 // [saturation%, lightness%] per stop, extracted from the default ramp.
 const CURVE: Record<BrandRampStop, [number, number]> = {
-  50: [100, 96.7],
-  100: [100, 93.9],
-  200: [96.5, 88.8],
-  300: [91.5, 81.6],
-  400: [89.1, 74.9],
-  500: [83.5, 66.7],
-  600: [70, 59.4],
-  700: [49, 50],
-  800: [47.4, 41],
-  900: [42.7, 33.5],
+  lift: [100, 82.9],
+  DEFAULT: [100, 76.3],
+  mid: [67.5, 62.5],
+  deep: [48, 49],
+  shade: [40.6, 39.6],
 };
 
-const DEFAULT_HUE = 238.7; // the default ramp's hue — the fallback on invalid input
+const DEFAULT_HUE = 15.4; // the default ramp's hue — the fallback on invalid input
 
 function hexToHue(hex: string): number {
   const int = Number.parseInt(hex.slice(1), 16);
@@ -85,18 +88,37 @@ function relativeLuminance(hex: string): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-/** Contrast of a fill colour against white text — the only direction this module needs. */
-function contrastAgainstWhite(fillHex: string): number {
-  const whiteLuminance = 1 + 0.05;
+// `DESIGN.md` §1.1 inverts the primary fill: a light peach surface carries
+// DARK ink (`colors.fg.onBrand`, #161E2F), which reads 8.4:1 — never the
+// #FFA586-under-white pairing §1.1 calls out as failing at 2.6:1.
+// Duplicated as a literal rather than imported: `packages/utils` may not
+// depend on `packages/ui` (`CLAUDE.md` §4).
+const ON_BRAND_INK = '#161E2F';
+
+/**
+ * Contrast of a fill colour against the dark on-brand ink — the only
+ * direction this module needs.
+ *
+ * The previous ramp *clamped* its fill stop with this, darkening until it
+ * cleared 4.5:1 against white. Inverting the ink made that loop dead code:
+ * `CURVE.DEFAULT` pins lightness at 76.3%, and the worst case across all
+ * 360 hues at that lightness is **5.45:1** (hue 240, pure blue). The floor
+ * is structural, not conditional, so the clamp was removed rather than kept
+ * as an unreachable branch — `brand-ramp.test.ts` asserts the invariant
+ * across the whole hue circle instead, which is what the clamp was really
+ * protecting. If `CURVE` is ever re-cut darker, that test fails first.
+ */
+export function contrastAgainstInk(fillHex: string): number {
   const fillLuminance = relativeLuminance(fillHex) + 0.05;
-  return whiteLuminance / fillLuminance;
+  const inkLuminance = relativeLuminance(ON_BRAND_INK) + 0.05;
+  return fillLuminance / inkLuminance;
 }
 
 /**
- * Generates the ten-stop ramp for a coach's white-label brand colour.
- * Falls back to the default indigo ramp on anything that isn't a valid
+ * Generates the five-stop warm ramp for a coach's white-label brand colour.
+ * Falls back to the default ember-peach ramp on anything that isn't a valid
  * `#rrggbb` hex (DB§5.1's `^#[0-9A-Fa-f]{6}$` check) — a malformed brand
- * colour must degrade to CoachOS blue, never to an unstyled app.
+ * colour must degrade to the CoachOS accent, never to an unstyled app.
  */
 export function generateBrandRamp(inputHex: string | null | undefined): BrandRamp {
   // Rounded to 1dp so the same hex always yields the same hue regardless of
@@ -111,18 +133,8 @@ export function generateBrandRamp(inputHex: string | null | undefined): BrandRam
     }),
   ) as Record<BrandRampStop, string>;
 
-  // Clamp the fill stop (500/DEFAULT) to 4.5:1 against white text — darken
-  // until it passes rather than ship a coach's own client an unreadable
-  // button (DS§2.4). No iteration guard needed: contrast against white
-  // strictly increases as lightness drops, reaching ~21:1 at black, so this
-  // always terminates well before then.
-  let fillLightness = CURVE[500][1];
-  while (contrastAgainstWhite(stops[500]) < 4.5) {
-    fillLightness -= 2;
-    const darkened = hslToHex(hue, CURVE[500][0], fillLightness);
-    stops[500] = darkened;
-    stops[600] = darkened; // keep 600 (pressed) at least as dark as 500
-  }
-
-  return { ...stops, DEFAULT: stops[500] };
+  // No contrast clamp — see `contrastAgainstInk`. The curve's fixed
+  // lightness already guarantees the fill clears 4.5:1 against the ink for
+  // every hue a coach can supply, so there is nothing left to correct.
+  return stops;
 }

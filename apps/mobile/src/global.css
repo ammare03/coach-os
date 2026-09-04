@@ -2,52 +2,56 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Dark-column values (DS§2.2/2.4/2.5/2.6), generated from
-   `packages/ui/src/theme/tokens.ts` — space-separated RGB channels so
-   Tailwind's `<alpha-value>` modifier works (`bg-brand/20`). CSS can't read
-   the TS source directly, so `tokens.test.ts` cross-checks this block
-   against `tokens.ts` on every run; a mismatch here is a failing test, not a
-   silent drift.
-   This is the DEFAULT only — `ThemeProvider` (theme-tokens/04) overrides
-   every one of these variables at runtime via NativeWind's `vars()`, for
-   both the dark/light switch and P25's per-coach brand override. There is
-   no `.light:root` block here: NativeWind's `darkMode: 'class'` selector
-   convention always treats its toggle class as the *dark* override on a
-   light default, backwards for this dark-first product, so the scheme
-   switch is plain React state instead — see `ThemeProvider.tsx`'s own
-   comment. This block only matters before a `<ThemeProvider>` mounts, or
-   for tooling (the Tailwind CLI) that never renders one. */
+/* Dark-column values, generated from `packages/ui/src/theme/tokens.ts`
+   (`DESIGN.md` §1.1) — space-separated RGB channels so Tailwind's
+   `<alpha-value>` modifier works (`bg-brand/20`). CSS cannot read the TS
+   source directly, so `tokens.test.ts` cross-checks this block against
+   `tokens.ts` on every run; a mismatch here is a failing test, not silent
+   drift. Regenerate rather than hand-edit.
+
+   This is the DEFAULT only — `ThemeProvider` overrides every one of these
+   variables at runtime via NativeWind's `vars()`, for both the dark/light
+   switch and P25's per-coach brand override. There is no `.light:root`
+   block: NativeWind's `darkMode: 'class'` convention always treats its
+   toggle class as the *dark* override on a light default, backwards for
+   this dark-first product, so the scheme switch is plain React state
+   instead — see `ThemeProvider.tsx`. This block only matters before a
+   `<ThemeProvider>` mounts, or for tooling that never renders one. */
 @layer base {
   :root {
-    --color-bg-sunken: 6 8 11;
-    --color-bg-DEFAULT: 10 13 18;
-    --color-bg-raised: 18 22 29;
-    --color-bg-overlay: 26 31 40;
-    --color-bg-inset: 14 18 24;
-    --color-fg-DEFAULT: 242 245 249;
-    --color-fg-muted: 151 162 180;
-    --color-fg-subtle: 95 108 126;
-    --color-fg-onBrand: 255 255 255;
-    --color-border-subtle: 30 36 46;
-    --color-border-DEFAULT: 42 50 63;
-    --color-border-strong: 58 69 83;
-    --color-brand-50: 238 240 255;
-    --color-brand-100: 224 227 255;
-    --color-brand-200: 199 203 254;
-    --color-brand-300: 165 169 251;
-    --color-brand-400: 134 140 248;
-    --color-brand-500: 99 102 241;
-    --color-brand-600: 79 82 224;
-    --color-brand-700: 65 68 190;
-    --color-brand-800: 55 58 154;
-    --color-brand-900: 49 52 122;
-    --color-brand-DEFAULT: 99 102 241;
-    --color-state-onTrack: 16 185 129;
-    --color-state-drifting: 245 158 11;
-    --color-state-offTrack: 244 63 94;
-    --color-state-noData: 107 114 128;
-    --color-realtime: 6 182 212;
-    --color-danger: 244 63 94;
-    --color-pr: 251 191 36;
+    --color-bg-outer: 14 20 31;
+    --color-bg-DEFAULT: 22 30 47;
+    --color-bg-raised: 36 47 73;
+    --color-bg-raised-end: 27 36 57;
+    --color-bg-inset: 19 26 41;
+    --color-bg-inset-alt: 29 38 57;
+    --color-fg-bright: 255 255 255;
+    --color-fg-DEFAULT: 237 239 245;
+    --color-fg-glass: 253 243 239;
+    --color-fg-warm: 240 199 180;
+    --color-fg-warm-muted: 222 199 190;
+    --color-fg-muted: 151 161 181;
+    --color-fg-subtle: 107 118 137;
+    --color-fg-faint: 78 90 112;
+    --color-fg-onBrand: 22 30 47;
+    --color-border-soft: 44 55 76;
+    --color-border-DEFAULT: 56 67 88;
+    --color-border-strong: 63 75 98;
+    --color-border-tinted: 78 90 112;
+    --color-brand-lift: 255 192 168;
+    --color-brand-DEFAULT: 255 165 134;
+    --color-brand-mid: 224 133 95;
+    --color-brand-deep: 185 99 65;
+    --color-brand-shade: 142 90 60;
+    --color-primary-from: 255 201 178;
+    --color-primary-to: 255 155 118;
+    --color-deep: 84 26 46;
+    --color-state-onPlan: 255 165 134;
+    --color-state-drifting: 224 133 95;
+    --color-state-offPlan: 181 26 43;
+    --color-state-notStarted: 78 90 112;
+    --color-urgent: 181 26 43;
+    --color-urgent-text: 255 138 155;
+    --color-on-deep: 255 212 192;
   }
 }

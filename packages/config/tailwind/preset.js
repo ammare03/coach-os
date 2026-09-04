@@ -12,7 +12,6 @@
 const {
   colors,
   radius,
-  spacing,
   spacingSteps,
   fontFamily,
   fontSize,
@@ -49,8 +48,13 @@ module.exports = {
     // Replaced wholesale, not extended — Tailwind's defaults (blue-600,
     // p-2.5, rounded-2xl…) must not be reachable (theme-tokens/02 approach §3, §5).
     colors: nest(cssVarColors),
-    borderRadius: radius,
-    spacing: Object.fromEntries(spacingSteps.map((step) => [step, `${spacing(step)}px`])),
+    borderRadius: Object.fromEntries(
+      Object.entries(radius).map(([name, value]) => [name, `${value}px`]),
+    ),
+    // `DESIGN.md` §1.4's 1px scale — the step IS the pixel value, so `p-14`
+    // is 14px. A step outside the closed set simply does not exist as a
+    // class, which is the constraint.
+    spacing: Object.fromEntries(spacingSteps.map((step) => [step, `${step}px`])),
     // Both overridden wholesale (theme-tokens/03 approach §4) — Tailwind's
     // `font-bold`/`text-3xl` and the rest of its defaults must not exist.
     fontFamily,

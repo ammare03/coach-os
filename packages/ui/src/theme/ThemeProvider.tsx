@@ -25,7 +25,7 @@ export const ThemeContext = createContext<ThemeContextValue | null>(null);
 export type ThemeProviderProps = {
   /** Defaults to dark — the light scheme is reachable only by explicit prop (`CLAUDE.md` §7.1). */
   scheme?: Scheme;
-  /** A coach's `coach_profiles.brand_primary_color` (P25). Falls back to the default indigo ramp on anything invalid. */
+  /** A coach's `coach_profiles.brand_primary_color` (P25). Falls back to the default ember-peach ramp on anything invalid. */
   brandPrimaryColor?: string | null;
   children: ReactNode;
 };
@@ -37,8 +37,8 @@ export function ThemeProvider({
 }: ThemeProviderProps) {
   const schemeColors = schemes[scheme];
   // Same default ramp either way an override is absent — an invalid hex
-  // must degrade to exactly CoachOS blue, not a slightly-different clamped
-  // variant of it (DS§2.4).
+  // must degrade to exactly the CoachOS accent, not a slightly-different
+  // clamped variant of it (`DESIGN.md` §1.1).
   const brand = useMemo(
     () =>
       isValidHexColor(brandPrimaryColor)
