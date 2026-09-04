@@ -27,6 +27,12 @@ export default function HomeScreen() {
       <Link href="/sign-up" style={styles.link}>
         Create account
       </Link>
+      {/* Throwaway proof the NativeWind pipeline compiles (theme-tokens/01).
+          Deliberately ugly and off-token — replaced by a real token-driven
+          card in theme-tokens/02. */}
+      <View className="bg-red-500 p-8">
+        <Text className="text-white">NativeWind is wired up</Text>
+      </View>
     </View>
   );
 }

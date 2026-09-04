@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 
 import { TRPCProvider } from '../lib/trpc-provider.tsx';
+import '../global.css';
 
 export default function RootLayout() {
   return (
