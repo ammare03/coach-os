@@ -82,7 +82,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.$client.end();
   await container.stop();
-});
+}, 60_000);
 
 describe('recomputeDailySummary — transactional atomicity', () => {
   it('rolls back both the meal write and the summary row when the transaction fails after the recompute call', async () => {

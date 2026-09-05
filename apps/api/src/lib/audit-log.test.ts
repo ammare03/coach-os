@@ -53,7 +53,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.$client.end();
   await container.stop();
-});
+}, 120_000);
 
 // No real user needed — `actorUserId` is nullable and every case here
 // either passes `null` deliberately or exercises the FK from a fixture-free

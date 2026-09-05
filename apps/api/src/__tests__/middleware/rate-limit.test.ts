@@ -47,7 +47,7 @@ beforeAll(async () => {
 afterAll(async () => {
   redis.disconnect();
   await container.stop();
-});
+}, 60_000);
 
 afterEach(async () => {
   // Every case below picks its own uuid-derived identity, but flushing

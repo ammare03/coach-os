@@ -50,7 +50,7 @@ beforeAll(async () => {
 afterAll(async () => {
   redis.disconnect();
   await container.stop();
-});
+}, 60_000);
 
 afterEach(async () => {
   await redis.flushdb();

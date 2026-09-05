@@ -73,7 +73,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.$client.end();
   await container.stop();
-});
+}, 60_000);
 
 // Re-spied fresh every test, not once at module load — Jest reinstalls its
 // own instrumentation per test, which silently orphans a spy installed

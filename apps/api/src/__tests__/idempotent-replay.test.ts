@@ -62,7 +62,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.$client.end();
   await container.stop();
-});
+}, 60_000);
 
 const replayInput = z.object({
   id: z.string(),

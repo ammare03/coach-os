@@ -82,7 +82,7 @@ afterAll(async () => {
   await db.$client.end();
   await pgContainer.stop();
   await redisContainer.stop();
-});
+}, 60_000);
 
 beforeEach(() => {
   sendEmailMock.mockClear();

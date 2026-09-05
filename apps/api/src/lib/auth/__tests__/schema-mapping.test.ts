@@ -53,7 +53,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.$client.end();
   await container.stop();
-});
+}, 60_000);
 
 describe('identity.users, mapped without Better Auth', () => {
   it('writes and reads back a row through the plain Drizzle schema, no adapter involved', async () => {

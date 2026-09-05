@@ -64,7 +64,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.$client.end();
   await container.stop();
-});
+}, 120_000);
 
 // Same isolation shape as `authz.test.ts`'s own `withRolledBackTx`: one
 // shared fixture, every test's writes rolled back so tests never depend on

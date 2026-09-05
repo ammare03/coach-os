@@ -57,7 +57,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.$client.end();
   await container.stop();
-});
+}, 60_000);
 
 beforeEach(() => {
   sendEmailMock.mockClear();

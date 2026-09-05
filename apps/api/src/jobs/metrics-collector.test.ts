@@ -51,7 +51,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.$client.end();
   await container.stop();
-});
+}, 120_000);
 
 afterEach(async () => {
   await db.delete(schema.workoutSessions);

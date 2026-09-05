@@ -33,7 +33,7 @@ beforeAll(async () => {
 afterAll(async () => {
   connection.disconnect();
   await container.stop();
-});
+}, 60_000);
 
 afterEach(() => {
   captureServerExceptionMock.mockClear();

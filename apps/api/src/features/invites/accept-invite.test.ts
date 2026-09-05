@@ -54,10 +54,12 @@ beforeAll(async () => {
   ({ createTestContext } = await import('../../__tests__/test-context.ts'));
 }, 60_000);
 
+// Teardown carries the same timeout as setup: stopping a container is not cheaper than
+// starting one, and Jest would otherwise fall back to its 5s default.
 afterAll(async () => {
   await db.$client.end();
   await pgContainer.stop();
-});
+}, 60_000);
 
 let seq = 0;
 

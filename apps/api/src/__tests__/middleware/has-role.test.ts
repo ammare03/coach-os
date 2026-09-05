@@ -95,7 +95,7 @@ afterAll(async () => {
   world.redis.removeAllListeners('error');
   world.redis.on('error', () => {});
   await container.stop();
-});
+}, 60_000);
 
 async function insertUser(
   role: 'coach' | 'client' | 'assistant',

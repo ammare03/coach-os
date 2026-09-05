@@ -62,7 +62,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.$client.end();
   await pgContainer.stop();
-});
+}, 60_000);
 
 async function insertUser(overrides: Partial<typeof schema.users.$inferInsert> = {}) {
   const [user] = await db
