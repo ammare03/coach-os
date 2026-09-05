@@ -130,10 +130,12 @@ export const LINK_TABLE: Readonly<Record<string, LinkHandler>> = {
   // ⚠️ Post-authentication behaviour, per this task's AC 4: the destination is
   // the same route, but `AuthGate` guards `(auth)` and will bounce a
   // signed-in user straight back to their own group, so an authenticated user
-  // tapping an invite lands home instead of on the invite. Resolving that
-  // means deciding what accepting a second invite means for an existing
-  // account, which is `phase-06-onboarding/client-onboarding/01`'s decision,
-  // not this task's. Tracked in `docs/UNFORGET.md`.
+  // tapping an invite lands home instead of on the invite. Decided
+  // 2026-09-05: a coached client is refused (leaving stays Settings-only), a
+  // coachless one gets the returning-client acceptance screen
+  // (`invites.acceptAsExistingClient`), a coach is refused — and
+  // `phase-06-onboarding/client-onboarding/01` owns the gate exemption and
+  // the branch. Tracked in `docs/UNFORGET.md`.
   invite: singleParamLink((code, _role, query) => routeTo(`/(auth)/invite/${code}`, query)),
 
   // §9.3 · coach → client overview. Not role-dependent so much as
