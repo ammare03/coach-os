@@ -59,6 +59,40 @@ export { SheetFooter, type SheetFooterProps } from './components/SheetFooter.tsx
 export { Modal, type ModalProps } from './components/Modal.tsx';
 export { ConfirmModal, type ConfirmModalProps } from './components/ConfirmModal.tsx';
 
+// ── Toasts ──────────────────────────────────────────────────────────────
+// `CLAUDE.md` §7.5 / `ui-conventions` §5's undo rule, made real: a
+// destructive action performs immediately and offers a five-second window —
+// it does not ask first. A confirm dialog interrupts the flow and gets
+// dismissed reflexively without being read; an undo toast is the opposite
+// trade.
+//
+// The two exceptions §7.5 names — account deletion and client archival —
+// use `ConfirmModal`'s typed confirmation above and never `useUndoToast`.
+// Both are irreversible in a way five seconds cannot honestly cover.
+//
+// `ToastProvider` mounts once at the app root. The optimistic change is the
+// caller's; the server mutation is deferred until the window closes, so
+// `onUndo` only has to put local state back — there is nothing to reverse
+// server-side.
+export {
+  ToastProvider,
+  useToast,
+  MAX_VISIBLE_TOASTS,
+  TOAST_BOTTOM_OFFSET,
+  TOAST_DEFAULT_DURATION_MS,
+  type ToastProviderProps,
+  type ToastContextValue,
+  type ToastResolution,
+  type ShowToastOptions,
+} from './toast/ToastProvider.tsx';
+export { Toast, type ToastProps, type ToastAction } from './toast/Toast.tsx';
+export {
+  useUndoToast,
+  UNDO_WINDOW_MS,
+  type UndoToastOptions,
+  type ShowUndoToast,
+} from './toast/useUndoToast.ts';
+
 // ── Small labelled shapes ───────────────────────────────────────────────
 export { Chip, type ChipProps } from './components/Chip.tsx';
 export { Badge, type BadgeProps, type BadgeSize, type BadgeTone } from './components/Badge.tsx';
@@ -185,6 +219,65 @@ export {
 export { Skeleton, type SkeletonProps, type SkeletonRadius } from './components/Skeleton.tsx';
 export { SkeletonText, type SkeletonTextProps } from './components/SkeletonText.tsx';
 export { SkeletonCircle, type SkeletonCircleProps } from './components/SkeletonCircle.tsx';
+
+// ── Screen states ───────────────────────────────────────────────────────
+// `ui-conventions` §4 — every screen that loads data handles four states,
+// and a blank screen is not one of them. `EmptyState` takes exactly ONE
+// `primaryAction`, by type: the singular prop is what stops a later feature
+// phase shipping an empty state with two competing next steps, or none.
+export {
+  EmptyState,
+  type EmptyStateProps,
+  type EmptyStateAction,
+} from './components/EmptyState.tsx';
+
+// `LoadingState` is the first of the four and the one with a hard rule
+// behind it: `DESIGN.md` §5 forbids a spinner where a skeleton belongs, so
+// this composes `Skeleton` shapes and has none at any shape. Its
+// `accessibilityLabel` is required — it IS the loading region, and an
+// unlabelled region is silent to a screen reader (`accessibility` §2).
+export {
+  LoadingState,
+  type LoadingStateProps,
+  type LoadingShape,
+} from './components/LoadingState.tsx';
+
+// Two components, deliberately not one with a `reason` prop. `CLAUDE.md`
+// §9.2 requires an id-route to distinguish "this isn't here" from "this
+// isn't yours to open", and collapsing them into a generic error is the
+// shortcut a rushed feature takes — two components make the distinction
+// the path of least resistance. Both compose `EmptyState`, so both inherit
+// its single-action rule, and on both the recovery handler is REQUIRED:
+// neither state may be a dead end.
+//
+// The one sanctioned overlap runs the other way and is decided at the API:
+// `ERRORS.md` ER§2.1 makes another coach's resource return `NOT_FOUND`, so
+// it renders `NotFoundState`. A real 403 there would confirm the resource
+// exists and turn id-walking into an enumeration oracle.
+export {
+  NotFoundState,
+  NOT_FOUND_COPY,
+  type NotFoundStateProps,
+} from './components/NotFoundState.tsx';
+export {
+  ForbiddenState,
+  FORBIDDEN_COPY,
+  type ForbiddenStateProps,
+} from './components/ForbiddenState.tsx';
+
+// ── Haptics ─────────────────────────────────────────────────────────────
+// Three functions, and deliberately no generic `triggerHaptic`. `CLAUDE.md`
+// §7.5 sanctions exactly three haptics in the product — `Light` on set
+// logged, `Success` on session complete, `Warning` on validation failure —
+// and naming each for its USE CASE rather than its waveform is what makes a
+// fourth kind of feedback visible in review instead of arriving one
+// defensible call site at a time. Nothing outside `src/haptics/index.ts`
+// may import `expo-haptics`.
+export {
+  hapticSetLogged,
+  hapticSessionComplete,
+  hapticValidationFailure,
+} from './haptics/index.ts';
 
 // ── Theme ───────────────────────────────────────────────────────────────
 export {
