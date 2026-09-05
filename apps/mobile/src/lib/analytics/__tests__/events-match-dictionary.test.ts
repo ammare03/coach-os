@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { ANALYTICS_EVENT_NAMES } from '../events.ts';
@@ -37,7 +37,19 @@ function eventNamesInDictionary(): string[] {
   return [...names].sort();
 }
 
-describe('the typed registry and ANALYTICS.md', () => {
+// `ANALYTICS.md` is local-only by decision — `.gitignore`'s "Specification
+// documents" block keeps it, and eleven siblings, out of the published repo.
+// So it is absent on a CI checkout, and the two cross-checks below have
+// nothing to read there.
+//
+// They stay a real guard where they can be one: the machine that holds the
+// dictionary is the machine that can edit it out of step with the union, so
+// drift is caught at the point it is introduced. Skipping beats deleting
+// (the guard survives) and beats committing the document (that would reverse
+// a deliberate publishing decision to satisfy a test).
+const describeAgainstDictionary = existsSync(ANALYTICS_MD) ? describe : describe.skip;
+
+describeAgainstDictionary('the typed registry and ANALYTICS.md', () => {
   it('declares every event the dictionary documents', () => {
     const missing = eventNamesInDictionary().filter(
       (name) => !(ANALYTICS_EVENT_NAMES as readonly string[]).includes(name),
@@ -52,7 +64,10 @@ describe('the typed registry and ANALYTICS.md', () => {
 
     expect(undocumented).toEqual([]);
   });
+});
 
+// Asserted against the union alone, so these run everywhere.
+describe('the typed registry', () => {
   it('names every event object_action, snake_case, past tense (AN§0.1)', () => {
     for (const name of ANALYTICS_EVENT_NAMES) {
       expect(name).toMatch(/^[a-z][a-z0-9]*(_[a-z0-9]+)+$/);
