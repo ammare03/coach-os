@@ -286,6 +286,15 @@ export {
   type ThemeContextValue,
 } from './theme/ThemeProvider.tsx';
 export { useTheme } from './theme/useTheme.ts';
+// The component gallery's 200% text-size toggle (`component-gallery/01`).
+// Not a user-facing preference — dynamic type is the OS's job everywhere
+// else, and at the default scale of 1 `Text` renders exactly as it did
+// before this existed.
+export {
+  TextScaleProvider,
+  useTextScale,
+  type TextScaleProviderProps,
+} from './theme/TextScaleProvider.tsx';
 export type { Scheme } from './theme/schemes.ts';
 // Values, for the genuine non-Tailwind consumers — SVG fills, gradient
 // stops, Reanimated colour targets. A component that reads these to build
