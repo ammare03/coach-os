@@ -54,7 +54,7 @@ function launch(): Launched {
 }
 
 function signIn({ auth }: Launched, userId: string): void {
-  auth.useAuthStore.getState().setAuthenticated({ userId, role: 'client' });
+  auth.useAuthStore.getState().setAuthenticated({ userId, role: 'client', isOnboarded: false });
 }
 
 function draftOf({ client }: Launched) {

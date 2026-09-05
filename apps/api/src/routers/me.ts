@@ -3,6 +3,7 @@ import { me as meSchemas, paginationInput } from '@coachos/schemas';
 import { and, desc, eq, lt, or } from 'drizzle-orm';
 
 import { cancelDeletion } from '../features/me/cancel-deletion.ts';
+import { completeOnboarding } from '../features/me/complete-onboarding.ts';
 import { getMe } from '../features/me/get-me.ts';
 import { medicalDisclaimerRouter } from '../features/me/medical-disclaimer.ts';
 import { requestDeletion } from '../features/me/request-deletion.ts';
@@ -30,6 +31,14 @@ export const meRouter = router({
   update: protectedProcedure
     .input(meSchemas.updateMeInput)
     .mutation(({ ctx, input }) => updateMe(ctx.db, ctx.user.id, input)),
+
+  // `phase-06-onboarding/onboarding-infrastructure/02` — no input and no
+  // `ownsResource`: the row is addressed by `ctx.user.id` alone, the same
+  // reasoning `get` states. Each flow's final step calls this after its own
+  // submission succeeds; nothing else may.
+  completeOnboarding: protectedProcedure.mutation(({ ctx }) =>
+    completeOnboarding(ctx.db, ctx.user.id),
+  ),
 
   // `02` — the two `users` opt-out booleans plus a partial notification-
   // preference upsert, one transaction (`update-preferences.ts`'s own doc

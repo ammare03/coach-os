@@ -64,6 +64,15 @@ const EXPECTED_ROUTE_FILES = [
   // Not in §9.1 — it lists the `(tabs)` group but no layout for it, and
   // without one the tab routes are loose stack screens. Bare here; tasks 03
   // and 04 give both groups their real tab configuration.
+  // Not in §9.1 — the two onboarding route groups. §9.1's tree predates
+  // P06 and lists no onboarding flow at all; `coach-onboarding/01` records
+  // the group as a deliberate, documented extension, and
+  // `onboarding-infrastructure/02` builds it because the auth gate needs
+  // somewhere real to send a coach or client who has not finished setup.
+  // The screens themselves are placeholders until `coach-onboarding/01`
+  // and `client-onboarding/01` compose them.
+  '(client-onboarding)/_layout.tsx',
+  '(client-onboarding)/index.tsx',
   '(client)/(tabs)/_layout.tsx',
   '(client)/(tabs)/coach.tsx',
   '(client)/(tabs)/index.tsx',
@@ -78,6 +87,8 @@ const EXPECTED_ROUTE_FILES = [
   '(client)/settings/index.tsx',
   '(client)/workout/[sessionId].tsx',
   '(client)/workout/[sessionId]/summary.tsx',
+  '(coach-onboarding)/_layout.tsx', // not in §9.1 — see the note above
+  '(coach-onboarding)/index.tsx',
   '(coach)/(tabs)/_layout.tsx', // not in §9.1 — see the (client) note above
   '(coach)/(tabs)/clients.tsx',
   '(coach)/(tabs)/inbox.tsx',
@@ -164,6 +175,9 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   ['(client)/live/[sessionId]', '/(client)/live/l2'],
   ['(client)/settings/index', '/(client)/settings'],
 
+  ['(coach-onboarding)/index', '/(coach-onboarding)'],
+  ['(client-onboarding)/index', '/(client-onboarding)'],
+
   // `+not-found` was here until `navigation-primitives/02` made it a real
   // screen. It no longer renders its own route key, so it gets its own
   // assertion at the bottom of this file instead of a row here.
@@ -235,17 +249,51 @@ function routeContext(): Record<string, ComponentType> {
  * session that owns the URL and lets the gate agree. `(auth)` URLs are
  * reached signed out, which is also the default here and what the `/`
  * assertion below relies on.
+ *
+ * `onboarding-infrastructure/02` gave the gate a third dimension, so the
+ * session that owns a URL now includes whether it has finished onboarding —
+ * the two onboarding groups are owned by a session that has not, and every
+ * other authenticated group by one that has.
  */
 function signInAsOwnerOf(url: string): void {
-  if (url.startsWith('/(coach)')) {
-    useAuthStore.setState({ status: 'authenticated', userId: 'coach-1', role: 'coach' });
+  if (url.startsWith('/(coach-onboarding)')) {
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'coach-1',
+      role: 'coach',
+      isOnboarded: false,
+    });
+  } else if (url.startsWith('/(client-onboarding)')) {
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'client-1',
+      role: 'client',
+      isOnboarded: false,
+    });
+  } else if (url.startsWith('/(coach)')) {
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'coach-1',
+      role: 'coach',
+      isOnboarded: true,
+    });
   } else if (url.startsWith('/(client)')) {
-    useAuthStore.setState({ status: 'authenticated', userId: 'client-1', role: 'client' });
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'client-1',
+      role: 'client',
+      isOnboarded: true,
+    });
   }
 }
 
 beforeEach(() => {
-  useAuthStore.setState({ status: 'unauthenticated', userId: null, role: null });
+  useAuthStore.setState({
+    status: 'unauthenticated',
+    userId: null,
+    role: null,
+    isOnboarded: false,
+  });
 });
 
 describe('the §9.1 route tree', () => {

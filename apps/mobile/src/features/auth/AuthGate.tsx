@@ -16,24 +16,50 @@ import { useAuthStore } from './store.ts';
 // forced its way into `(coach)` would find empty screens and `NOT_FOUND`s,
 // not another coach's data. The gate exists so the right person sees the
 // right app, not to keep the wrong person out of data.
+//
+// `phase-06-onboarding/onboarding-infrastructure/02` added a third
+// dimension to that decision — onboarded or not — rather than a second,
+// parallel gate. "Which app does this session belong in" is one question
+// with three inputs; splitting it across two components is how the two
+// answers start disagreeing.
 
-/** The three top-level route groups (`UI-UX.md` §UX1.1). */
+/**
+ * The three top-level route groups (`UI-UX.md` §UX1.1), plus the two
+ * `phase-06-onboarding/onboarding-infrastructure/02` adds. §9.1's tree
+ * never listed an onboarding group — a documented gap, not an oversight
+ * (`coach-onboarding/01` Approach step 1) — and a *group* is the right
+ * shape rather than a screen inside `(coach)`/`(client)`, because this gate
+ * decides by group: a route reachable only mid-onboarding has to be
+ * somewhere the gate can refuse to render once onboarding is done.
+ */
 const AUTH_GROUP = '(auth)';
 const COACH_GROUP = '(coach)';
 const CLIENT_GROUP = '(client)';
+const COACH_ONBOARDING_GROUP = '(coach-onboarding)';
+const CLIENT_ONBOARDING_GROUP = '(client-onboarding)';
 
-export type RouteGroup = typeof AUTH_GROUP | typeof COACH_GROUP | typeof CLIENT_GROUP;
+export type RouteGroup =
+  | typeof AUTH_GROUP
+  | typeof COACH_GROUP
+  | typeof CLIENT_GROUP
+  | typeof COACH_ONBOARDING_GROUP
+  | typeof CLIENT_ONBOARDING_GROUP;
 
 /**
  * Each group's root. `/(coach)` and `/(client)` are not routes in their own
  * right — the tab navigator is (`.expo/types/router.d.ts`), so a group's root
  * is its `(tabs)` index. Landing on the screen a deep link named rather than
  * on the group root is `phase-05-app-shell/deep-linking/`, not this.
+ *
+ * The two onboarding groups have no tab navigator — a flow shell is not a
+ * dock (`UI-UX.md` §UX1.1) — so their root is the group's own `index`.
  */
 const GROUP_ROOT = {
   [AUTH_GROUP]: '/(auth)/welcome',
   [COACH_GROUP]: '/(coach)/(tabs)',
   [CLIENT_GROUP]: '/(client)/(tabs)',
+  [COACH_ONBOARDING_GROUP]: '/(coach-onboarding)',
+  [CLIENT_ONBOARDING_GROUP]: '/(client-onboarding)',
 } as const;
 
 export type AuthGateDecision =
@@ -44,24 +70,41 @@ export type AuthGateDecision =
   | { action: 'redirect'; group: RouteGroup };
 
 /**
- * An assistant coach is a coach (`CLAUDE.md` §2): the same surfaces, a
+ * The three fields the decision is made from. An object rather than three
+ * more positional parameters: the third dimension is a bare boolean, and
+ * `resolveAuthGate('authenticated', 'coach', false, '(coach)')` reads as a
+ * riddle at every call site and every assertion.
+ */
+export interface AuthGateSession {
+  status: AuthStatus;
+  role: AccessTokenRole | null;
+  /** `users.onboarding_completed_at IS NOT NULL`, as `store.ts` holds it. */
+  isOnboarded: boolean;
+}
+
+/**
+ * Role picks the pair of homes; `isOnboarded` picks which of the two. An
+ * assistant coach is a coach (`CLAUDE.md` §2): the same surfaces, a
  * narrower client book, and that narrowing is resolved by `ownsResource`
- * server-side (§6.2) rather than by a fourth route group.
+ * server-side (§6.2) rather than by a route group of its own — so an
+ * assistant onboards through the coach flow too.
  *
  * A missing role on an authenticated session is unreachable by construction
  * — `store.ts` sets status and role together — and resolves to `(auth)`
  * anyway, so the failure mode is "signed out" and never "guessed a group".
  */
-function groupForRole(role: AccessTokenRole | null): RouteGroup {
-  if (role === 'client') return CLIENT_GROUP;
-  if (role === 'coach' || role === 'assistant') return COACH_GROUP;
+function groupForSession(role: AccessTokenRole | null, isOnboarded: boolean): RouteGroup {
+  if (role === 'client') return isOnboarded ? CLIENT_GROUP : CLIENT_ONBOARDING_GROUP;
+  if (role === 'coach' || role === 'assistant') {
+    return isOnboarded ? COACH_GROUP : COACH_ONBOARDING_GROUP;
+  }
   return AUTH_GROUP;
 }
 
 /**
- * The whole gate as a pure function of the two store fields and the group the
- * caller is guarding, so all four acceptance criteria are assertable without
- * a navigator.
+ * The whole gate as a pure function of the session and the group the caller
+ * is guarding, so every acceptance criterion — P05's four and this task's
+ * three routing ones — is assertable without a navigator.
  *
  * `group` is `undefined` for `/` — the tree's entry point, which belongs to no
  * group and carries no content of its own (`src/app/index.tsx`). Resolving it
@@ -70,15 +113,17 @@ function groupForRole(role: AccessTokenRole | null): RouteGroup {
  * right home instead of bouncing back into `(auth)`.
  */
 export function resolveAuthGate(
-  status: AuthStatus,
-  role: AccessTokenRole | null,
+  session: AuthGateSession,
   group: RouteGroup | undefined,
 ): AuthGateDecision {
-  if (status === 'loading') {
+  if (session.status === 'loading') {
     return { action: 'wait' };
   }
 
-  const permitted = status === 'authenticated' ? groupForRole(role) : AUTH_GROUP;
+  const permitted =
+    session.status === 'authenticated'
+      ? groupForSession(session.role, session.isOnboarded)
+      : AUTH_GROUP;
 
   if (group === undefined || group !== permitted) {
     return { action: 'redirect', group: permitted };
@@ -106,9 +151,7 @@ export function resolveAuthGate(
  * throughout, and only the group's own inner stack comes and goes.
  */
 export function AuthGate({ group, children }: { group: RouteGroup; children: ReactNode }) {
-  const status = useAuthStore((state) => state.status);
-  const role = useAuthStore((state) => state.role);
-  const decision = resolveAuthGate(status, role, group);
+  const decision = resolveAuthGate(useGateSession(), group);
 
   if (decision.action === 'wait') return null;
   if (decision.action === 'redirect') return <Redirect href={GROUP_ROOT[decision.group]} />;
@@ -125,10 +168,26 @@ export function AuthGate({ group, children }: { group: RouteGroup; children: Rea
  * stack. A layout doing the same thing re-fires on every render and loops.
  */
 export function AuthHomeRedirect() {
-  const status = useAuthStore((state) => state.status);
-  const role = useAuthStore((state) => state.role);
-  const decision = resolveAuthGate(status, role, undefined);
+  const decision = resolveAuthGate(useGateSession(), undefined);
 
   if (decision.action !== 'redirect') return null;
   return <Redirect href={GROUP_ROOT[decision.group]} />;
+}
+
+/**
+ * Three field-level subscriptions rather than one object selector: Zustand
+ * compares a selector's result by identity, and a selector returning a fresh
+ * object re-renders every gate on every unrelated store write.
+ *
+ * `isOnboarded` being read from the store — and not from a `me.get` query —
+ * is what answers this task's stated risk. The completion action flips it in
+ * the same turn the mutation resolves, so the redirect out of the flow is a
+ * synchronous consequence of the write succeeding, not of a later refetch,
+ * foreground, or relaunch.
+ */
+function useGateSession(): AuthGateSession {
+  const status = useAuthStore((state) => state.status);
+  const role = useAuthStore((state) => state.role);
+  const isOnboarded = useAuthStore((state) => state.isOnboarded);
+  return { status, role, isOnboarded };
 }

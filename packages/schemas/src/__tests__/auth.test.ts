@@ -122,6 +122,7 @@ describe('refreshOutput', () => {
       accessToken: 'a.b.c',
       refreshToken: 'opaque-token',
       expiresAt: '2026-08-27T00:00:00.000Z',
+      onboardingCompletedAt: null,
     });
     expect(result.success).toBe(true);
   });
@@ -129,6 +130,19 @@ describe('refreshOutput', () => {
   it('rejects a missing refreshToken', () => {
     const rest: Record<string, unknown> = {
       accessToken: 'a.b.c',
+      expiresAt: '2026-08-27T00:00:00.000Z',
+      onboardingCompletedAt: null,
+    };
+    expect(refreshOutput.safeParse(rest).success).toBe(false);
+  });
+
+  // The route gate's third dimension travels on this response
+  // (`phase-06-onboarding/onboarding-infrastructure/02`) — absent, the app
+  // cannot tell a half-onboarded session from a finished one at cold start.
+  it('rejects a missing onboardingCompletedAt rather than reading it as null', () => {
+    const rest: Record<string, unknown> = {
+      accessToken: 'a.b.c',
+      refreshToken: 'opaque-token',
       expiresAt: '2026-08-27T00:00:00.000Z',
     };
     expect(refreshOutput.safeParse(rest).success).toBe(false);

@@ -27,6 +27,14 @@ export interface RotateRefreshTokenResult {
   accessToken: string;
   refreshToken: string;
   expiresAt: Date;
+  /**
+   * `phase-06-onboarding/onboarding-infrastructure/02` — the app's route
+   * gate needs this at cold start, and rotation is the only thing the app
+   * calls before the first screen renders (`bootstrap.ts`'s own budget: one
+   * SecureStore read, one refresh, no second request). It costs nothing:
+   * `resolveSessionUser` below already reads this row for the `role` claim.
+   */
+  onboardingCompletedAt: Date | null;
 }
 
 /**
@@ -104,6 +112,7 @@ export async function rotateRefreshToken(
   });
 
   if (rotated) {
+    const sessionUser = await resolveSessionUser(db, rotated.userId);
     // `refresh_tokens.device_id` is nullable (`ON DELETE SET NULL` — a
     // device row can be removed without invalidating an otherwise-valid
     // session, DB§5.1's own comment on the column). A refresh from a
@@ -113,13 +122,14 @@ export async function rotateRefreshToken(
     // reads it.
     const accessToken = await issueAccessToken({
       userId: rotated.userId,
-      role: await resolveRole(db, rotated.userId),
+      role: sessionUser.role,
       deviceId: rotated.deviceId ?? '',
     });
     return {
       accessToken: accessToken.token,
       refreshToken: successor.token,
       expiresAt: accessToken.expiresAt,
+      onboardingCompletedAt: sessionUser.onboardingCompletedAt,
     };
   }
 
@@ -173,13 +183,22 @@ function unauthorized() {
   return appError('AUTH_REQUIRED', 'This session is no longer valid. Sign in again.', {});
 }
 
-async function resolveRole(
+/**
+ * The one `users` read a rotation makes. It was `resolveRole` until
+ * `phase-06-onboarding/onboarding-infrastructure/02` needed
+ * `onboarding_completed_at` in the same response — a second column on the
+ * same row, not a second query.
+ */
+async function resolveSessionUser(
   db: DbClient,
   userId: string,
-): Promise<'coach' | 'client' | 'assistant'> {
+): Promise<{ role: 'coach' | 'client' | 'assistant'; onboardingCompletedAt: Date | null }> {
   const [user] = await db
-    .select({ role: schema.users.role })
+    .select({ role: schema.users.role, onboardingCompletedAt: schema.users.onboardingCompletedAt })
     .from(schema.users)
     .where(eq(schema.users.id, userId));
-  return user?.role ?? 'coach';
+  return {
+    role: user?.role ?? 'coach',
+    onboardingCompletedAt: user?.onboardingCompletedAt ?? null,
+  };
 }

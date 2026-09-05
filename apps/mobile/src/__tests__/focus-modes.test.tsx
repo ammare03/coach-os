@@ -82,7 +82,12 @@ function optionsFor(Layout: ComponentType, name: string): unknown {
 }
 
 function renderCoachGroup(initialUrl: string) {
-  useAuthStore.setState({ status: 'authenticated', userId: 'coach-1', role: 'coach' });
+  useAuthStore.setState({
+    status: 'authenticated',
+    userId: 'coach-1',
+    role: 'coach',
+    isOnboarded: true,
+  });
   return renderRouter(
     {
       _layout: () => <Stack screenOptions={{ headerShown: false }} />,
@@ -102,7 +107,12 @@ function renderCoachGroup(initialUrl: string) {
 }
 
 function renderClientGroup(initialUrl: string) {
-  useAuthStore.setState({ status: 'authenticated', userId: 'client-1', role: 'client' });
+  useAuthStore.setState({
+    status: 'authenticated',
+    userId: 'client-1',
+    role: 'client',
+    isOnboarded: true,
+  });
   return renderRouter(
     {
       _layout: () => <Stack screenOptions={{ headerShown: false }} />,
@@ -139,7 +149,12 @@ function expectDockHidden(testID: string): void {
 }
 
 afterEach(() => {
-  useAuthStore.setState({ status: 'unauthenticated', userId: null, role: null });
+  useAuthStore.setState({
+    status: 'unauthenticated',
+    userId: null,
+    role: null,
+    isOnboarded: false,
+  });
 });
 
 describe('a coach focus mode', () => {

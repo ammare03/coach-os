@@ -89,7 +89,7 @@ function routeContext(): Record<string, ComponentType> {
 
 beforeEach(() => {
   clearPendingDeepLink();
-  useAuthStore.setState({ status: 'loading', userId: null, role: null });
+  useAuthStore.setState({ status: 'loading', userId: null, role: null, isOnboarded: false });
 });
 
 describe('a deep link tapped while the app is backgrounded', () => {
@@ -99,7 +99,7 @@ describe('a deep link tapped while the app is backgrounded', () => {
     ['coach' as const, 'coachos://session/se-1', '/session/se-1'],
     ['client' as const, 'coachos://session/se-1', '/workout/se-1'],
   ])('routes a %s straight to %s', (role, url, expected) => {
-    useAuthStore.setState({ status: 'authenticated', userId: 'u1', role });
+    useAuthStore.setState({ status: 'authenticated', userId: 'u1', role, isOnboarded: true });
 
     // The session is already resolved, so resolution happens inline and
     // nothing is parked for the replay to pick up.
@@ -127,7 +127,7 @@ describe('a deep link tapped while the app is installed but closed', () => {
     // …and only now does the bootstrap answer, which is what makes the gate
     // redirect. Without the replay, this is where the link is lost.
     await act(async () => {
-      useAuthStore.setState({ status: 'authenticated', userId: 'u1', role });
+      useAuthStore.setState({ status: 'authenticated', userId: 'u1', role, isOnboarded: true });
     });
 
     expect(router.getPathname()).toBe(expected);
@@ -138,7 +138,12 @@ describe('a deep link tapped while the app is installed but closed', () => {
     const router = renderRouter(routeContext(), { initialUrl: resolved });
 
     await act(async () => {
-      useAuthStore.setState({ status: 'authenticated', userId: 'u1', role: 'coach' });
+      useAuthStore.setState({
+        status: 'authenticated',
+        userId: 'u1',
+        role: 'coach',
+        isOnboarded: true,
+      });
     });
     expect(router.getPathname()).toBe('/checkin/ch-1');
 
@@ -148,7 +153,12 @@ describe('a deep link tapped while the app is installed but closed', () => {
     // A store write that changes nothing must not re-fire the replay; one
     // that did would trap the user on the deep-link target.
     await act(async () => {
-      useAuthStore.setState({ status: 'authenticated', userId: 'u2', role: 'coach' });
+      useAuthStore.setState({
+        status: 'authenticated',
+        userId: 'u2',
+        role: 'coach',
+        isOnboarded: true,
+      });
     });
 
     expect(router.getPathname()).toBe('/clients');
@@ -159,7 +169,12 @@ describe('a deep link tapped while the app is installed but closed', () => {
     const router = renderRouter(routeContext(), { initialUrl: '/' });
 
     await act(async () => {
-      useAuthStore.setState({ status: 'unauthenticated', userId: null, role: null });
+      useAuthStore.setState({
+        status: 'unauthenticated',
+        userId: null,
+        role: null,
+        isOnboarded: false,
+      });
     });
 
     // Parked links exist for the cold-start race, never for "sign in later
@@ -184,7 +199,12 @@ describe('a deep link tapped while the app is not installed', () => {
     const router = renderRouter(routeContext(), { initialUrl: '/' });
 
     await act(async () => {
-      useAuthStore.setState({ status: 'unauthenticated', userId: null, role: null });
+      useAuthStore.setState({
+        status: 'unauthenticated',
+        userId: null,
+        role: null,
+        isOnboarded: false,
+      });
     });
 
     expect(router.getPathname()).toBe('/welcome');

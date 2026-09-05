@@ -76,7 +76,12 @@ beforeEach(() => {
   // which renders nothing at all while the session is still resolving — the
   // store's default. These are composition tests, so put the session in the
   // one state where this group is the permitted one and its screens mount.
-  useAuthStore.setState({ status: 'unauthenticated', userId: null, role: null });
+  useAuthStore.setState({
+    status: 'unauthenticated',
+    userId: null,
+    role: null,
+    isOnboarded: false,
+  });
 });
 
 describe('(auth)/_layout', () => {

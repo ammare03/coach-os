@@ -7,10 +7,13 @@ import { Text } from 'react-native';
 
 import AuthLayout from '../app/(auth)/_layout.tsx';
 import ClientLayout from '../app/(client)/_layout.tsx';
+import ClientOnboardingLayout from '../app/(client-onboarding)/_layout.tsx';
 import CoachLayout from '../app/(coach)/_layout.tsx';
+import CoachOnboardingLayout from '../app/(coach-onboarding)/_layout.tsx';
 import RootLayout from '../app/_layout.tsx';
 import IndexScreen from '../app/index.tsx';
-import { resolveAuthGate } from '../features/auth/AuthGate.tsx';
+import { resolveAuthGate, type AuthGateSession } from '../features/auth/AuthGate.tsx';
+import type { AccessTokenRole } from '../features/auth/jwt.ts';
 import { useAuthStore } from '../features/auth/store.ts';
 
 // The four acceptance criteria of `phase-05-app-shell/providers-and-gates/03`,
@@ -62,6 +65,8 @@ function screenRecording(label: string) {
 const AUTH_WELCOME = 'auth welcome';
 const COACH_HOME = 'coach home';
 const CLIENT_HOME = 'client home';
+const COACH_ONBOARDING = 'coach onboarding';
+const CLIENT_ONBOARDING = 'client onboarding';
 
 const empty = () => null;
 
@@ -89,6 +94,12 @@ function renderApp(initialUrl: string) {
       '(client)/_layout': ClientLayout,
       '(client)/(tabs)/_layout': TabsLayout,
       '(client)/(tabs)/index': screenRecording(CLIENT_HOME),
+
+      '(coach-onboarding)/_layout': CoachOnboardingLayout,
+      '(coach-onboarding)/index': screenRecording(COACH_ONBOARDING),
+
+      '(client-onboarding)/_layout': ClientOnboardingLayout,
+      '(client-onboarding)/index': screenRecording(CLIENT_ONBOARDING),
     },
     { initialUrl },
   );
@@ -96,12 +107,17 @@ function renderApp(initialUrl: string) {
 
 beforeEach(() => {
   rendered.length = 0;
-  useAuthStore.setState({ status: 'loading', userId: null, role: null });
+  useAuthStore.setState({ status: 'loading', userId: null, role: null, isOnboarded: false });
 });
 
 describe('the auth gate', () => {
   it('lands an authenticated coach in (coach), with no frame of (auth) or (client)', async () => {
-    useAuthStore.setState({ status: 'authenticated', userId: 'u1', role: 'coach' });
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'u1',
+      role: 'coach',
+      isOnboarded: true,
+    });
 
     renderApp('/');
 
@@ -111,7 +127,12 @@ describe('the auth gate', () => {
   });
 
   it('lands an authenticated client in (client), with no frame of (auth) or (coach)', async () => {
-    useAuthStore.setState({ status: 'authenticated', userId: 'u2', role: 'client' });
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'u2',
+      role: 'client',
+      isOnboarded: true,
+    });
 
     renderApp('/');
 
@@ -121,7 +142,12 @@ describe('the auth gate', () => {
   });
 
   it('lands an unauthenticated user in (auth), with no frame of either authenticated group', async () => {
-    useAuthStore.setState({ status: 'unauthenticated', userId: null, role: null });
+    useAuthStore.setState({
+      status: 'unauthenticated',
+      userId: null,
+      role: null,
+      isOnboarded: false,
+    });
 
     renderApp('/');
 
@@ -141,7 +167,12 @@ describe('the auth gate', () => {
   });
 
   it('turns a deep link into the other role’s group into a redirect, not a render', async () => {
-    useAuthStore.setState({ status: 'authenticated', userId: 'u2', role: 'client' });
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'u2',
+      role: 'client',
+      isOnboarded: true,
+    });
 
     renderApp('/(coach)/(tabs)');
 
@@ -150,7 +181,12 @@ describe('the auth gate', () => {
   });
 
   it('keeps an unauthenticated deep link out of (coach) entirely', async () => {
-    useAuthStore.setState({ status: 'unauthenticated', userId: null, role: null });
+    useAuthStore.setState({
+      status: 'unauthenticated',
+      userId: null,
+      role: null,
+      isOnboarded: false,
+    });
 
     renderApp('/(coach)/(tabs)');
 
@@ -158,8 +194,97 @@ describe('the auth gate', () => {
     expect(rendered).not.toContain(COACH_HOME);
   });
 
+  // `phase-06-onboarding/onboarding-infrastructure/02`'s three routing
+  // criteria. Same "never rendered" standard as above: a coach who has not
+  // finished setup must not see a frame of the shell on the way past it.
+  it('sends a non-onboarded coach into (coach-onboarding), never the coach shell', async () => {
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'u1',
+      role: 'coach',
+      isOnboarded: false,
+    });
+
+    renderApp('/');
+
+    expect(await screen.findByText(COACH_ONBOARDING)).toBeTruthy();
+    expect(rendered).not.toContain(COACH_HOME);
+    expect(rendered).not.toContain(CLIENT_ONBOARDING);
+  });
+
+  it('sends a non-onboarded client into (client-onboarding), never the client shell', async () => {
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'u2',
+      role: 'client',
+      isOnboarded: false,
+    });
+
+    renderApp('/');
+
+    expect(await screen.findByText(CLIENT_ONBOARDING)).toBeTruthy();
+    expect(rendered).not.toContain(CLIENT_HOME);
+    expect(rendered).not.toContain(COACH_ONBOARDING);
+  });
+
+  // "regardless of how they navigate" (the feature's own AC) — a deep link
+  // straight at the shell is the case a gate that only guarded `/` misses.
+  it('turns a deep link into the shell into a redirect back to onboarding', async () => {
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'u1',
+      role: 'coach',
+      isOnboarded: false,
+    });
+
+    renderApp('/(coach)/(tabs)');
+
+    expect(await screen.findByText(COACH_ONBOARDING)).toBeTruthy();
+    expect(rendered).not.toContain(COACH_HOME);
+  });
+
+  it('turns an onboarded coach away from the onboarding flow', async () => {
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'u1',
+      role: 'coach',
+      isOnboarded: true,
+    });
+
+    renderApp('/(coach-onboarding)');
+
+    expect(await screen.findByText(COACH_HOME)).toBeTruthy();
+    expect(rendered).not.toContain(COACH_ONBOARDING);
+  });
+
+  // The task's stated risk, as a test: `me.completeOnboarding` succeeding
+  // flips the store, and that alone must move the person into the shell.
+  // No remount, no refetch, no relaunch — the app here is rendered once and
+  // never re-rendered by the test.
+  it('re-routes into the shell the moment completion flips the store', async () => {
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'u1',
+      role: 'coach',
+      isOnboarded: false,
+    });
+    renderApp('/');
+    expect(await screen.findByText(COACH_ONBOARDING)).toBeTruthy();
+
+    act(() => {
+      useAuthStore.getState().setOnboarded();
+    });
+
+    expect(await screen.findByText(COACH_HOME)).toBeTruthy();
+  });
+
   it('sends a client back to (auth) when the session ends under them', async () => {
-    useAuthStore.setState({ status: 'authenticated', userId: 'u2', role: 'client' });
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'u2',
+      role: 'client',
+      isOnboarded: true,
+    });
     renderApp('/');
     expect(await screen.findByText(CLIENT_HOME)).toBeTruthy();
 
@@ -171,31 +296,102 @@ describe('the auth gate', () => {
   });
 });
 
+/** An onboarded session of `role` — the ordinary case for the P05 criteria. */
+function onboarded(role: AccessTokenRole | null): AuthGateSession {
+  return { status: 'authenticated', role, isOnboarded: true };
+}
+
+/** The same session mid-onboarding (`users.onboarding_completed_at IS NULL`). */
+function midOnboarding(role: AccessTokenRole | null): AuthGateSession {
+  return { status: 'authenticated', role, isOnboarded: false };
+}
+
 describe('resolveAuthGate', () => {
   it('waits while the session is loading, whatever route is being asked for', () => {
-    expect(resolveAuthGate('loading', 'coach', '(coach)')).toEqual({ action: 'wait' });
-    expect(resolveAuthGate('loading', null, undefined)).toEqual({ action: 'wait' });
+    expect(
+      resolveAuthGate({ status: 'loading', role: 'coach', isOnboarded: true }, '(coach)'),
+    ).toEqual({ action: 'wait' });
+    expect(
+      resolveAuthGate({ status: 'loading', role: null, isOnboarded: false }, undefined),
+    ).toEqual({ action: 'wait' });
   });
 
   it('routes an assistant coach to (coach) — an assistant is a coach (CLAUDE.md §2)', () => {
-    expect(resolveAuthGate('authenticated', 'assistant', undefined)).toEqual({
+    expect(resolveAuthGate(onboarded('assistant'), undefined)).toEqual({
       action: 'redirect',
       group: '(coach)',
     });
-    expect(resolveAuthGate('authenticated', 'assistant', '(coach)')).toEqual({ action: 'render' });
+    expect(resolveAuthGate(onboarded('assistant'), '(coach)')).toEqual({ action: 'render' });
   });
 
   it('falls back to (auth) for an authenticated session with no role', () => {
-    expect(resolveAuthGate('authenticated', null, '(coach)')).toEqual({
+    expect(resolveAuthGate(onboarded(null), '(coach)')).toEqual({
       action: 'redirect',
       group: '(auth)',
     });
   });
 
   it('never leaves an authenticated user sitting in (auth)', () => {
-    expect(resolveAuthGate('authenticated', 'coach', '(auth)')).toEqual({
+    expect(resolveAuthGate(onboarded('coach'), '(auth)')).toEqual({
       action: 'redirect',
       group: '(coach)',
     });
+  });
+
+  // `onboarding-infrastructure/02`. Role picks the pair of homes,
+  // `isOnboarded` picks which of the two — asserted as a table so a missing
+  // combination is visible rather than merely untested.
+  it.each([
+    ['coach', false, '(coach-onboarding)'],
+    ['coach', true, '(coach)'],
+    ['assistant', false, '(coach-onboarding)'],
+    ['assistant', true, '(coach)'],
+    ['client', false, '(client-onboarding)'],
+    ['client', true, '(client)'],
+  ] as const)('sends a %s with isOnboarded=%s to %s', (role, isOnboarded, group) => {
+    expect(resolveAuthGate({ status: 'authenticated', role, isOnboarded }, undefined)).toEqual({
+      action: 'redirect',
+      group,
+    });
+  });
+
+  it('renders the onboarding group it is already on, and refuses the shell', () => {
+    expect(resolveAuthGate(midOnboarding('coach'), '(coach-onboarding)')).toEqual({
+      action: 'render',
+    });
+    expect(resolveAuthGate(midOnboarding('coach'), '(coach)')).toEqual({
+      action: 'redirect',
+      group: '(coach-onboarding)',
+    });
+  });
+
+  it('refuses the onboarding group once onboarding is done', () => {
+    expect(resolveAuthGate(onboarded('client'), '(client-onboarding)')).toEqual({
+      action: 'redirect',
+      group: '(client)',
+    });
+  });
+
+  // Never the other role's flow, whichever way round the mismatch runs.
+  it('keeps the two onboarding flows apart', () => {
+    expect(resolveAuthGate(midOnboarding('client'), '(coach-onboarding)')).toEqual({
+      action: 'redirect',
+      group: '(client-onboarding)',
+    });
+    expect(resolveAuthGate(midOnboarding('coach'), '(client-onboarding)')).toEqual({
+      action: 'redirect',
+      group: '(coach-onboarding)',
+    });
+  });
+
+  // Signing out mid-flow is still a sign-out: `isOnboarded` never overrides
+  // status, or a half-onboarded session would outlive its own tokens.
+  it('sends an unauthenticated session to (auth) from an onboarding group', () => {
+    expect(
+      resolveAuthGate(
+        { status: 'unauthenticated', role: null, isOnboarded: false },
+        '(coach-onboarding)',
+      ),
+    ).toEqual({ action: 'redirect', group: '(auth)' });
   });
 });

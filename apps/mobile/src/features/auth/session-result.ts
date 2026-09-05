@@ -6,7 +6,12 @@ export interface OpenedSessionLike {
   refreshToken: string;
   expiresAt: Date;
   deviceId: string;
-  user: { id: string; role: 'coach' | 'client' | 'assistant' };
+  user: {
+    id: string;
+    role: 'coach' | 'client' | 'assistant';
+    /** Already on every `openSession` response (`apps/api/src/features/auth/open-session.ts`). */
+    onboardingCompletedAt: Date | null;
+  };
 }
 
 /**
@@ -23,5 +28,9 @@ export async function commitOpenedSession(session: OpenedSessionLike): Promise<v
     refreshToken: session.refreshToken,
     accessExpiresAt: session.expiresAt.toISOString(),
   });
-  useAuthStore.getState().setAuthenticated({ userId: session.user.id, role: session.user.role });
+  useAuthStore.getState().setAuthenticated({
+    userId: session.user.id,
+    role: session.user.role,
+    isOnboarded: session.user.onboardingCompletedAt !== null,
+  });
 }

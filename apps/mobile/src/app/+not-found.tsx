@@ -20,29 +20,37 @@ import { useAuthStore } from '../features/auth/store.ts';
  * destination honestly rather than the component's default "Go back" —
  * this action replaces, it does not pop.
  *
- * `AuthGate`'s `GROUP_ROOT` is module-private, so the three hrefs are
+ * `AuthGate`'s `GROUP_ROOT` is module-private, so the five hrefs are
  * restated here for the same reason `link-table.ts` restates `groupForRole`:
  * the two answers being equal is asserted in this route's test rather than
  * achieved by coupling. The role → group half is **not** restated —
  * `resolveAuthGate` is imported, so "an assistant coach is a coach"
- * (`CLAUDE.md` §2) is decided in exactly one place.
+ * (`CLAUDE.md` §2) and "a coach who hasn't finished setup goes back to it"
+ * (`phase-06-onboarding/onboarding-infrastructure/02`) are each decided in
+ * exactly one place. `Record<RouteGroup, …>` is what forces this table to
+ * grow when the gate's group set does.
  */
 const HOME = {
   '(auth)': { href: '/(auth)/welcome', label: 'Back to sign in' },
   '(coach)': { href: '/(coach)/(tabs)', label: 'Back to home' },
   '(client)': { href: '/(client)/(tabs)', label: 'Back to today' },
+  // Someone mid-setup has no home yet, so the way out is the flow they were
+  // already in — never the shell the gate would refuse to render for them.
+  '(coach-onboarding)': { href: '/(coach-onboarding)', label: 'Back to setup' },
+  '(client-onboarding)': { href: '/(client-onboarding)', label: 'Back to setup' },
 } as const satisfies Record<RouteGroup, { href: Href; label: string }>;
 
 export default function NotFoundScreen() {
   const router = useRouter();
   const status = useAuthStore((state) => state.status);
   const role = useAuthStore((state) => state.role);
+  const isOnboarded = useAuthStore((state) => state.isOnboarded);
   const themed = useThemedStyles();
 
   // `undefined` group — `+not-found` belongs to no group, which is the case
   // `resolveAuthGate` already answers for `/`. It returns `wait` only while
   // the session is unresolved, and an unresolved session belongs in (auth).
-  const decision = resolveAuthGate(status, role, undefined);
+  const decision = resolveAuthGate({ status, role, isOnboarded }, undefined);
   const home = HOME[decision.action === 'redirect' ? decision.group : '(auth)'];
 
   return (

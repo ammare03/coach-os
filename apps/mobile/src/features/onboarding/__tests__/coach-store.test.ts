@@ -53,7 +53,7 @@ function launch(): Launched {
 }
 
 function signIn({ auth }: Launched, userId: string): void {
-  auth.useAuthStore.getState().setAuthenticated({ userId, role: 'coach' });
+  auth.useAuthStore.getState().setAuthenticated({ userId, role: 'coach', isOnboarded: false });
 }
 
 function draftOf({ coach }: Launched) {
