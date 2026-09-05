@@ -10,6 +10,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { bootstrap } from '../features/auth/bootstrap.ts';
 import { useAuthStore } from '../features/auth/store.ts';
+import { PendingDeepLinkReplay } from '../features/navigation/deep-links/PendingDeepLinkReplay.tsx';
 import { AnalyticsProvider } from '../lib/analytics/index.ts';
 import { queryClient, queryPersistence } from '../lib/query/client.ts';
 import { initSentry } from '../lib/sentry.ts';
@@ -175,6 +176,13 @@ export default function RootLayout() {
                     `phase-05-app-shell/router-skeleton/` revisits this once a
                     screen actually needs one. */}
                 <Stack screenOptions={{ headerShown: false }} />
+                {/* `deep-linking/04`. Renders nothing; it replays a deep
+                    link parked at cold start, once the gate has resolved.
+                    Deliberately AFTER `<Stack>` — sibling effects flush in
+                    tree order, and the gate's redirect lives inside that
+                    subtree, so the replay has to run last or be overwritten
+                    by it. */}
+                <PendingDeepLinkReplay />
               </BottomSheetModalProvider>
             </ThemeProvider>
           </TRPCProvider>

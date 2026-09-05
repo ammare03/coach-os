@@ -7,6 +7,16 @@ import { isDevGalleryEnabled } from './dev-gallery.js';
 // values (API URL, EAS project id, …) must come from process.env, which
 // static JSON cannot read. See the `configuration` skill and
 // .claude/plan/phase-00-repository-foundation/workspace-scaffold/02-relocate-expo-app.md.
+
+// `deep-linking/01`. The one place the universal-link host is written —
+// both platforms' registrations below read it, so they cannot drift apart.
+// Paired with `scheme: 'coachos'` below: CLAUDE.md §9.3 names both forms,
+// and the scheme is the one that survives an email client (UI-UX.md §UX1.4
+// — most webmail strips a custom scheme, which is why the reset link is the
+// https form; the inverse is that the scheme works with no domain-side
+// association file at all, which is today's state).
+const UNIVERSAL_LINK_HOST = 'app.coachos.com';
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'coach-os',
@@ -30,6 +40,20 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // needs a dev client rebuild, never an OTA" rule as everything else in
     // the `configuration` skill §8.
     usesAppleSignIn: true,
+    // `deep-linking/01` — the `com.apple.developer.associated-domains`
+    // entitlement, and the whole reason a universal link opens the app
+    // without iOS's "open in app?" interstitial. `applinks:` is the
+    // universal-link service specifically; `webcredentials:` is deliberately
+    // absent (that is shared-web-credential autofill, which this app does
+    // not use).
+    //
+    // ⚠️ This half alone does nothing. iOS fetches
+    // `https://app.coachos.com/.well-known/apple-app-site-association` at
+    // install time and matches its `appIDs` against `TEAMID.BUNDLEID`; the
+    // file is domain-side and unbuilt, and so is `ios.bundleIdentifier`.
+    // Tracked in `docs/UNFORGET.md` for `phase-22-release-engineering` —
+    // until it exists, `coachos://` is the only link form that works.
+    associatedDomains: [`applinks:${UNIVERSAL_LINK_HOST}`],
   },
   android: {
     // `ui-primitives-core/03` — `CLAUDE.md` §25.9: keyboard + a scrolling
@@ -37,6 +61,30 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // behind the keyboard instead of the window shrinking to fit it. A
     // native change; ships with a dev-client rebuild, never an OTA.
     softwareKeyboardLayoutMode: 'resize',
+    // `deep-linking/01` — Android App Links. The iOS half above is an
+    // entitlement; this half is an `<intent-filter>` in the generated
+    // manifest, and `autoVerify` is what upgrades it from "offer this app
+    // in the chooser" to "open this app, silently, always". Verification
+    // fetches `https://app.coachos.com/.well-known/assetlinks.json` and
+    // matches the signing-certificate fingerprint — same domain-side gap
+    // as the AASA file, same UNFORGET row.
+    //
+    // `pathPrefix: '/'` claims the whole host, deliberately. Enumerating
+    // §9.3's seven paths here was the alternative and was rejected: every
+    // later phase that adds a link (P12's feedback inbox, P15's
+    // notifications) would need a manifest entry, and forgetting one fails
+    // silently into the browser at a point nobody is testing App Links.
+    // `app.coachos.com` is the app's own host by construction — the
+    // marketing site is `apps/web` on a different one — so there is no web
+    // content under it that an installed user should be shown instead.
+    intentFilters: [
+      {
+        action: 'VIEW',
+        autoVerify: true,
+        category: ['BROWSABLE', 'DEFAULT'],
+        data: [{ scheme: 'https', host: UNIVERSAL_LINK_HOST, pathPrefix: '/' }],
+      },
+    ],
     adaptiveIcon: {
       backgroundColor: '#E6F4FE',
       foregroundImage: './assets/images/android-icon-foreground.png',
