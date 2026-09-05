@@ -5,7 +5,7 @@
 // active, one each invited/paused/archived.
 import type { Transaction } from '../aggregates/types.ts';
 import type { clientStatus, experienceLevel, trainingGoal } from '../schema/enums.ts';
-import { clientProfiles, users } from '../schema/identity.ts';
+import { clientProfiles, medicalDisclaimerAcknowledgements, users } from '../schema/identity.ts';
 
 import { dateStringFromAnchor, timestampFromAnchor } from './lib/dates.ts';
 import { seedId } from './lib/deterministic-id.ts';
@@ -186,6 +186,18 @@ export async function seedClients(
       createdAt: invitedAt,
       updatedAt: archivedAt ?? pausedAt ?? activatedAt ?? invitedAt,
     });
+
+    // §21.3's disclaimer is acknowledged during onboarding, so a client who
+    // finished it has a row here and an `invited` one does not — the seed
+    // must not describe a state the app cannot produce
+    // (`phase-06-onboarding/onboarding-infrastructure/03`).
+    if (status !== 'invited') {
+      await tx.insert(medicalDisclaimerAcknowledgements).values({
+        userId,
+        version: '2026-09-placeholder',
+        acknowledgedAt: timestampFromAnchor(-88, 11),
+      });
+    }
 
     await tx.insert(clientProfiles).values({
       id: clientProfileId,

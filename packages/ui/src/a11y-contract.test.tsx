@@ -19,6 +19,8 @@ import { NumberStepper } from './components/NumberStepper.tsx';
 import { SegmentedControl } from './components/SegmentedControl.tsx';
 import { SheetHeader } from './components/SheetHeader.tsx';
 import { Text } from './components/Text.tsx';
+import { MEDICAL_DISCLAIMER_COPY } from './MedicalDisclaimer/copy.ts';
+import { MedicalDisclaimer } from './MedicalDisclaimer/MedicalDisclaimer.tsx';
 
 // `component-gallery/03` — the accessibility half of the audit, in one
 // place. The point of gathering it here rather than trusting twelve
@@ -163,6 +165,17 @@ describe('interactive primitives are labelled, roled, and stated', () => {
     // And the visible keys are still labelled for anyone who taps them.
     expect(screen.getByLabelText('Increase Weight in kilograms')).toBeTruthy();
     expect(screen.getByLabelText('Decrease Weight in kilograms')).toBeTruthy();
+  });
+
+  it('MedicalDisclaimer — the acknowledgment is a checkbox, and it says what is being agreed to', () => {
+    render(<MedicalDisclaimer variant="onboarding" onAcknowledge={jest.fn()} />);
+    // Not "checkbox" and not "I understand" — the label is the whole
+    // sentence, because a screen-reader user is agreeing to it unheard
+    // otherwise (`accessibility` §2).
+    const checkbox = screen.getByRole('checkbox', {
+      name: MEDICAL_DISCLAIMER_COPY.acknowledgeLabel,
+    });
+    expect(checkbox.props.accessibilityState).toMatchObject({ checked: false });
   });
 
   it('SegmentedControl — a tablist of tabs, each announcing its position and selection', () => {

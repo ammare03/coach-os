@@ -2,7 +2,7 @@
 // set (AI generation caps, higher storage) in later phases' manual testing
 // (seed-and-fixtures/01's own Approach §2).
 import type { Transaction } from '../aggregates/types.ts';
-import { coachProfiles, users } from '../schema/identity.ts';
+import { coachProfiles, medicalDisclaimerAcknowledgements, users } from '../schema/identity.ts';
 
 import { dateStringFromAnchor, timestampFromAnchor } from './lib/dates.ts';
 import { seedId } from './lib/deterministic-id.ts';
@@ -42,6 +42,16 @@ export async function seedCoach(tx: Transaction): Promise<SeededCoach> {
     // referenced rather than repeated at each site.
     createdAt: timestampFromAnchor(-400, 9),
     updatedAt: timestampFromAnchor(-1, 18, 30),
+  });
+
+  // §21.3's disclaimer is acknowledged during onboarding, so a seeded user
+  // with `onboarding_completed_at` set must have a row here too — otherwise
+  // the seed describes a state the app cannot produce
+  // (`phase-06-onboarding/onboarding-infrastructure/03`).
+  await tx.insert(medicalDisclaimerAcknowledgements).values({
+    userId,
+    version: '2026-09-placeholder',
+    acknowledgedAt: timestampFromAnchor(-399, 10),
   });
 
   await tx.insert(coachProfiles).values({

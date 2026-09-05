@@ -109,6 +109,11 @@ const EXPECTED_ROUTE_FILES = [
   '_layout.tsx',
   // Not in §9.1 — expo-router needs a `/` or the app opens on `+not-found`.
   'index.tsx',
+  // Not in §9.1 — a real shipped P06 screen. §21.3 requires the medical
+  // disclaimer to be reachable from settings, and it is one screen for both
+  // roles, so it sits flat rather than once per group
+  // (`phase-06-onboarding/onboarding-infrastructure/03`).
+  'medical-disclaimer.tsx',
   // Not in §9.1 — a real shipped P03 screen (`account-lifecycle/`).
   'your-data.tsx',
 ].sort();
@@ -193,6 +198,7 @@ const SUBSTITUTED = new Set([
   '(auth)/forgot-password',
   '(auth)/invite/[code]',
   '_dev/gallery',
+  'medical-disclaimer',
   'your-data',
 ]);
 

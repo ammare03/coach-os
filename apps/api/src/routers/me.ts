@@ -4,6 +4,7 @@ import { and, desc, eq, lt, or } from 'drizzle-orm';
 
 import { cancelDeletion } from '../features/me/cancel-deletion.ts';
 import { getMe } from '../features/me/get-me.ts';
+import { medicalDisclaimerRouter } from '../features/me/medical-disclaimer.ts';
 import { requestDeletion } from '../features/me/request-deletion.ts';
 import { updateMe } from '../features/me/update-me.ts';
 import { updatePreferences } from '../features/me/update-preferences.ts';
@@ -16,6 +17,10 @@ import { router } from '../trpc/init.ts';
 import { protectedProcedure } from '../trpc/procedures.ts';
 
 export const meRouter = router({
+  // `phase-06-onboarding/onboarding-infrastructure/03` — `status` and
+  // `acknowledge`, both defined in the feature file.
+  medicalDisclaimer: medicalDisclaimerRouter,
+
   // `01` — no `ownsResource` needed: a user always owns their own record by
   // definition (this task's Interfaces section).
   get: protectedProcedure.query(({ ctx }) => getMe(ctx.db, ctx.user.id)),

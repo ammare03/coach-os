@@ -47,6 +47,7 @@ export const PURGE_TABLES: readonly PurgeTableEntry[] = [
   { name: 'identity.refresh_tokens', purgeStep: 'step 5' },
   { name: 'identity.auth_providers', purgeStep: 'step 5' },
   { name: 'identity.deletion_requests', purgeStep: 'cascade table' },
+  { name: 'identity.medical_disclaimer_acknowledgements', purgeStep: 'cascade table' },
   { name: 'training.workout_sessions', purgeStep: 'step 4' },
   { name: 'training.set_logs', purgeStep: 'step 4' },
   { name: 'training.assignments', purgeStep: 'step 4' },
@@ -98,6 +99,12 @@ export const EXPORT_EXCLUDED: Readonly<Record<string, string>> = {
   // product data, and by definition only relevant while an export could
   // even run (a fully purged account has nothing left to export from).
   'identity.deletion_requests': 'records the deletion request itself, not user content',
+  // Same shape of reasoning: a (version, timestamp) pair recording that a
+  // notice was shown and accepted. The notice's own words are in the app
+  // and in settings at any time (`onboarding-infrastructure/03`), so the
+  // archive would carry a row referencing text it does not contain.
+  'identity.medical_disclaimer_acknowledgements':
+    'records that a notice was acknowledged, not content the user authored',
   // A coach-authored template, but `checkins.template_snapshot` already
   // freezes the exact question set a client's check-in was generated
   // against — the archive's check-ins.json carries that snapshot, so the

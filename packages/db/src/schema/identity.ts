@@ -14,6 +14,7 @@ import {
   integer,
   jsonb,
   numeric,
+  primaryKey,
   smallint,
   text,
   time,
@@ -518,3 +519,40 @@ export const deletionRequests = identitySchema.table('deletion_requests', {
   // second table, since a coach's deletion request already lives here.
   coachClientsNotifiedAt: timestamp('coach_clients_notified_at', { withTimezone: true }),
 });
+
+// Added by `phase-06-onboarding/onboarding-infrastructure/03` — §21.3's
+// standing disclaimer, and the evidence that a particular person saw a
+// particular wording of it. A separate table rather than a column on
+// `users` above, for the same reason `deletion_requests` is one, plus a
+// second: §21.3 requires the placeholder copy to go through legal review
+// before launch, so the acknowledgment has to name a VERSION. A lone
+// `medical_disclaimer_acknowledged_at` column would, the day the lawyer's
+// rewrite ships, claim that everyone had agreed to text that did not exist
+// when they tapped.
+//
+// Composite primary key `(user_id, version)`: one row per person per
+// wording, and `ON CONFLICT DO NOTHING` on a repeat tap, so the first
+// acknowledgment's timestamp is the one that survives. A new version simply
+// has no row yet, which is what makes "ask again after legal review" a
+// query rather than a migration.
+//
+// DB§18: personal, not sensitive — a timestamp and a version string, no
+// health content. Purged with the user by cascade (DB§19.2).
+export const medicalDisclaimerAcknowledgements = identitySchema.table(
+  'medical_disclaimer_acknowledgements',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    // The wording identifier, not a number — `packages/schemas` owns the
+    // closed set of accepted values (`medicalDisclaimerVersion`), so an
+    // unknown string is rejected at the API boundary rather than stored.
+    version: text('version').notNull(),
+    acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    // Leads with user_id, so this also satisfies DB§7's "every FK is
+    // indexed" — no separate index needed.
+    pk: primaryKey({ columns: [t.userId, t.version] }),
+  }),
+);
