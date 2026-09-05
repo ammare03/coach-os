@@ -1,5 +1,5 @@
 import { auth as authSchemas } from '@coachos/schemas';
-import { Button, FormField, Input } from '@coachos/ui';
+import { Button, createThemedStyles, FormField, Input } from '@coachos/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -23,6 +23,7 @@ type SignInFormValues = z.infer<typeof signInFormSchema>;
 
 export function SignInForm() {
   const router = useRouter();
+  const themed = useThemedStyles();
   const { signIn, isSubmitting } = useSignIn();
   const [formError, setFormError] = useState<string | null>(null);
   const {
@@ -98,12 +99,12 @@ export function SignInForm() {
           points at. It was drawn but inert in `auth-client/05` because
           `(auth)/forgot-password` was still a placeholder then; the
           treatment is unchanged, only the destination is real. */}
-      <Link href="/forgot-password" style={styles.forgotLink}>
+      <Link href="/forgot-password" style={[styles.forgotLink, themed.forgotLink]}>
         Forgot?
       </Link>
 
       {formError !== null && (
-        <Text style={styles.formError} accessibilityRole="alert">
+        <Text style={[styles.formError, themed.formError]} accessibilityRole="alert">
           {formError}
         </Text>
       )}
@@ -123,11 +124,20 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     fontSize: 13,
     fontWeight: '500',
-    color: '#868CF8',
     marginTop: -6,
   },
   formError: {
     fontSize: 14,
-    color: '#F2F5F9',
   },
 });
+
+// The retired `DESIGN-SYSTEM.md` indigo, mapped onto `DESIGN.md` §1.1 by
+// ROLE, not by hue: #868CF8 was the link tint, which is `brand` here (§1.1,
+// "accent, active state"), and #F2F5F9 was the body ink, which is
+// `fg.DEFAULT`. Same mapping `SignInScreen` already uses for its own
+// footer link and social-error text, so the two halves of this screen
+// cannot drift apart.
+const useThemedStyles = createThemedStyles((theme) => ({
+  forgotLink: { color: theme.colors.brand.DEFAULT },
+  formError: { color: theme.colors.fg.DEFAULT },
+}));

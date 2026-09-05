@@ -1,5 +1,5 @@
 import { auth as authSchemas } from '@coachos/schemas';
-import { Button, FormField, Input } from '@coachos/ui';
+import { Button, createThemedStyles, FormField, Input, useTheme } from '@coachos/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -52,6 +52,8 @@ export function CompleteSocialSignUpForm({
   email,
 }: CompleteSocialSignUpFormProps) {
   const router = useRouter();
+  const theme = useTheme();
+  const themed = useThemedStyles();
   const { completeSocialSignUp, isSubmitting } = useCompleteSocialSignUp();
   const [formError, setFormError] = useState<string | null>(null);
   const {
@@ -80,18 +82,20 @@ export function CompleteSocialSignUpForm({
   return (
     <View style={styles.container}>
       <View style={styles.intro}>
-        <Text style={styles.heading}>Confirm your date of birth</Text>
-        <Text style={styles.subtitle}>Coach accounts are for adults 18 and over.</Text>
+        <Text style={[styles.heading, themed.heading]}>Confirm your date of birth</Text>
+        <Text style={[styles.subtitle, themed.subtitle]}>
+          Coach accounts are for adults 18 and over.
+        </Text>
       </View>
 
-      <View style={styles.identityRow}>
-        <View style={styles.identityAvatar}>
+      <View style={[styles.identityRow, themed.identityRow]}>
+        <View style={[styles.identityAvatar, themed.identityAvatar]}>
           <Svg
             width={16}
             height={16}
             viewBox="0 0 24 24"
             fill="none"
-            stroke="#97A2B4"
+            stroke={theme.colors.fg.muted}
             strokeWidth={2}
           >
             <Path
@@ -103,8 +107,8 @@ export function CompleteSocialSignUpForm({
           </Svg>
         </View>
         <View style={styles.identityTextCol}>
-          <Text style={styles.identityLabel}>Continuing as</Text>
-          <Text style={styles.identityEmail} numberOfLines={1}>
+          <Text style={[styles.identityLabel, themed.identityLabel]}>Continuing as</Text>
+          <Text style={[styles.identityEmail, themed.identityEmail]} numberOfLines={1}>
             {email}
           </Text>
         </View>
@@ -135,7 +139,7 @@ export function CompleteSocialSignUpForm({
       />
 
       {formError !== null && (
-        <Text style={styles.formError} accessibilityRole="alert">
+        <Text style={[styles.formError, themed.formError]} accessibilityRole="alert">
           {formError}
         </Text>
       )}
@@ -149,16 +153,16 @@ export function CompleteSocialSignUpForm({
         Terms/Privacy Policy page to point at. Tracked in docs/UNFORGET.md
         (S4); comes back here once real pages exist.
       */}
-      <Text style={styles.terms}>
-        By continuing, you agree to the <Text style={styles.termsLink}>Terms</Text> and{' '}
-        <Text style={styles.termsLink}>Privacy Policy</Text>.
+      <Text style={[styles.terms, themed.terms]}>
+        By continuing, you agree to the <Text style={themed.termsLink}>Terms</Text> and{' '}
+        <Text style={themed.termsLink}>Privacy Policy</Text>.
       </Text>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>
+        <Text style={[styles.footerText, themed.footerText]}>
           Wrong account?{' '}
           <Text
-            style={styles.footerLink}
+            style={[styles.footerLink, themed.footerLink]}
             accessibilityRole="link"
             onPress={() => router.replace('/sign-in')}
           >
@@ -180,12 +184,10 @@ const styles = StyleSheet.create({
   heading: {
     fontWeight: '700',
     fontSize: 24,
-    color: '#F2F5F9',
   },
   subtitle: {
     fontSize: 14,
     lineHeight: 20,
-    color: '#97A2B4',
     marginTop: 4,
   },
   identityRow: {
@@ -196,15 +198,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#1E242E',
-    backgroundColor: '#12161D',
     marginBottom: 4,
   },
   identityAvatar: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -213,26 +212,18 @@ const styles = StyleSheet.create({
   },
   identityLabel: {
     fontSize: 12,
-    color: '#5F6C7E',
   },
   identityEmail: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#F2F5F9',
   },
   formError: {
     fontSize: 14,
-    color: '#F2F5F9',
   },
   terms: {
     fontSize: 11,
     lineHeight: 16,
-    color: '#5F6C7E',
     textAlign: 'center',
-  },
-  termsLink: {
-    color: '#868CF8',
-    fontWeight: '500',
   },
   footer: {
     alignItems: 'center',
@@ -240,10 +231,42 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 14,
-    color: '#97A2B4',
   },
   footerLink: {
     fontWeight: '500',
-    color: '#868CF8',
   },
 });
+
+// The retired indigo ramp mapped onto `DESIGN.md` §1.1 by role. The
+// identity row keeps the tokens this file's own docblock already named for
+// it — `bg.raised` + `border.soft`, `GlassSurface`'s opaque fallback — they
+// were just written as the old ramp's hexes rather than read from the
+// theme.
+//
+//   #F2F5F9 → fg.DEFAULT   body ink
+//   #97A2B4 → fg.muted     secondary text, and the avatar glyph's stroke
+//   #5F6C7E → fg.subtle    the same secondary-metadata role
+//   #868CF8 → brand        link/accent (§1.1, "accent, active state")
+//   #12161D → bg.raised    the row's own fill
+//   #1E242E → border.soft  its hairline
+//
+// The avatar's `rgba(255,255,255,0.06)` was a white sheen on a dark well.
+// §1.1's ramp is warm-tinted and never pure white, so it reads the
+// elevation ladder's own card highlight — `ink.edge` at 7%, the same warm
+// sheen every L2 card wears — rather than a second hand-mixed alpha.
+const useThemedStyles = createThemedStyles((theme) => ({
+  heading: { color: theme.colors.fg.DEFAULT },
+  subtitle: { color: theme.colors.fg.muted },
+  identityRow: {
+    backgroundColor: theme.colors.bg.raised,
+    borderColor: theme.colors.border.soft,
+  },
+  identityAvatar: { backgroundColor: theme.elevation.raised.highlight },
+  identityLabel: { color: theme.colors.fg.subtle },
+  identityEmail: { color: theme.colors.fg.DEFAULT },
+  formError: { color: theme.colors.fg.DEFAULT },
+  terms: { color: theme.colors.fg.subtle },
+  termsLink: { color: theme.colors.brand.DEFAULT, fontWeight: '500' },
+  footerText: { color: theme.colors.fg.muted },
+  footerLink: { color: theme.colors.brand.DEFAULT },
+}));
