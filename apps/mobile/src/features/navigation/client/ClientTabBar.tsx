@@ -145,7 +145,7 @@ function useReducedMotion(): boolean {
  * animation is.
  */
 export function ClientTabBar({ state, descriptors, navigation, insets }: BottomTabBarProps) {
-  const { colors, glass, selectionPill } = useTheme();
+  const { colors, selectionPill } = useTheme();
   const reducedMotion = useReducedMotion();
 
   const tabs = state.routes.flatMap((route, index) => {
@@ -183,18 +183,15 @@ export function ClientTabBar({ state, descriptors, navigation, insets }: BottomT
   }
 
   return (
-    // The shadow rides on this wrapper, not on the surface itself: both of
-    // `GlassSurface`'s fallback paths render with `overflow: 'hidden'`, and
-    // on iOS that is `clipsToBounds`, which suppresses the view's own
-    // shadow. §9's `0 18px 40px -14px` is most of what makes the dock read
-    // as floating rather than painted on, so losing it below iOS 26 would
-    // be a silent, platform-specific regression. On Android the hairline
-    // border carries the edge instead, exactly as `DESIGN.md` §12 describes.
-    <View
-      pointerEvents="box-none"
+    // §9's `0 18px 40px -14px` is `GlassSurface`'s to render, on all three
+    // of its paths — including the two that clip, where it wears the drop
+    // on the surface view and clips the material one layer in. This file
+    // supplies only the dock's geometry.
+    <GlassSurface
+      tier="tier1"
+      testID="client-tab-bar"
       style={[
         styles.dock,
-        glass.tier1.shadow,
         {
           left: CLIENT_DOCK.sideInset,
           right: CLIENT_DOCK.sideInset,
@@ -203,123 +200,114 @@ export function ClientTabBar({ state, descriptors, navigation, insets }: BottomT
         },
       ]}
     >
-      <GlassSurface
-        tier="tier1"
-        testID="client-tab-bar"
-        style={{ borderRadius: CLIENT_DOCK.radius }}
+      <View
+        testID="client-tab-bar-tablist"
+        accessibilityRole="tablist"
+        onLayout={handleLayout}
+        style={[
+          styles.row,
+          { minHeight: CLIENT_DOCK.height, paddingHorizontal: CLIENT_DOCK.padding },
+        ]}
       >
-        <View
-          testID="client-tab-bar-tablist"
-          accessibilityRole="tablist"
-          onLayout={handleLayout}
-          style={[
-            styles.row,
-            { minHeight: CLIENT_DOCK.height, paddingHorizontal: CLIENT_DOCK.padding },
-          ]}
-        >
-          {itemWidth > 0 ? (
-            <Animated.View
+        {itemWidth > 0 ? (
+          <Animated.View
+            pointerEvents="none"
+            testID="client-tab-bar-selection-pill"
+            style={[
+              styles.pill,
+              pillStyle,
+              selectionPill.shadow,
+              {
+                top: CLIENT_DOCK.padding,
+                bottom: CLIENT_DOCK.padding,
+                left: CLIENT_DOCK.padding,
+                borderRadius: CLIENT_DOCK.radius,
+              },
+            ]}
+          >
+            <LinearGradient
+              colors={selectionPill.gradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <View
               pointerEvents="none"
-              testID="client-tab-bar-selection-pill"
-              style={[
-                styles.pill,
-                pillStyle,
-                selectionPill.shadow,
-                {
-                  top: CLIENT_DOCK.padding,
-                  bottom: CLIENT_DOCK.padding,
-                  left: CLIENT_DOCK.padding,
-                  borderRadius: CLIENT_DOCK.radius,
-                },
-              ]}
-            >
-              <LinearGradient
-                colors={selectionPill.gradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              <View
-                pointerEvents="none"
-                style={[styles.hairlineTop, { backgroundColor: selectionPill.highlight }]}
-              />
-            </Animated.View>
-          ) : null}
+              style={[styles.hairlineTop, { backgroundColor: selectionPill.highlight }]}
+            />
+          </Animated.View>
+        ) : null}
 
-          {tabs.map(({ route, meta, focused }, position) => {
-            const rawBadge = descriptors[route.key]?.options.tabBarBadge;
-            const badgeCount = typeof rawBadge === 'number' && rawBadge > 0 ? rawBadge : undefined;
-            const tint = focused ? colors.fg.bright : colors.fg.muted;
-            const Icon = meta.Icon;
+        {tabs.map(({ route, meta, focused }, position) => {
+          const rawBadge = descriptors[route.key]?.options.tabBarBadge;
+          const badgeCount = typeof rawBadge === 'number' && rawBadge > 0 ? rawBadge : undefined;
+          const tint = focused ? colors.fg.bright : colors.fg.muted;
+          const Icon = meta.Icon;
 
-            function handlePress() {
-              const event = navigation.emit({
-                type: 'tabPress',
-                target: route.key,
-                canPreventDefault: true,
-              });
-              if (!focused && !event.defaultPrevented) {
-                navigation.navigate(route.name, route.params);
+          function handlePress() {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+            if (!focused && !event.defaultPrevented) {
+              navigation.navigate(route.name, route.params);
+            }
+          }
+
+          function handleLongPress() {
+            navigation.emit({ type: 'tabLongPress', target: route.key });
+          }
+
+          return (
+            <Pressable
+              key={route.key}
+              onPress={handlePress}
+              onLongPress={handleLongPress}
+              pressScale={CLIENT_DOCK.pressScale}
+              hitSlop={CLIENT_DOCK_ITEM_HIT_SLOP}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: focused }}
+              // `Badge` hides itself from the reading order by design, so a
+              // count has to be folded in here or it is silent
+              // (`accessibility` §2). Factual, never "you have" (`COPY.md`).
+              accessibilityLabel={
+                badgeCount === undefined
+                  ? `${meta.label}, tab ${position + 1} of ${tabs.length}`
+                  : `${meta.label}, ${badgeCount} unread, tab ${position + 1} of ${tabs.length}`
               }
-            }
-
-            function handleLongPress() {
-              navigation.emit({ type: 'tabLongPress', target: route.key });
-            }
-
-            return (
-              <Pressable
-                key={route.key}
-                onPress={handlePress}
-                onLongPress={handleLongPress}
-                pressScale={CLIENT_DOCK.pressScale}
-                hitSlop={CLIENT_DOCK_ITEM_HIT_SLOP}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: focused }}
-                // `Badge` hides itself from the reading order by design, so a
-                // count has to be folded in here or it is silent
-                // (`accessibility` §2). Factual, never "you have" (`COPY.md`).
-                accessibilityLabel={
-                  badgeCount === undefined
-                    ? `${meta.label}, tab ${position + 1} of ${tabs.length}`
-                    : `${meta.label}, ${badgeCount} unread, tab ${position + 1} of ${tabs.length}`
-                }
-                containerStyle={styles.itemOuter}
-                style={[
-                  styles.item,
-                  { minHeight: CLIENT_DOCK.itemHeight, gap: CLIENT_DOCK.itemGap },
-                ]}
-              >
-                {/* The testID sits on the wrapper, not the glyph: `react-native-svg`
+              containerStyle={styles.itemOuter}
+              style={[styles.item, { minHeight: CLIENT_DOCK.itemHeight, gap: CLIENT_DOCK.itemGap }]}
+            >
+              {/* The testID sits on the wrapper, not the glyph: `react-native-svg`
                   does not forward one to its host view, and an icon that cannot be
                   asserted is an icon that can silently go missing. */}
-                <View testID={`client-tab-icon-${route.name}`} style={styles.glyph}>
-                  <Icon
-                    size={CLIENT_DOCK.iconSize}
-                    color={tint}
-                    strokeWidth={CLIENT_DOCK.iconStrokeWidth}
-                  />
-                  {badgeCount === undefined ? null : (
-                    <View style={[styles.badge, BADGE_OFFSET]}>
-                      <Badge tone="brand" size="sm" count={badgeCount} />
-                    </View>
-                  )}
-                </View>
-                <Text
-                  size={LABEL_SIZE}
-                  tone={focused ? 'bright' : 'muted'}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={LABEL_MAX_FONT_SCALE}
-                  style={styles.label}
-                >
-                  {meta.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </GlassSurface>
-    </View>
+              <View testID={`client-tab-icon-${route.name}`} style={styles.glyph}>
+                <Icon
+                  size={CLIENT_DOCK.iconSize}
+                  color={tint}
+                  strokeWidth={CLIENT_DOCK.iconStrokeWidth}
+                />
+                {badgeCount === undefined ? null : (
+                  <View style={[styles.badge, BADGE_OFFSET]}>
+                    <Badge tone="brand" size="sm" count={badgeCount} />
+                  </View>
+                )}
+              </View>
+              <Text
+                size={LABEL_SIZE}
+                tone={focused ? 'bright' : 'muted'}
+                numberOfLines={1}
+                maxFontSizeMultiplier={LABEL_MAX_FONT_SCALE}
+                style={styles.label}
+              >
+                {meta.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </GlassSurface>
   );
 }
 

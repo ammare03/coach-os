@@ -236,11 +236,11 @@ const styles = StyleSheet.create({
 });
 
 const useThemedStyles = createThemedStyles((theme) => ({
-  // Tier-1's long soft drop sits on the outer view: `GlassSurface` clips its
-  // own children (`overflow: hidden`), which would clip the shadow with them.
+  // Radius only. `GlassSurface` renders the tier-1 drop itself — its clipping
+  // boundary is an inner layer, so the shadow is no longer clipped and a copy
+  // here would stack a second one and read visibly heavier.
   shadow: {
     borderRadius: radius.full,
-    ...theme.glass.tier1.shadow,
   },
   countdown: {
     // Min, never fixed — a `label` line box is 40px at 200% text and would

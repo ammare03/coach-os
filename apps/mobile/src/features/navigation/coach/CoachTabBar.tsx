@@ -268,7 +268,7 @@ function CoachDockItem({
 
 // The colour-bearing styles. They follow the active scheme and are built once
 // per theme identity, never per render (`createThemedStyles`). The dock's own
-// geometry rides along because it has to merge with the themed shadow.
+// geometry rides along so its one style object stays in one place.
 const useDockStyles = createThemedStyles((theme) => ({
   dock: {
     position: 'absolute',
@@ -279,10 +279,9 @@ const useDockStyles = createThemedStyles((theme) => ({
     // `radius.full` resolves to on a 64px box. A dock is always fully
     // rounded (`DESIGN.md` §1.4).
     borderRadius: radius.full,
-    // `GlassSurface` renders the tier-1 gradient, the border, and both inset
-    // hairlines itself, but not the outer drop — §9's
-    // `0 18px 40px -14px rgba(0,0,0,.8)`, which is `glass.tier1.shadow`.
-    ...theme.glass.tier1.shadow,
+    // §9's `0 18px 40px -14px rgba(0,0,0,.8)` is not here: `GlassSurface`
+    // owns the tier-1 drop along with the gradient, the border and both
+    // inset hairlines, on every one of its three paths.
   },
   pillShadow: theme.selectionPill.shadow,
   pillHighlight: { backgroundColor: theme.selectionPill.highlight },
