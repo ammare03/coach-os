@@ -85,7 +85,7 @@ afterAll(async () => {
   ]);
   queueConnection.disconnect();
   await container.stop();
-});
+}, 60_000);
 
 describe('idempotent enqueue — same subject twice yields one job', () => {
   it('media-transcode dedupes on assetId', async () => {

@@ -71,7 +71,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.$client.end();
   await container.stop();
-});
+}, 120_000);
 
 const ROLLBACK = Symbol('attach-test-rollback');
 async function withRolledBackTx<T>(fn: (tx: DbClient) => Promise<T>): Promise<T> {

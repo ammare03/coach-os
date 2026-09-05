@@ -51,7 +51,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.$client.end();
   await pgContainer.stop();
-});
+}, 60_000);
 
 let seq = 0;
 

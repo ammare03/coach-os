@@ -69,7 +69,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.$client.end();
   await container.stop();
-});
+}, 60_000);
 
 function makeRequest(headers: Record<string, string> = {}): Request {
   return new Request('http://localhost/trpc/health.ping', { headers });

@@ -46,7 +46,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.$client.end();
   await container.stop();
-});
+}, 120_000);
 
 async function insertUser(overrides: {
   internalOperator?: boolean;

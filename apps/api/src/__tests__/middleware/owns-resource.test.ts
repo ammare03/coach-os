@@ -126,7 +126,7 @@ afterAll(async () => {
   world.redis.removeAllListeners('error');
   world.redis.on('error', () => {});
   await container.stop();
-});
+}, 90_000);
 
 function callerContextFor(userId: string) {
   const factory = world.createContextFactory(() => ({

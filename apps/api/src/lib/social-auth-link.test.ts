@@ -47,7 +47,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.$client.end();
   await container.stop();
-});
+}, 60_000);
 
 async function insertCoach(overrides: Partial<typeof schema.users.$inferInsert> = {}) {
   const [user] = await db

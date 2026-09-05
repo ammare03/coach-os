@@ -73,7 +73,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.$client.end();
   await container.stop();
-});
+}, 120_000);
 
 // Rolls back every write a probe makes — Risks: "probing mutations against
 // a real database mutates it... a probe that leaves a row behind makes the

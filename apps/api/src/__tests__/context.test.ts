@@ -79,7 +79,7 @@ afterAll(async () => {
   redis.removeAllListeners('error');
   redis.on('error', () => {});
   await container.stop();
-});
+}, 60_000);
 
 function makeRequest(headers: Record<string, string> = {}): Request {
   return new Request('http://localhost/trpc/health.ping', { headers });
