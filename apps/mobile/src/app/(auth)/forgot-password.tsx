@@ -1,13 +1,10 @@
-import { Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
-// Placeholder route (`phase-05-app-shell/router-skeleton/01`). Structure
-// only — it renders its own route path and nothing else, deliberately. The
-// phase that owns this screen designs and builds it; anything added here
-// first would have to be deleted then (P05 README, "Risks").
-export default function AuthForgotPasswordScreen() {
-  return (
-    <View>
-      <Text>(auth)/forgot-password</Text>
-    </View>
-  );
+import { ForgotPasswordScreen } from '../../features/auth/screens/ForgotPasswordScreen.tsx';
+
+// Composition plus the one navigation call the screen needs — the same
+// shape `src/app/your-data.tsx` already uses (`CLAUDE.md` §9.2).
+export default function ForgotPasswordRoute() {
+  const router = useRouter();
+  return <ForgotPasswordScreen onBack={() => router.back()} />;
 }

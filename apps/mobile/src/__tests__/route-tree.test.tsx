@@ -116,9 +116,9 @@ const EXPECTED_ROUTE_FILES = [
  * expected on-screen string.
  */
 const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
-  ['(auth)/welcome', '/(auth)/welcome'],
-  ['(auth)/forgot-password', '/(auth)/forgot-password'],
-  ['(auth)/invite/[code]', '/(auth)/invite/ABC123'],
+  // `welcome`, `forgot-password` and `invite/[code]` were placeholders here
+  // until `router-skeleton/02` composed their real screens; they moved to
+  // SUBSTITUTED below for the same reason `sign-in`/`sign-up` always were.
   ['(auth)/reset-password/[token]', '/(auth)/reset-password/tok_abc'],
 
   ['(coach)/(tabs)/index', '/(coach)/(tabs)'],
@@ -180,6 +180,13 @@ const SUBSTITUTED = new Set([
   '(auth)/sign-in',
   '(auth)/sign-up',
   '(auth)/complete-social-signup',
+  // Real screens as of `router-skeleton/02` — same reason as the three
+  // above. What each one renders is covered by its own component test in
+  // `src/features/auth/`, and that they COMPOSE the right screen by
+  // `src/__tests__/auth-routes.test.tsx`.
+  '(auth)/welcome',
+  '(auth)/forgot-password',
+  '(auth)/invite/[code]',
   '_dev/gallery',
   'your-data',
 ]);
@@ -232,8 +239,11 @@ describe('the §9.1 route tree', () => {
   });
 
   it('redirects `/` into the tree rather than leaving it on +not-found', () => {
-    renderRouter(routeContext(), { initialUrl: '/' });
+    // Asserted on the resolved pathname rather than rendered text: welcome
+    // is a real screen now and is substituted above, so it renders nothing
+    // of its own here.
+    const router = renderRouter(routeContext(), { initialUrl: '/' });
 
-    expect(screen.getByText('(auth)/welcome')).toBeTruthy();
+    expect(router.getPathname()).toBe('/welcome');
   });
 });

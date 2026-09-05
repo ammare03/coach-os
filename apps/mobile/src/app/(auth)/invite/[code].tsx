@@ -1,13 +1,13 @@
-import { Text, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
-// Placeholder route (`phase-05-app-shell/router-skeleton/01`). Structure
-// only — it renders its own route path and nothing else, deliberately. The
-// phase that owns this screen designs and builds it; anything added here
-// first would have to be deleted then (P05 README, "Risks").
-export default function AuthInviteScreen() {
-  return (
-    <View>
-      <Text>(auth)/invite/[code]</Text>
-    </View>
-  );
+import { InviteScreen } from '../../../features/auth/screens/InviteScreen.tsx';
+
+// Param extraction and composition, and nothing else (`CLAUDE.md` §9.2).
+// Redeeming the code is `phase-06-onboarding/client-onboarding/01`'s —
+// this task's own Risks section says the route is expected to be
+// incomplete until then.
+export default function InviteRoute() {
+  const router = useRouter();
+  const { code } = useLocalSearchParams<{ code: string }>();
+  return <InviteScreen code={code ?? ''} onSignIn={() => router.replace('/sign-in')} />;
 }

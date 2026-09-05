@@ -1,16 +1,26 @@
 import { Stack } from 'expo-router';
 
-// Minimal (auth) group shell, built ahead of `phase-05-app-shell/router-
-// skeleton/02` to unblock `phase-03-identity-and-auth/auth-client/05` —
-// see that task's own file table, which expects this group to already
-// exist. `headerShown: false` because both screens draw their own glass
-// nav bar (`GlassSurface`, DS§12.1) rather than the native header.
+// The `(auth)` group: a Stack, never tabs — nothing in here is a peer
+// destination you switch between, it is one linear flow plus two deep-link
+// entry points (`UI-UX.md` §UX1.1, §UX1.4).
+//
+// `headerShown: false` is deliberate and applies to every screen: each one
+// draws its own Liquid Glass nav bar via `AuthScreenShell` (DS§12.1)
+// rather than the native header, and a screen that is pushed carries its
+// own back control inside that bar.
 export default function AuthLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="welcome" />
       <Stack.Screen name="sign-in" />
       <Stack.Screen name="sign-up" />
       <Stack.Screen name="complete-social-signup" />
+      <Stack.Screen name="forgot-password" />
+      {/* Both deep-link targets. `reset-password/[token]` is the https
+          universal link `auth-server/06` emails out (`UI-UX.md` §UX1.4);
+          it stays a placeholder — filling it in is not this task's. */}
+      <Stack.Screen name="reset-password/[token]" />
+      <Stack.Screen name="invite/[code]" />
     </Stack>
   );
 }

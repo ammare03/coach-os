@@ -1,7 +1,7 @@
 import { auth as authSchemas } from '@coachos/schemas';
 import { Button, FormField, Input } from '@coachos/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useRouter } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { StyleSheet, Text, View } from 'react-native';
@@ -94,11 +94,13 @@ export function SignInForm() {
         )}
       />
 
-      {/* Visual only for now — out of scope per `05`'s Scope section:
-          the reset flow (`auth-server/06`) this links to doesn't exist yet. */}
-      <Text style={styles.forgotLink} accessibilityRole="none">
+      {/* Live as of `router-skeleton/02`, which builds the screen this
+          points at. It was drawn but inert in `auth-client/05` because
+          `(auth)/forgot-password` was still a placeholder then; the
+          treatment is unchanged, only the destination is real. */}
+      <Link href="/forgot-password" style={styles.forgotLink}>
         Forgot?
-      </Text>
+      </Link>
 
       {formError !== null && (
         <Text style={styles.formError} accessibilityRole="alert">
