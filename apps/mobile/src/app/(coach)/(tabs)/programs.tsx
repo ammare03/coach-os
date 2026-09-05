@@ -1,13 +1,13 @@
-import { Text, View } from 'react-native';
+import { CoachTabPlaceholder } from '../../../features/navigation/coach/CoachTabPlaceholder.tsx';
 
-// Placeholder route (`phase-05-app-shell/router-skeleton/01`). Structure
-// only — it renders its own route path and nothing else, deliberately. The
-// phase that owns this screen designs and builds it; anything added here
-// first would have to be deleted then (P05 README, "Risks").
+// Composition only (`CLAUDE.md` §9.2). A genuine placeholder — the phase
+// named below designs and builds this screen, and anything added here first
+// would have to be deleted then (`router-skeleton/03`, Risks).
 export default function CoachProgramsScreen() {
   return (
-    <View>
-      <Text>(coach)/(tabs)/programs</Text>
-    </View>
+    <CoachTabPlaceholder
+      route="(coach)/(tabs)/programs"
+      ownedBy="phase-07-exercise-and-program-authoring/"
+    />
   );
 }
