@@ -1,6 +1,7 @@
-import { Text as RNText, type TextProps as RNTextProps } from 'react-native';
+import { Text as RNText, type TextProps as RNTextProps, type TextStyle } from 'react-native';
 
-import type { TextSize } from '../theme/tokens.ts';
+import { useTextScale } from '../theme/TextScaleProvider.tsx';
+import { fontSize, type TextSize } from '../theme/tokens.ts';
 
 // `DESIGN.md` §1.2 pins a FACE and a WEIGHT to every named size — there is
 // no independent `weight` prop to get wrong. A component that sets
@@ -62,10 +63,27 @@ export type TextProps = RNTextProps & {
  * Numbers do NOT go through this — they go through `Metric`, which pins
  * Space Grotesk and tabular numerals so figures never jitter (§1.2).
  */
-export function Text({ size = 'body', tone = 'default', className, ...rest }: TextProps) {
+export function Text({ size = 'body', tone = 'default', className, style, ...rest }: TextProps) {
   const classes = [`text-${size}`, SIZE_FONT_CLASS[size], TONE_CLASS[tone], className]
     .filter(Boolean)
     .join(' ');
+  // `maxFontSizeMultiplier` is React Native's own cap on the OS font scale;
+  // the gallery's scale has to honour the same cap or a component that legally
+  // caps itself (an avatar's initials inside a fixed circle) looks broken under
+  // the toggle and correct on a device (`accessibility` §3).
+  // React Native types this `number | null`, and both `null` and `0` mean
+  // "inherit / no cap" rather than "clamp to zero".
+  const cap = rest.maxFontSizeMultiplier;
+  const scale = Math.min(useTextScale(), cap == null || cap <= 0 ? Infinity : cap);
+  const scaled = scale === 1 ? undefined : scaleLineBox(size, scale);
 
-  return <RNText className={classes} {...rest} />;
+  return <RNText className={classes} style={scaled ? [scaled, style] : style} {...rest} />;
+}
+
+// Only reached from the component gallery's text-scale toggle
+// (`TextScaleProvider`); at scale 1 nothing is computed and the class
+// name's own size and line height are what render.
+function scaleLineBox(size: TextSize, scale: number): TextStyle {
+  const [sizePx, { lineHeight }] = fontSize[size];
+  return { fontSize: sizePx * scale, lineHeight: Number.parseFloat(lineHeight) * scale };
 }

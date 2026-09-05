@@ -19,12 +19,9 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import {
-  duration,
-  easing,
-  radius as radiusTokens,
-  skeleton as skeletonTokens,
-} from '../theme/tokens.ts';
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { duration, easing, radius as radiusTokens } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 export type SkeletonRadius = keyof typeof radiusTokens;
 
@@ -106,6 +103,10 @@ export function Skeleton({
   style,
   testID,
 }: SkeletonProps) {
+  // The sweep's stops are a gradient prop rather than a style, so they come
+  // straight off the theme; the static fill goes through the themed sheet.
+  const { skeleton } = useTheme();
+  const themed = useThemedStyles();
   const reducedMotion = useReducedMotion();
   const [measuredWidth, setMeasuredWidth] = useState(0);
   const sweepX = useSharedValue(-SWEEP_WIDTH);
@@ -156,12 +157,12 @@ export function Skeleton({
       {...accessibilityProps}
       testID={testID}
       onLayout={handleLayout}
-      style={[styles.base, { width, height, borderRadius: radiusTokens[radius] }, style]}
+      style={[themed.base, { width, height, borderRadius: radiusTokens[radius] }, style]}
     >
       {isAnimating && (
         <Animated.View pointerEvents="none" style={[styles.sweep, sweepStyle]}>
           <LinearGradient
-            colors={skeletonTokens.sweep}
+            colors={skeleton.sweep}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={StyleSheet.absoluteFill}
@@ -173,10 +174,6 @@ export function Skeleton({
 }
 
 const styles = StyleSheet.create({
-  base: {
-    backgroundColor: skeletonTokens.base,
-    overflow: 'hidden',
-  },
   sweep: {
     position: 'absolute',
     top: 0,
@@ -185,3 +182,10 @@ const styles = StyleSheet.create({
     width: SWEEP_WIDTH,
   },
 });
+
+const useThemedStyles = createThemedStyles((theme) => ({
+  base: {
+    backgroundColor: theme.skeleton.base,
+    overflow: 'hidden',
+  },
+}));

@@ -8,7 +8,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 
-import { colors, control, glass, radius, scrim } from '../theme/tokens.ts';
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { radius } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 /**
  * The product's bottom sheet. `CLAUDE.md` §7.5 bans the native `Alert` for
@@ -88,6 +90,7 @@ export function Sheet({
   testID,
 }: SheetProps) {
   const ref = useRef<BottomSheet>(null);
+  const themed = useThemedStyles();
 
   const snapPoints = useMemo(() => resolveSheetSnapPoints(snap), [snap]);
   const gestures = useMemo(() => resolveSheetGestures(isDismissible), [isDismissible]);
@@ -100,10 +103,10 @@ export function Sheet({
         disappearsOnIndex={-1}
         opacity={1}
         pressBehavior={isDismissible ? 'close' : 'none'}
-        style={[props.style, styles.backdrop]}
+        style={[props.style, themed.backdrop]}
       />
     ),
-    [isDismissible],
+    [isDismissible, themed],
   );
 
   const handleChange = useCallback(
@@ -137,10 +140,10 @@ export function Sheet({
       keyboardBehavior={Platform.OS === 'ios' ? 'interactive' : 'extend'}
       keyboardBlurBehavior="restore"
       backdropComponent={renderBackdrop}
-      handleIndicatorStyle={styles.grabber}
+      handleIndicatorStyle={themed.grabber}
       backgroundComponent={SheetBackground}
       accessibilityViewIsModal
-      style={styles.sheet}
+      style={themed.sheet}
     >
       {/* `BottomSheet` itself takes no `testID`, so it lands on the content
           view — which is the part a test or a Maestro flow actually wants
@@ -159,8 +162,10 @@ export function Sheet({
  * they are what makes the surface read as a pane rather than a rectangle.
  */
 function SheetBackground({ style }: BottomSheetBackgroundProps) {
+  const { glass } = useTheme();
+  const themed = useThemedStyles();
   return (
-    <View style={[style, styles.background]}>
+    <View style={[style, themed.background]}>
       <LinearGradient
         colors={[...glass.tier2.gradient]}
         locations={[...glass.tier2.locations]}
@@ -168,24 +173,30 @@ function SheetBackground({ style }: BottomSheetBackgroundProps) {
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <View style={styles.highlight} pointerEvents="none" />
+      <View style={themed.highlight} pointerEvents="none" />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  content: {
+    paddingBottom: 8,
+  },
+});
+
+const useThemedStyles = createThemedStyles((theme) => ({
   sheet: {
     // Tier-2's long soft drop. Android needs the hairline border alongside
     // `elevation` or the edge disappears entirely (§12).
-    ...glass.tier2.shadow,
+    ...theme.glass.tier2.shadow,
   },
   background: {
     borderTopLeftRadius: radius.sheet,
     borderTopRightRadius: radius.sheet,
     borderWidth: 1,
-    borderColor: glass.tier2.borderColor,
+    borderColor: theme.glass.tier2.borderColor,
     overflow: 'hidden',
-    backgroundColor: colors.bg.raised,
+    backgroundColor: theme.colors.bg.raised,
   },
   highlight: {
     position: 'absolute',
@@ -193,18 +204,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: glass.tier2.highlight,
+    backgroundColor: theme.glass.tier2.highlight,
   },
   grabber: {
     width: 42,
     height: 5,
     borderRadius: radius.cell,
-    backgroundColor: control.grabber,
+    backgroundColor: theme.control.grabber,
   },
   backdrop: {
-    backgroundColor: scrim.color,
+    backgroundColor: theme.scrim.color,
   },
-  content: {
-    paddingBottom: 8,
-  },
-});
+}));

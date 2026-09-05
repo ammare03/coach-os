@@ -1,5 +1,5 @@
 import { act, render, screen } from '@testing-library/react-native';
-import { AccessibilityInfo, type EmitterSubscription } from 'react-native';
+import { AccessibilityInfo, Dimensions, type EmitterSubscription } from 'react-native';
 
 import { fontSize } from '../theme/tokens.ts';
 
@@ -119,19 +119,26 @@ describe('SkeletonText', () => {
     jest.restoreAllMocks();
   });
 
-  it('reserves the full line box of the size it stands in for', async () => {
+  // The box tracks the text scale, because the whole contract is that
+  // swapping this for real `Text` shifts nothing — and real `Text` is twice
+  // the size at 200% (`accessibility` §3). React Native's jest preset mocks
+  // `fontScale` at 2, so that is the multiplier under test here.
+  it('reserves the full line box of the size it stands in for, at the current text scale', async () => {
     mockReduceMotion(false);
     render(<SkeletonText size="body" lines={3} testID="text" />);
     await settle();
 
     const [glyphHeight, metrics] = fontSize.body;
+    const scale = Dimensions.get('window').fontScale;
     const rows = byTestId('text').children;
 
     expect(rows).toHaveLength(3);
     for (const row of rows) {
       if (typeof row === 'string') throw new Error('expected a row view');
-      expect(row.props.style.height).toBe(Number.parseInt(metrics.lineHeight, 10));
-      expect(row.props.style.height).toBeGreaterThan(glyphHeight);
+      expect(row.props.style.height).toBe(
+        Math.round(Number.parseInt(metrics.lineHeight, 10) * scale),
+      );
+      expect(row.props.style.height).toBeGreaterThan(glyphHeight * scale);
     }
   });
 

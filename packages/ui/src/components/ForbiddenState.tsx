@@ -1,7 +1,8 @@
 import { Lock } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 
-import { colors, type Density } from '../theme/tokens.ts';
+import { type Density } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import { EmptyState } from './EmptyState.tsx';
 
@@ -66,6 +67,7 @@ export function ForbiddenState({
   density = 'client',
   testID,
 }: ForbiddenStateProps) {
+  const { colors } = useTheme();
   return (
     <EmptyState
       icon={icon ?? <Lock size={GLYPH_SIZE} color={colors.fg.subtle} />}

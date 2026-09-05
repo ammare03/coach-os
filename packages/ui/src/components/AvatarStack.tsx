@@ -1,8 +1,16 @@
 import { StyleSheet, View } from 'react-native';
 
-import { colors, radius, type TextSize } from '../theme/tokens.ts';
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { radius } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
-import { Avatar, type AvatarSize } from './Avatar.tsx';
+import {
+  Avatar,
+  AVATAR_DIAMETER,
+  AVATAR_MAX_FONT_SCALE,
+  AVATAR_TEXT_SIZE,
+  type AvatarSize,
+} from './Avatar.tsx';
 import { Metric } from './Metric.tsx';
 
 export interface AvatarStackPerson {
@@ -20,13 +28,6 @@ export interface AvatarStackProps {
   testID?: string;
 }
 
-const DIAMETER: Record<AvatarSize, number> = { xs: 24, sm: 32, md: 48, lg: 72 };
-const OVERFLOW_TEXT_SIZE: Record<AvatarSize, TextSize> = {
-  xs: 'micro',
-  sm: 'caption',
-  md: 'label',
-  lg: 'title',
-};
 const RING_WIDTH = 2;
 const OVERLAP_FRACTION = 0.3;
 
@@ -39,9 +40,12 @@ const OVERLAP_FRACTION = 0.3;
  * hidden from the screen reader; this wrapper is what gets focused.
  */
 export function AvatarStack({ people, max = 4, size = 'sm', testID }: AvatarStackProps) {
+  const { colors } = useTheme();
+  const themed = useThemedStyles();
+
   if (people.length === 0) return null;
 
-  const diameter = DIAMETER[size];
+  const diameter = AVATAR_DIAMETER[size];
   const overlap = Math.round(diameter * OVERLAP_FRACTION);
   const visible = people.slice(0, max);
   const overflowCount = Math.max(0, people.length - max);
@@ -101,11 +105,22 @@ export function AvatarStack({ people, max = 4, size = 'sm', testID }: AvatarStac
         >
           <View
             style={[
-              styles.overflowFill,
+              themed.overflowFill,
               { width: diameter, height: diameter, borderRadius: radius.full },
             ]}
           >
-            <Metric value={`+${overflowCount}`} size={OVERFLOW_TEXT_SIZE[size]} tone="muted" />
+            {/* Capped for the same reason `Avatar`'s initials are: the chip is
+                one of the circles in the stack and cannot grow past it.
+                `default`, not `muted`: the chip's fill is `border.strong`,
+                against which `fg.muted` measures 3.38:1 (dark) / 3.21:1
+                (light), under SC 1.4.3 for a count that is the only place
+                the hidden members are named at all. */}
+            <Metric
+              value={`+${overflowCount}`}
+              size={AVATAR_TEXT_SIZE[size]}
+              tone="default"
+              maxFontSizeMultiplier={AVATAR_MAX_FONT_SCALE[size]}
+            />
           </View>
         </View>
       ) : null}
@@ -127,10 +142,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+});
+
+const useThemedStyles = createThemedStyles((theme) => ({
   overflowFill: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.border.strong,
+    backgroundColor: theme.colors.border.strong,
     overflow: 'hidden',
   },
-});
+}));

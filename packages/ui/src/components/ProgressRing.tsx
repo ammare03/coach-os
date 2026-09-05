@@ -1,8 +1,10 @@
 import { Canvas, Path, Skia } from '@shopify/react-native-skia';
 import { useMemo } from 'react';
-import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
-import { colors, dataviz, type TextSize } from '../theme/tokens.ts';
+import { type TextSize } from '../theme/tokens.ts';
+import { useBoxTextScale } from '../theme/useBoxTextScale.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import { Metric } from './Metric.tsx';
 import { Text } from './Text.tsx';
@@ -164,11 +166,16 @@ export function ProgressRing({
   unitLabel,
   testID,
 }: ProgressRingProps) {
-  const { fontScale } = useWindowDimensions();
+  // Skia paints take a colour prop, not a style, so these read from the
+  // theme directly rather than through a themed `StyleSheet`.
+  const { colors, dataviz } = useTheme();
   const sweep = progressRingSweep(value, target);
   const indeterminate = isIndeterminate || sweep.isIndeterminate;
 
-  const scale = Math.min(Math.max(fontScale, 1), MAX_RING_SCALE);
+  // `useBoxTextScale` folds the gallery's scale toggle in with the OS font
+  // scale, so `component-gallery/02`'s 200% pass reaches the ring and not
+  // only the numeral inside it. Same 2x ceiling either way.
+  const scale = Math.min(useBoxTextScale(), MAX_RING_SCALE);
   const diameter = DIAMETER[size] * scale;
   const strokeWidth = diameter * STROKE_RATIO;
   const ringRadius = diameter * RADIUS_RATIO;

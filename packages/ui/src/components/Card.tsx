@@ -2,14 +2,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
 import {
-  control,
   density as densityTokens,
-  elevation,
   radius,
   type Density,
   type ElevationLevel,
 } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import { Pressable, type PressableRenderState } from './Pressable.tsx';
 
@@ -58,6 +58,8 @@ export function Card({
   accessibilityLabel,
   testID,
 }: CardProps) {
+  const { elevation } = useTheme();
+  const themed = useThemedStyles();
   const padding = densityTokens[densityProp].cardPadding;
   const recipe = elevation[level];
   const hasGradient = level === 'raised' || level === 'tinted';
@@ -95,7 +97,7 @@ export function Card({
       {/* Pressed-state surface step (CONTRACT.md rule 2): a tint BELOW the
           content, never the container's own `opacity` — text stays at full
           contrast through the press. */}
-      {onPress && pressed && <View pointerEvents="none" style={styles.pressedTint} />}
+      {onPress && pressed && <View pointerEvents="none" style={themed.pressedTint} />}
       <View style={{ padding }}>{children}</View>
     </View>
   );
@@ -132,12 +134,17 @@ const styles = StyleSheet.create({
     right: 0,
     height: 1,
   },
+});
+
+// The one colour this component sets itself; the rest come from the
+// scheme's own `elevation` recipe above.
+const useThemedStyles = createThemedStyles((theme) => ({
   pressedTint: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: control.pressScrim,
+    backgroundColor: theme.control.pressScrim,
   },
-});
+}));

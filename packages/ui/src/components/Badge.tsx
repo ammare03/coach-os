@@ -1,7 +1,8 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { StyleSheet, View } from 'react-native';
 
-import { colors, control, radius, type TextSize } from '../theme/tokens.ts';
+import { radius, type TextSize } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import { Metric } from './Metric.tsx';
 
@@ -39,10 +40,10 @@ export type BadgeProps =
 // brand/urgent) — `brand` already carries "new"/"live" emphasis, so the
 // earlier task doc's third `accent` tone is dropped rather than mapped to
 // a colour that no longer exists in `tokens.ts`.
-const NEUTRAL_BACKGROUND = control.surface;
-// DESIGN.md §9's dock badge border — `bg.DEFAULT` at 60%, the same ring an
-// avatar's presence dot wears, so both come from one token.
-const BRAND_BORDER = control.ring;
+// Neutral fill is `control.surface`; the brand border is DESIGN.md §9's
+// dock-badge ring (`control.ring`, `bg.DEFAULT` at 60%) — the same ring an
+// avatar's presence dot wears, so both come from one token. Both are read
+// from the active scheme in the body below.
 
 const DIAMETER: Record<BadgeSize, number> = { sm: 17, md: 20 };
 const METRIC_SIZE: Record<BadgeSize, TextSize> = { sm: 'micro', md: 'caption' };
@@ -67,6 +68,7 @@ function formatCount(count: number): string {
  * decorates, never here.
  */
 export function Badge({ count, label, tone = 'neutral', size = 'sm', testID }: BadgeProps) {
+  const { colors, control } = useTheme();
   const diameter = DIAMETER[size];
   const content = count !== undefined ? formatCount(count) : label;
   const isDot = content === undefined;
@@ -81,11 +83,15 @@ export function Badge({ count, label, tone = 'neutral', size = 'sm', testID }: B
         styles.base,
         {
           minWidth: diameter,
-          height: diameter,
+          // Min-height, never height — a `caption` line box is 34px at 200%
+          // text inside a 20px box with `overflow: 'hidden'`
+          // (`accessibility` §3). The pill radius keeps it circular while it
+          // is square and a pill once it is not.
+          minHeight: diameter,
           borderRadius: radius.full,
           borderWidth: BORDER_WIDTH,
-          borderColor: isBrand ? BRAND_BORDER : colors.border.strong,
-          backgroundColor: isBrand ? undefined : NEUTRAL_BACKGROUND,
+          borderColor: isBrand ? control.ring : colors.border.strong,
+          backgroundColor: isBrand ? undefined : control.surface,
           paddingHorizontal: isDot ? 0 : Math.round(diameter * 0.22),
         },
       ]}
@@ -99,14 +105,11 @@ export function Badge({ count, label, tone = 'neutral', size = 'sm', testID }: B
         />
       ) : null}
       {!isDot ? (
-        // `default` is the closest tone `Metric` currently offers to the
-        // dark ink DESIGN.md §1.1's "primary fill inverts" rule calls for
-        // against this bright gradient (the same rule `primary.from/to`
-        // follows). `Metric` has no `onBrand` tone (unlike `Text`, which
-        // does) — flagged as a follow-up for `Metric.tsx`, out of this
-        // component's scope; on `neutral`'s dark translucent fill `default`
-        // already has full contrast.
-        <Metric value={content} size={METRIC_SIZE[size]} tone="default" />
+        // DESIGN.md §1.1 — the primary fill inverts: `fg.DEFAULT` on the peach
+        // gradient reads 2.6:1 and is forbidden, so `brand` takes the dark
+        // `onBrand` ink (8.4:1). On `neutral`'s dark translucent fill
+        // `default` already has full contrast.
+        <Metric value={content} size={METRIC_SIZE[size]} tone={isBrand ? 'onBrand' : 'default'} />
       ) : null}
     </View>
   );

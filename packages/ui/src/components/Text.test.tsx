@@ -1,4 +1,7 @@
 import { render, screen } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
+
+import { TextScaleProvider } from '../theme/TextScaleProvider.tsx';
 
 import { Text } from './Text.tsx';
 
@@ -64,5 +67,43 @@ describe('Text', () => {
       );
       expect(screen.getByTestId(`tone-${tone}`).props.className).toContain(expected);
     }
+  });
+
+  // The component gallery's 200% toggle (`component-gallery/01`). React
+  // Native gives JavaScript no way to change the OS font scale, so the
+  // verification pass has to reach the one text primitive directly.
+  describe('under a TextScaleProvider', () => {
+    it('adds no style at all at the default scale', () => {
+      render(<Text testID="unscaled">x</Text>);
+
+      expect(screen.getByTestId('unscaled').props.style).toBeUndefined();
+    });
+
+    it('scales the font size and the line height together', () => {
+      render(
+        <TextScaleProvider scale={2}>
+          <Text testID="scaled" size="body">
+            x
+          </Text>
+        </TextScaleProvider>,
+      );
+
+      // `body` is 15/22 in tokens.ts.
+      const style = StyleSheet.flatten(screen.getByTestId('scaled').props.style);
+      expect(style).toMatchObject({ fontSize: 30, lineHeight: 44 });
+    });
+
+    it('keeps the caller’s own style on top of the scaled line box', () => {
+      render(
+        <TextScaleProvider scale={2}>
+          <Text testID="both" size="caption" style={{ fontVariant: ['tabular-nums'] }}>
+            x
+          </Text>
+        </TextScaleProvider>,
+      );
+
+      const style = StyleSheet.flatten(screen.getByTestId('both').props.style);
+      expect(style).toMatchObject({ fontSize: 24, fontVariant: ['tabular-nums'] });
+    });
   });
 });

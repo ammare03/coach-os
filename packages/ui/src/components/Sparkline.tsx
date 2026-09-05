@@ -2,7 +2,7 @@ import { Canvas, Path, Skia } from '@shopify/react-native-skia';
 import { memo, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { colors, dataviz } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import {
   DEFAULT_GAP_DAYS,
@@ -85,6 +85,9 @@ export const Sparkline = memo(function Sparkline({
   accessibilityLabel,
   testID,
 }: SparklineProps) {
+  const { colors, dataviz } = useTheme();
+  const sparkStroke = dataviz.sparkStroke;
+
   const capped = useMemo(
     () => (points.length > MAX_POINTS ? points.slice(points.length - MAX_POINTS) : points),
     [points],
@@ -108,7 +111,7 @@ export const Sparkline = memo(function Sparkline({
     const max = Math.max(...values);
     const span = max - min;
 
-    const inset = dataviz.sparkStroke;
+    const inset = sparkStroke;
     const innerWidth = Math.max(width - inset * 2, 1);
     const innerHeight = Math.max(height - inset * 2, 1);
     const dayMin = shape.dayMin;
@@ -141,7 +144,7 @@ export const Sparkline = memo(function Sparkline({
     }
 
     return drew ? built : null;
-  }, [capped, gapDays, width, height]);
+  }, [capped, gapDays, width, height, sparkStroke]);
 
   const direction = trend ?? chartTrend(capped);
   const label =
@@ -168,7 +171,7 @@ export const Sparkline = memo(function Sparkline({
           <Path
             path={path}
             style="stroke"
-            strokeWidth={dataviz.sparkStroke}
+            strokeWidth={sparkStroke}
             strokeCap="round"
             strokeJoin="round"
             color={colors.brand.DEFAULT}

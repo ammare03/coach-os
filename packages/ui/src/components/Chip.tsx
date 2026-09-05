@@ -3,14 +3,9 @@ import { X } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import {
-  colors,
-  control,
-  radius,
-  selectionPill,
-  tapTarget,
-  type Density,
-} from '../theme/tokens.ts';
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { radius, tapTarget, type Density } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import { IconButton } from './IconButton.tsx';
 import { Pressable } from './Pressable.tsx';
@@ -51,47 +46,69 @@ const CHIP_HIT_SLOP = Math.ceil((tapTarget.MIN - CHIP_HEIGHT) / 2);
  * fixed, always-visible 2-4 option set.
  */
 export function Chip({ label, selected = false, onPress, iconLeft, onRemove, testID }: ChipProps) {
+  const { colors, control, selectionPill } = useTheme();
+  const themed = useThemedStyles();
   const interactive = Boolean(onPress);
+
+  const chipStyle = [
+    styles.chip,
+    selected
+      ? styles.chipSelected
+      : { backgroundColor: control.surface, borderColor: colors.border.strong },
+  ];
+
+  const body = (
+    <>
+      {selected ? (
+        <>
+          <LinearGradient
+            colors={selectionPill.gradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <View
+            pointerEvents="none"
+            style={[styles.hairlineTop, { backgroundColor: selectionPill.highlight }]}
+          />
+        </>
+      ) : null}
+      <View style={styles.content}>
+        {iconLeft}
+        <Text size="label" tone={selected ? 'bright' : 'muted'} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+    </>
+  );
 
   return (
     <View style={styles.row}>
-      <Pressable
-        onPress={onPress}
-        disabled={!interactive}
-        hitSlop={CHIP_HIT_SLOP}
-        accessibilityRole={interactive ? 'button' : undefined}
-        accessibilityLabel={label}
-        accessibilityState={{ selected }}
-        testID={testID}
-        containerStyle={selected ? styles.selectedShadow : undefined}
-        style={[
-          styles.chip,
-          selected
-            ? styles.chipSelected
-            : { backgroundColor: control.surface, borderColor: colors.border.strong },
-        ]}
-      >
-        {selected ? (
-          <>
-            <LinearGradient
-              colors={selectionPill.gradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            />
-            <View
-              pointerEvents="none"
-              style={[styles.hairlineTop, { backgroundColor: selectionPill.highlight }]}
-            />
-          </>
-        ) : null}
-        <View style={styles.content}>
-          {iconLeft}
-          <Text size="label" tone={selected ? 'bright' : 'muted'} numberOfLines={1}>
-            {label}
-          </Text>
+      {interactive ? (
+        <Pressable
+          onPress={onPress}
+          hitSlop={CHIP_HIT_SLOP}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          accessibilityState={{ selected }}
+          testID={testID}
+          containerStyle={selected ? themed.selectedShadow : undefined}
+          style={chipStyle}
+        >
+          {body}
+        </Pressable>
+      ) : (
+        // A chip with no `onPress` is a tag, not a control. As a disabled
+        // `Pressable` it announced as a dimmed button carrying a `selected`
+        // state — three claims, none true of a read-only label
+        // (`component-gallery/03`). The shadow sits on an outer view because
+        // `chip` clips its own children.
+        <View style={selected ? themed.selectedShadow : undefined}>
+          <View accessible accessibilityLabel={label} testID={testID} style={chipStyle}>
+            {body}
+          </View>
         </View>
-      </Pressable>
+      )}
 
       {onRemove ? (
         <IconButton
@@ -113,8 +130,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   chip: {
-    height: CHIP_HEIGHT,
+    // Min-height, never height: DESIGN.md §9's 33px is the resting geometry,
+    // but a `label` line box is 40px at 200% text and `overflow: 'hidden'`
+    // below would silently cut it in half (`accessibility` §3).
+    minHeight: CHIP_HEIGHT,
     paddingHorizontal: CHIP_PADDING_HORIZONTAL,
+    paddingVertical: 3,
     borderRadius: radius.full,
     borderWidth: 1,
     alignItems: 'center',
@@ -124,9 +145,6 @@ const styles = StyleSheet.create({
   chipSelected: {
     borderWidth: 0,
   },
-  // DESIGN.md §4's selection-pill drop shadow, on the outer (non-clipped)
-  // container — `overflow: 'hidden'` on `chip` above would otherwise clip it.
-  selectedShadow: selectionPill.shadow,
   hairlineTop: {
     position: 'absolute',
     top: 0,
@@ -140,3 +158,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
 });
+
+// DESIGN.md §4's selection-pill drop shadow, on the outer (non-clipped)
+// container — `overflow: 'hidden'` on `chip` would otherwise clip it.
+const useThemedStyles = createThemedStyles((theme) => ({
+  selectedShadow: theme.selectionPill.shadow,
+}));

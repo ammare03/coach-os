@@ -1,7 +1,8 @@
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { density as densityTokens, glass, type Density } from '../theme/tokens.ts';
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { density as densityTokens, type Density } from '../theme/tokens.ts';
 
 import { Button } from './Button.tsx';
 
@@ -40,6 +41,7 @@ export function SheetFooter({
   isActionLoading = false,
   density = 'client',
 }: SheetFooterProps) {
+  const themed = useThemedStyles();
   const insets = useSafeAreaInsets();
   const pad = densityTokens[density].cardPadding;
 
@@ -57,7 +59,7 @@ export function SheetFooter({
         },
       ]}
     >
-      <View style={styles.hairline} pointerEvents="none" />
+      <View style={themed.hairline} pointerEvents="none" />
       <Button
         variant="primary"
         size={density === 'client' ? 'lg' : 'md'}
@@ -76,14 +78,17 @@ const styles = StyleSheet.create({
   footer: {
     gap: 10,
   },
-  // The faked inset top edge (`DESIGN.md` §12) — separates the footer from
-  // the scrolling content above it without a full divider.
+});
+
+// The faked inset top edge (`DESIGN.md` §12) — separates the footer from
+// the scrolling content above it without a full divider.
+const useThemedStyles = createThemedStyles((theme) => ({
   hairline: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: glass.tier2.highlight,
+    backgroundColor: theme.glass.tier2.highlight,
   },
-});
+}));

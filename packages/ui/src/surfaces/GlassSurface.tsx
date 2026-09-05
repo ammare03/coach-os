@@ -9,7 +9,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { colors, elevation, glass, type GlassTier } from '../theme/tokens.ts';
+import { schemes } from '../theme/schemes.ts';
+import { colors, type GlassTier } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import { useGlassAvailable } from './useGlassAvailable.ts';
 
@@ -35,7 +37,15 @@ const ADHERENCE_HUES = [
 // separate from `ADHERENCE_HUES` so the literal tuple above stays literal
 // for `AdherenceHex` while this stays comparable against an arbitrary
 // runtime string (a coach's white-label hex).
-const ADHERENCE_HUE_SET: ReadonlySet<string> = new Set<string>(ADHERENCE_HUES);
+// Both schemes' hues, not just dark's: the rule is "a status colour never
+// tints chrome", and a light-scheme `state.onPlan` is as much a status
+// colour as a dark one. The tuple above stays dark-only because its job is
+// the TYPE-level rejection, which needs literals.
+const ADHERENCE_HUE_SET: ReadonlySet<string> = new Set<string>([
+  ...ADHERENCE_HUES,
+  ...Object.values(schemes.light.state),
+  schemes.light.urgent,
+]);
 
 type AdherenceHex = (typeof ADHERENCE_HUES)[number];
 
@@ -73,15 +83,15 @@ const GLASS_EFFECT_STYLE: Record<GlassTier, 'regular' | 'clear'> = {
   tier3: 'regular',
 };
 
-// The prototype's CSS `blur()` values (34/30/18px, `tokens.ts`'s
-// `glass.tierN.blur`) don't map 1:1 to `expo-blur`'s 1-100 `intensity`
-// scale — this derives a proportional intensity from each tier's own blur
-// token rather than inventing three new unrelated numbers.
-const MAX_BLUR_PX = glass.tier1.blur;
+// The prototype's CSS `blur()` values (34/30/18px, the `glass.tierN.blur`
+// tokens) don't map 1:1 to `expo-blur`'s 1-100 `intensity` scale — this
+// derives a proportional intensity from each tier's own blur token rather
+// than inventing three new unrelated numbers. Blur is scheme-invariant;
+// only the gradient over it changes.
 const MAX_INTENSITY = 90;
 
-function blurIntensityFor(tier: GlassTier): number {
-  return Math.round((glass[tier].blur / MAX_BLUR_PX) * MAX_INTENSITY);
+function blurIntensityFor(blurPx: number, maxBlurPx: number): number {
+  return Math.round((blurPx / maxBlurPx) * MAX_INTENSITY);
 }
 
 function isAdherenceHue(value: string): boolean {
@@ -198,6 +208,7 @@ function OpaqueFallback({
   testID?: string | undefined;
   children?: ReactNode;
 }) {
+  const { elevation } = useTheme();
   const recipe = elevation.raised;
   return (
     <View testID={testID} style={[styles.fallbackBase, style]}>
@@ -237,12 +248,15 @@ function BlurFallback({
   testID?: string | undefined;
   children?: ReactNode;
 }) {
+  const { glass, scheme } = useTheme();
   const tierTokens = glass[tier];
   return (
     <View testID={testID} style={[styles.fallbackBase, style]}>
       <BlurView
-        tint="dark"
-        intensity={blurIntensityFor(tier)}
+        // The blur samples what is BEHIND the surface, so it follows the
+        // canvas, not the tier — a dark blur over a light canvas is a smear.
+        tint={scheme === 'light' ? 'light' : 'dark'}
+        intensity={blurIntensityFor(tierTokens.blur, glass.tier1.blur)}
         blurMethod="dimezisBlurViewSdk31Plus"
         style={StyleSheet.absoluteFill}
       />

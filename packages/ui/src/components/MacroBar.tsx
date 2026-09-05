@@ -1,28 +1,11 @@
 import { macroKcal, type MacroGrams } from '@coachos/utils';
 import { StyleSheet, View } from 'react-native';
 
-import { colors, dataviz, radius, spacing, type Density } from '../theme/tokens.ts';
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { radius, spacing, type Density } from '../theme/tokens.ts';
 
 import { Metric } from './Metric.tsx';
 import { Text } from './Text.tsx';
-
-/**
- * `DESIGN.md` §1.1's warm ramp, used exactly as §1.1 prescribes for a
- * multi-series graphic: "the palette's single accent cannot carry a
- * multi-series chart", so the three macros take the primary, second, and
- * third series stops. They are ordered by lightness, which is what makes the
- * bar survive greyscale — and the `P` / `C` / `F` labels beneath are the
- * second, non-colour channel §8 requires regardless.
- *
- * None of these is `colors.state.*`. A macro split is not an adherence
- * signal: a coach scanning thirty rows must not read a fat-heavy day as an
- * off-track client (`ui-primitives-data/02`).
- */
-const SEGMENT_COLOR = {
-  protein: colors.brand.DEFAULT,
-  carbs: colors.brand.mid,
-  fat: colors.brand.deep,
-} as const;
 
 // §7 — "Progress bar: height 5–8px, radius 3–4". The client app takes the
 // top of that range because it is read at arm's length mid-day; the coach
@@ -172,6 +155,7 @@ export function MacroBar({
   hideLabels = false,
   testID,
 }: MacroBarProps) {
+  const themed = useThemedStyles();
   const segments = macroBarSegments({ proteinG, carbsG, fatG });
   const { fillFraction, markerFraction } = macroBarFill(segments.totalKcal, targetKcal);
 
@@ -195,7 +179,7 @@ export function MacroBar({
       testID={testID}
       style={styles.container}
     >
-      <View style={[styles.track, { height, borderRadius: radius.cell }]}>
+      <View style={[themed.track, { height, borderRadius: radius.cell }]}>
         <View style={[styles.fill, { width: toPercent(fillFraction) }]}>
           {parts.map((part) =>
             part.fraction > 0 ? (
@@ -205,11 +189,7 @@ export function MacroBar({
               // right edge — whatever the three fractions round to.
               <View
                 key={part.key}
-                style={{
-                  flexGrow: part.fraction,
-                  flexBasis: 0,
-                  backgroundColor: SEGMENT_COLOR[part.key],
-                }}
+                style={[themed[part.key], { flexGrow: part.fraction, flexBasis: 0 }]}
               />
             ) : null,
           )}
@@ -218,7 +198,7 @@ export function MacroBar({
           <View
             pointerEvents="none"
             style={[
-              styles.marker,
+              themed.marker,
               { left: toPercent(markerFraction), width: MARKER_WIDTH, marginLeft: -MARKER_WIDTH },
             ]}
           />
@@ -236,7 +216,12 @@ export function MacroBar({
             <View key={part.key} style={{ flexGrow: part.fraction, flexBasis: 0 }}>
               {part.fraction * fillFraction >= MIN_LABEL_FRACTION ? (
                 <View style={styles.label}>
-                  <Text size="micro" tone="subtle">
+                  {/* `muted`, never `subtle`: this renders at 11px and
+                      DESIGN.md §13 restricts `fg.subtle` to ≥14px — it
+                      measured 3.63:1 on the canvas and 2.90:1 on a card,
+                      under SC 1.4.3, for the letter that names which macro
+                      the number beside it belongs to. */}
+                  <Text size="micro" tone="muted">
                     {part.glyph}
                   </Text>
                   <Metric value={round(part.grams)} unit="g" size="micro" tone="muted" />
@@ -287,31 +272,55 @@ const styles = StyleSheet.create({
   container: {
     gap: spacing(5),
   },
-  // §7 — the recessed well the fill sits in. `overflow: hidden` is what
-  // rounds the segments' outer corners without giving each of the three its
-  // own radius, which would round their shared edges too.
-  track: {
-    width: '100%',
-    backgroundColor: dataviz.barTrack,
-    overflow: 'hidden',
-    flexDirection: 'row',
-  },
   fill: {
     flexDirection: 'row',
     height: '100%',
-  },
-  marker: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    backgroundColor: dataviz.overTarget,
   },
   labels: {
     flexDirection: 'row',
   },
   label: {
     flexDirection: 'row',
+    // Wraps rather than overflowing its segment: at 200% text "P" and "140 g"
+    // are wider than the share of the bar the segment owns
+    // (`accessibility` §3).
+    flexWrap: 'wrap',
     alignItems: 'baseline',
     gap: spacing(3),
   },
 });
+
+const useThemedStyles = createThemedStyles((theme) => ({
+  // §7 — the recessed well the fill sits in. `overflow: hidden` is what
+  // rounds the segments' outer corners without giving each of the three its
+  // own radius, which would round their shared edges too.
+  track: {
+    width: '100%',
+    backgroundColor: theme.dataviz.barTrack,
+    overflow: 'hidden',
+    flexDirection: 'row',
+  },
+  marker: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    backgroundColor: theme.dataviz.overTarget,
+  },
+
+  /**
+   * `DESIGN.md` §1.1's warm ramp, used exactly as §1.1 prescribes for a
+   * multi-series graphic: "the palette's single accent cannot carry a
+   * multi-series chart", so the three macros take the primary, second, and
+   * third series stops. They are ordered by lightness, which is what makes the
+   * bar survive greyscale — and the `P` / `C` / `F` labels beneath are the
+   * second, non-colour channel §8 requires regardless.
+   *
+   * None of these is `colors.state.*`. A macro split is not an adherence
+   * signal: a coach scanning thirty rows must not read a fat-heavy day as an
+   * off-track client (`ui-primitives-data/02`). The keys are the `parts` keys
+   * above, so a segment picks its own style.
+   */
+  protein: { backgroundColor: theme.colors.brand.DEFAULT },
+  carbs: { backgroundColor: theme.colors.brand.mid },
+  fat: { backgroundColor: theme.colors.brand.deep },
+}));

@@ -1,5 +1,7 @@
 import type { ConfigContext, ExpoConfig } from 'expo/config';
 
+import { isDevGalleryEnabled } from './dev-gallery.js';
+
 // The only Expo config file in this repo — there is deliberately no
 // app.json. A dynamic, typed config is required because build-time
 // values (API URL, EAS project id, …) must come from process.env, which
@@ -106,5 +108,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ...config.extra,
     eas: { projectId: process.env.EAS_PROJECT_ID },
     apiUrl: process.env.EXPO_PUBLIC_API_URL,
+    // `component-gallery/01`. The real exclusion is `metro.config.js`'s
+    // blockList — the gallery's files are simply not in a production bundle.
+    // This flag is the second layer: the route refuses to render if it ever
+    // survives that block (a hand-edited Metro config, a future resolver
+    // change), so "dev tooling never ships" does not rest on one mechanism.
+    devGalleryEnabled: isDevGalleryEnabled(),
   },
 });

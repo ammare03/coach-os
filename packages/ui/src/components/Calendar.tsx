@@ -11,19 +11,17 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
 import {
-  colors,
-  control,
   density as densityTokens,
   duration,
   easing,
-  elevation,
   radius,
-  selectionPill,
   stagger,
   tapTarget,
   type Density,
 } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import {
   addMonths,
@@ -193,6 +191,7 @@ export function Calendar(props: CalendarProps) {
     '1970-01-01';
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(seedMonth));
 
+  const { colors } = useTheme();
   const reducedMotion = useReducedMotion();
   const cell = CALENDAR_CELL_GEOMETRY[density];
   const resolvedWeekStart = weekStartsOn ?? firstDayOfWeek(locale);
@@ -376,6 +375,9 @@ interface DayCellProps {
 }
 
 function DayCell({ date, state, isToday, marker, locale, cell, onPress }: DayCellProps) {
+  const { elevation, selectionPill } = useTheme();
+  const themed = useThemedStyles();
+
   // A pad cell holds the column open and nothing else — never a dimmed,
   // tappable date from the neighbouring month (`calendar-grid.ts`).
   if (date === null) {
@@ -412,7 +414,7 @@ function DayCell({ date, state, isToday, marker, locale, cell, onPress }: DayCel
           borderRadius: cell.radius,
           gap: 3,
         },
-        cellSurface(state, isToday),
+        cellSurface(themed, state, isToday),
       ]}
     >
       {selected ? (
@@ -425,10 +427,7 @@ function DayCell({ date, state, isToday, marker, locale, cell, onPress }: DayCel
             end={{ x: 0, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
-          <View
-            pointerEvents="none"
-            style={[styles.hairlineTop, { backgroundColor: selectionPill.highlight }]}
-          />
+          <View pointerEvents="none" style={themed.hairlineTop} />
         </>
       ) : null}
       {state === 'inRange' ? (
@@ -470,18 +469,14 @@ function metricTone(state: DayState): 'bright' | 'default' | 'muted' {
  * `brand` hairline; DESIGN.md §7 uses that colour for "the current one"
  * throughout.
  */
-function cellSurface(state: DayState, isToday: boolean) {
-  if (state === 'selected') {
-    return { backgroundColor: 'transparent' as const, borderWidth: 0 };
-  }
-  if (state === 'disabled') {
-    return { backgroundColor: control.surfaceDisabled, borderWidth: 0 };
-  }
-  return {
-    backgroundColor: colors.bg.raised,
-    borderWidth: 1,
-    borderColor: isToday ? colors.brand.DEFAULT : colors.border.DEFAULT,
-  };
+function cellSurface(
+  themed: ReturnType<typeof useThemedStyles>,
+  state: DayState,
+  isToday: boolean,
+) {
+  if (state === 'selected') return themed.cellSelected;
+  if (state === 'disabled') return themed.cellDisabled;
+  return isToday ? themed.cellToday : themed.cellDefault;
 }
 
 const styles = StyleSheet.create({
@@ -514,13 +509,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     overflow: 'hidden',
   },
-  hairlineTop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-  },
   markerSlot: {
     height: MARKER_SIZE,
     justifyContent: 'center',
@@ -532,3 +520,36 @@ const styles = StyleSheet.create({
     borderRadius: radius.cell,
   },
 });
+
+// The day-cell surfaces and the selection pill's hairline — the only
+// things in this grid whose colour follows the scheme. A marker's colour
+// comes from the consumer and the geometry above is scheme-invariant, so
+// both stay where they are.
+const useThemedStyles = createThemedStyles((theme) => ({
+  cellSelected: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+  },
+  cellDisabled: {
+    backgroundColor: theme.control.surfaceDisabled,
+    borderWidth: 0,
+  },
+  cellDefault: {
+    backgroundColor: theme.colors.bg.raised,
+    borderWidth: 1,
+    borderColor: theme.colors.border.DEFAULT,
+  },
+  cellToday: {
+    backgroundColor: theme.colors.bg.raised,
+    borderWidth: 1,
+    borderColor: theme.colors.brand.DEFAULT,
+  },
+  hairlineTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: theme.selectionPill.highlight,
+  },
+}));

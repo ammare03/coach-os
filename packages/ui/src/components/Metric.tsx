@@ -55,8 +55,20 @@ export type MetricProps = {
   value: string | number;
   unit?: string;
   size?: TextSize;
-  /** §1.1 — `bright` is hero numerals only; everything else uses the default. */
-  tone?: 'bright' | 'default' | 'warm' | 'glass' | 'muted';
+  /**
+   * §1.1 — `bright` is hero numerals only; everything else uses the default.
+   * `onBrand` is the dark ink §1.1's "primary fill inverts" rule requires on
+   * the peach gradient: `default` on that fill reads 2.6:1, which §1.1 calls
+   * forbidden outright.
+   */
+  tone?: 'bright' | 'default' | 'warm' | 'glass' | 'muted' | 'onBrand';
+  /**
+   * React Native's own cap on the OS font scale, honoured by the gallery's
+   * scale toggle too (`Text`). For the one `accessibility` §3 case where the
+   * container genuinely cannot grow — an avatar circle, a badge on an icon —
+   * and never as a way to opt a layout out of dynamic type.
+   */
+  maxFontSizeMultiplier?: number;
   className?: string;
   testID?: string;
 };
@@ -73,21 +85,29 @@ export function Metric({
   unit,
   size = 'stat',
   tone = 'default',
+  maxFontSizeMultiplier,
   className,
   testID,
 }: MetricProps) {
+  // `exactOptionalPropertyTypes` (`code-conventions` §3) — `Text` cannot be
+  // handed an explicit `undefined` for a prop React Native types as optional.
+  const cap = maxFontSizeMultiplier === undefined ? {} : { maxFontSizeMultiplier };
   return (
-    <View testID={testID} className="flex-row items-baseline gap-4">
+    // `flex-wrap`: at 200% text a four-digit value and its unit stop fitting
+    // on one line, and wrapping is the only alternative to overflowing the
+    // row they sit in (`accessibility` §3).
+    <View testID={testID} className="flex-row flex-wrap items-baseline gap-4">
       <Text
         size={size}
         tone={tone}
         className={[SIZE_FONT_CLASS[size], className].filter(Boolean).join(' ')}
         style={{ fontVariant: ['tabular-nums'] }}
+        {...cap}
       >
         {value}
       </Text>
       {unit ? (
-        <Text size={stepDown(size)} tone="muted" style={{ fontVariant: ['tabular-nums'] }}>
+        <Text size={stepDown(size)} tone="muted" style={{ fontVariant: ['tabular-nums'] }} {...cap}>
           {unit}
         </Text>
       ) : null}

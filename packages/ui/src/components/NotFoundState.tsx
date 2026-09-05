@@ -1,7 +1,8 @@
 import { SearchX } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 
-import { colors, type Density } from '../theme/tokens.ts';
+import { type Density } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import { EmptyState } from './EmptyState.tsx';
 
@@ -69,6 +70,7 @@ export function NotFoundState({
   density = 'client',
   testID,
 }: NotFoundStateProps) {
+  const { colors } = useTheme();
   return (
     <EmptyState
       icon={icon ?? <SearchX size={GLYPH_SIZE} color={colors.fg.subtle} />}

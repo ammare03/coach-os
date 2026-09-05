@@ -2,15 +2,9 @@ import { X } from 'lucide-react-native';
 import { forwardRef } from 'react';
 import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
-import {
-  colors,
-  control,
-  fontFamily,
-  fontSize,
-  radius,
-  tapTarget,
-  type Density,
-} from '../theme/tokens.ts';
+import { useTextScale } from '../theme/TextScaleProvider.tsx';
+import { fontFamily, fontSize, radius, tapTarget, type Density } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import { IconButton } from './IconButton.tsx';
 
@@ -91,8 +85,14 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
   },
   ref,
 ) {
+  const { colors, control } = useTheme();
   const disabled = state === 'disabled';
   const showClear = value.length > 0 && !disabled && !multiline;
+  // A raw `TextInput` scales with the OS font setting on its own but knows
+  // nothing about the gallery's scale toggle, which is the one gap
+  // `component-gallery/01` flagged. At the default scale of 1 this resolves
+  // to `BODY_SIZE` and the render path is unchanged.
+  const fontSizeScaled = BODY_SIZE * useTextScale();
 
   return (
     <View style={styles.wrapper}>
@@ -122,6 +122,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
         style={[
           styles.base,
           {
+            fontSize: fontSizeScaled,
             paddingHorizontal: HORIZONTAL_PADDING[densityProp],
             paddingRight: showClear ? 40 : HORIZONTAL_PADDING[densityProp],
             borderColor: state === 'error' ? colors.border.strong : colors.border.DEFAULT,
@@ -136,7 +137,11 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             icon={<X size={16} color={colors.fg.muted} />}
             variant="ghost"
             size="sm"
-            accessibilityLabel="Clear"
+            // Names the field it clears when the field has a name — a form
+            // of six inputs otherwise announces six identical "Clear"
+            // buttons (`accessibility` §2). `FormField` supplies the label,
+            // so this is the normal case, not the rare one.
+            accessibilityLabel={accessibilityLabel ? `Clear ${accessibilityLabel}` : 'Clear'}
             onPress={() => onChangeText('')}
           />
         </View>
@@ -154,7 +159,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: radius.control,
     paddingVertical: 10,
-    fontSize: BODY_SIZE,
     fontFamily: fontFamily.sans,
   },
   clearSlot: {

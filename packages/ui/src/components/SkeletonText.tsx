@@ -1,6 +1,7 @@
 import { View, type DimensionValue } from 'react-native';
 
 import { fontSize, type TextSize } from '../theme/tokens.ts';
+import { useBoxTextScale } from '../theme/useBoxTextScale.ts';
 
 import { Skeleton } from './Skeleton.tsx';
 
@@ -34,8 +35,13 @@ export function SkeletonText({
   accessibilityLabel,
   testID,
 }: SkeletonTextProps) {
-  const [glyphHeight, metrics] = fontSize[size];
-  const lineBox = Number.parseInt(metrics.lineHeight, 10);
+  const [glyphSize, metrics] = fontSize[size];
+  // The whole contract of this component is that swapping it for real `Text`
+  // shifts nothing — which only holds if the reserved box tracks the text
+  // scale the real `Text` would have rendered at (`accessibility` §3).
+  const scale = useBoxTextScale();
+  const glyphHeight = Math.round(glyphSize * scale);
+  const lineBox = Math.round(Number.parseInt(metrics.lineHeight, 10) * scale);
 
   return (
     <View testID={testID}>

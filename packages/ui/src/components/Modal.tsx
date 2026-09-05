@@ -8,7 +8,9 @@ import {
   View,
 } from 'react-native';
 
-import { elevation, glass, radius, scrim } from '../theme/tokens.ts';
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { radius } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 export type ModalProps = {
   isOpen: boolean;
@@ -33,6 +35,9 @@ export type ModalProps = {
  * "yes" without reading, which is precisely why undo is the pattern.
  */
 export function Modal({ isOpen, onDismiss, isDismissible = true, children, testID }: ModalProps) {
+  const { elevation } = useTheme();
+  const styles = useThemedStyles();
+
   // Back closes the topmost surface; it does not navigate. Two stacked
   // surfaces close one at a time, which falls out of each mounted modal
   // registering its own handler — the last one registered wins, and
@@ -90,10 +95,12 @@ export function Modal({ isOpen, onDismiss, isDismissible = true, children, testI
   );
 }
 
-const styles = StyleSheet.create({
+// Every entry here carries a colour, so the whole sheet is themed rather
+// than split — a modal mounts once, not per list row.
+const useThemedStyles = createThemedStyles((theme) => ({
   scrim: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: scrim.color,
+    backgroundColor: theme.scrim.color,
   },
   centre: {
     flex: 1,
@@ -106,11 +113,11 @@ const styles = StyleSheet.create({
     maxWidth: 340,
     borderRadius: radius.section,
     borderWidth: 1,
-    borderColor: elevation.raised.borderColor,
+    borderColor: theme.elevation.raised.borderColor,
     overflow: 'hidden',
     padding: 20,
     gap: 14,
-    ...elevation.raised.shadow,
+    ...theme.elevation.raised.shadow,
   },
   highlight: {
     position: 'absolute',
@@ -118,7 +125,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: glass.tier2.highlight,
+    backgroundColor: theme.glass.tier2.highlight,
   },
   lowlight: {
     position: 'absolute',
@@ -126,6 +133,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: glass.tier2.lowlight,
+    backgroundColor: theme.glass.tier2.lowlight,
   },
-});
+}));

@@ -8,7 +8,9 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { control, duration, easing, radius, selectionPill, type Density } from '../theme/tokens.ts';
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { duration, easing, radius, type Density } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import { Pressable } from './Pressable.tsx';
 import { Text } from './Text.tsx';
@@ -44,10 +46,6 @@ const ITEM_HEIGHT = 38;
 // CONTRACT.md rule 3 — the 44px floor is taller than the 38px visual item;
 // symmetric vertical `hitSlop` reaches it without growing the track.
 const ITEM_HIT_SLOP = { top: 3, bottom: 3, left: 0, right: 0 };
-// DESIGN.md §9 — `bg.inset` (`#131A29` = rgb(19,26,41)) at 60%. The track
-// NEVER recolours; only the pill moves.
-const TRACK_BACKGROUND = control.track;
-
 const fillEasing = Easing.bezier(easing.fill[0], easing.fill[1], easing.fill[2], easing.fill[3]);
 
 /**
@@ -94,6 +92,8 @@ export function SegmentedControl<V extends string>({
   onChange,
   testID,
 }: SegmentedControlProps<V>) {
+  const { selectionPill } = useTheme();
+  const themed = useThemedStyles();
   const count = options.length;
   const selectedIndex = Math.max(
     0,
@@ -132,11 +132,14 @@ export function SegmentedControl<V extends string>({
       onLayout={handleLayout}
       accessibilityRole="tablist"
       style={[
-        styles.track,
+        themed.track,
         {
           borderRadius: radius.card,
           padding: TRACK_PADDING,
-          height: ITEM_HEIGHT + TRACK_PADDING * 2,
+          // Min-height, never height — a `label` line box is 40px at 200%
+          // text and the 38px item would clip it (`accessibility` §3). The
+          // pill stretches to whatever height the segments settle at.
+          minHeight: ITEM_HEIGHT + TRACK_PADDING * 2,
         },
       ]}
     >
@@ -148,8 +151,8 @@ export function SegmentedControl<V extends string>({
             pillStyle,
             {
               top: TRACK_PADDING,
+              bottom: TRACK_PADDING,
               left: TRACK_PADDING,
-              height: ITEM_HEIGHT,
               borderRadius: radius.control,
             },
             selectionPill.shadow,
@@ -192,11 +195,6 @@ export function SegmentedControl<V extends string>({
 }
 
 const styles = StyleSheet.create({
-  track: {
-    flexDirection: 'row',
-    backgroundColor: TRACK_BACKGROUND,
-    position: 'relative',
-  },
   pill: {
     position: 'absolute',
     overflow: 'hidden',
@@ -212,8 +210,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   segment: {
-    height: ITEM_HEIGHT,
+    minHeight: ITEM_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 2,
   },
 });
+
+// DESIGN.md §9 — the track is `bg.inset` at 60%. It NEVER recolours; only
+// the pill moves.
+const useThemedStyles = createThemedStyles((theme) => ({
+  track: {
+    flexDirection: 'row',
+    backgroundColor: theme.control.track,
+    position: 'relative',
+  },
+}));

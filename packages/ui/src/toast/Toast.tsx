@@ -11,7 +11,8 @@ import { Button } from '../components/Button.tsx';
 import { Metric } from '../components/Metric.tsx';
 import { Text } from '../components/Text.tsx';
 import { GlassSurface } from '../surfaces/GlassSurface.tsx';
-import { control, duration, easing, glass, radius, spacing } from '../theme/tokens.ts';
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { duration, easing, radius, spacing } from '../theme/tokens.ts';
 
 export type ToastAction = {
   /** Sentence case, one or two words (`COPY.md` CO§4.3 — "Set deleted" → *Undo*). */
@@ -116,6 +117,7 @@ export function Toast({
   testID,
 }: ToastProps) {
   const reducedMotion = useReducedMotion();
+  const themed = useThemedStyles();
   const progress = useSharedValue(0);
   const [secondsLeft, setSecondsLeft] = useState(() => Math.ceil(durationMs / 1000));
 
@@ -163,7 +165,7 @@ export function Toast({
   }));
 
   return (
-    <Animated.View style={[styles.shadow, animatedStyle]} accessibilityRole="alert">
+    <Animated.View style={[themed.shadow, animatedStyle]} accessibilityRole="alert">
       <GlassSurface tier="tier1" interactive={action !== undefined} style={styles.surface}>
         <View style={[styles.row, action ? styles.rowWithAction : null]} testID={testID}>
           <Text size="body" tone="glass" style={styles.message}>
@@ -197,9 +199,10 @@ export function Toast({
  * carry the whole meaning (`accessibility` §4).
  */
 function Countdown({ secondsLeft }: { secondsLeft: number }): ReactNode {
+  const themed = useThemedStyles();
   return (
     <View
-      style={styles.countdown}
+      style={themed.countdown}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
@@ -209,12 +212,6 @@ function Countdown({ secondsLeft }: { secondsLeft: number }): ReactNode {
 }
 
 const styles = StyleSheet.create({
-  // Tier-1's long soft drop sits on the outer view: `GlassSurface` clips its
-  // own children (`overflow: hidden`), which would clip the shadow with them.
-  shadow: {
-    borderRadius: radius.full,
-    ...glass.tier1.shadow,
-  },
   surface: {
     borderRadius: radius.full,
   },
@@ -236,14 +233,26 @@ const styles = StyleSheet.create({
   message: {
     flex: 1,
   },
+});
+
+const useThemedStyles = createThemedStyles((theme) => ({
+  // Tier-1's long soft drop sits on the outer view: `GlassSurface` clips its
+  // own children (`overflow: hidden`), which would clip the shadow with them.
+  shadow: {
+    borderRadius: radius.full,
+    ...theme.glass.tier1.shadow,
+  },
   countdown: {
-    width: COUNTDOWN_SIZE,
-    height: COUNTDOWN_SIZE,
+    // Min, never fixed — a `label` line box is 40px at 200% text and would
+    // be cut in half by a 28px circle (`accessibility` §3).
+    minWidth: COUNTDOWN_SIZE,
+    minHeight: COUNTDOWN_SIZE,
+    paddingHorizontal: spacing(6),
     borderRadius: radius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: control.surface,
+    backgroundColor: theme.control.surface,
     borderWidth: 1,
-    borderColor: control.border,
+    borderColor: theme.control.border,
   },
-});
+}));

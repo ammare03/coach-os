@@ -9,9 +9,9 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { useTextScale } from '../theme/TextScaleProvider.tsx';
 import {
-  colors,
-  control,
   density as densityTokens,
   fontFamily,
   fontSize,
@@ -20,6 +20,7 @@ import {
   type Density,
   type TextSize,
 } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import { Metric } from './Metric.tsx';
 import { Pressable } from './Pressable.tsx';
@@ -156,12 +157,15 @@ function StepperKey({
   onPressOut,
   testID,
 }: StepperKeyProps) {
+  const { colors } = useTheme();
+  const themed = useThemedStyles();
+
   const style: StyleProp<ViewStyle> = [
-    styles.key,
+    themed.key,
+    disabled ? themed.keySurfaceDisabled : themed.keySurface,
     {
       width: size,
       height: size,
-      backgroundColor: disabled ? control.surfaceDisabled : control.surface,
       borderWidth: disabled ? 0 : 1,
     },
   ];
@@ -183,7 +187,7 @@ function StepperKey({
       {/* §9's `inset 0 1px 0 rgba(255,255,255,.14)`, faked — React Native has
           no inset box-shadow (§12). It does NOT collapse on press: the
           prototypes' active state changes the transform only. */}
-      <View pointerEvents="none" style={styles.keyHighlight} />
+      <View pointerEvents="none" style={themed.keyHighlight} />
       <Icon
         size={ICON_SIZE}
         color={disabled ? colors.fg.faint : colors.fg.glass}
@@ -295,6 +299,8 @@ export function NumberStepper({
     if (event.nativeEvent.actionName === 'decrement') applyStep(-1);
   };
 
+  const themed = useThemedStyles();
+  const textScale = useTextScale();
   const keySize = densityTokens[densityProp].button;
   // Mirrors `Button`'s pattern: the visible box is the design's, the tap
   // area reaches the floor through symmetric `hitSlop` rather than by
@@ -374,10 +380,13 @@ export function NumberStepper({
             accessibilityLabel={accessibilityLabel}
             testID={testID === undefined ? undefined : `${testID}-input`}
             style={[
-              styles.valueInput,
+              themed.valueInput,
               {
                 minHeight: keySize,
-                fontSize: fontSize[VALUE_SIZE[densityProp]][0],
+                // Scaled explicitly for the same reason `Input`'s is: a raw
+                // `TextInput` tracks the OS font setting but not the gallery's
+                // scale toggle (`component-gallery/02`).
+                fontSize: fontSize[VALUE_SIZE[densityProp]][0] * textScale,
               },
             ]}
           />
@@ -407,23 +416,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing(14),
   },
-  key: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: KEY_RADIUS,
-    borderColor: control.borderBright,
-    // Clips the faked inset hairline to the radius. `hitSlop` sits on the
-    // outer pressable, so this does not shrink the tap area.
-    overflow: 'hidden',
-  },
-  keyHighlight: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: control.stepperHighlight,
-  },
   valueArea: {
     flex: 1,
   },
@@ -440,11 +432,39 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing(6),
   },
+});
+
+// Everything the stepper draws that follows the scheme. The layout above
+// does not, so it stays at module scope where it costs nothing.
+const useThemedStyles = createThemedStyles((theme) => ({
+  key: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: KEY_RADIUS,
+    borderColor: theme.control.borderBright,
+    // Clips the faked inset hairline to the radius. `hitSlop` sits on the
+    // outer pressable, so this does not shrink the tap area.
+    overflow: 'hidden',
+  },
+  keySurface: {
+    backgroundColor: theme.control.surface,
+  },
+  keySurfaceDisabled: {
+    backgroundColor: theme.control.surfaceDisabled,
+  },
+  keyHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: theme.control.stepperHighlight,
+  },
   valueInput: {
     alignSelf: 'stretch',
     textAlign: 'center',
-    color: colors.fg.bright,
+    color: theme.colors.fg.bright,
     fontFamily: fontFamily['display-bold'],
     fontVariant: ['tabular-nums'],
   },
-});
+}));

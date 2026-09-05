@@ -31,11 +31,13 @@ function byTestId(testID: string) {
   return screen.getByTestId(testID, { includeHiddenElements: true });
 }
 
+// `minHeight`: the row reserves the real row height as a FLOOR, because the
+// skeleton lines inside it grow with the text scale (`accessibility` §3).
 function childHeights(testID: string): (DimensionValue | undefined)[] {
   return byTestId(testID).children.map((child) =>
     typeof child === 'string'
       ? undefined
-      : StyleSheet.flatten(child.props.style as ViewStyle | undefined)?.height,
+      : StyleSheet.flatten(child.props.style as ViewStyle | undefined)?.minHeight,
   );
 }
 

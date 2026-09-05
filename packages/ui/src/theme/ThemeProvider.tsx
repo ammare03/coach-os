@@ -3,9 +3,14 @@ import { vars } from 'nativewind';
 import { createContext, useMemo, type ReactNode } from 'react';
 import { View } from 'react-native';
 
-import { schemes, type Scheme } from './schemes.ts';
+import { schemeInk, schemes, schemeTokens, type Scheme } from './schemes.ts';
 import { flattenColorChannels } from './to-rgb-channels.ts';
-import { colors as defaultColors } from './tokens.ts';
+import {
+  deriveSchemeTokens,
+  colors as defaultColors,
+  type SchemeColors,
+  type SchemeTokens,
+} from './tokens.ts';
 
 // Deliberately not NativeWind's `darkMode: 'class'` + `colorScheme` API
 // (theme-tokens/04's own approach text assumes it). That mechanism always
@@ -15,10 +20,21 @@ import { colors as defaultColors } from './tokens.ts';
 // `vars()` sets the same CSS custom properties `tokens.ts`/`global.css`
 // already define, from plain React state — one mechanism for both the
 // scheme switch and P25's white-label brand override.
+//
+// The context carries the scheme's DERIVED groups as well as its colours
+// (`component-gallery/04`). Before that task the context published only
+// `colors` and had no consumers at all, so every colour a component set in
+// a JavaScript `style` object came from a module-level import of the dark
+// table and never changed with the scheme. Publishing the groups here is
+// what makes `scheme="light"` reach the screen.
 export type ThemeContextValue = {
   scheme: Scheme;
-  colors: (typeof schemes)['dark'] & { brand: ReturnType<typeof generateBrandRamp> };
-};
+  colors: SchemeColors & {
+    brand: ReturnType<typeof generateBrandRamp>;
+    /** §1.1's primary fill. Scheme-invariant — light keeps the same peach gradient and the same dark `fg.onBrand` ink on it. */
+    primary: typeof defaultColors.primary;
+  };
+} & SchemeTokens;
 
 export const ThemeContext = createContext<ThemeContextValue | null>(null);
 
@@ -55,9 +71,24 @@ export function ThemeProvider({
     [schemeColors, brand],
   );
 
-  const contextValue = useMemo<ThemeContextValue>(
-    () => ({ scheme, colors: { ...schemeColors, brand } }),
+  // The precomputed column when there is no white-label override, which is
+  // every case today: composing it per provider would allocate seven
+  // objects for a result `schemes.ts` already holds.
+  const tokens = useMemo(
+    () =>
+      brand === defaultColors.brand
+        ? schemeTokens[scheme]
+        : deriveSchemeTokens(schemeColors, schemeInk[scheme], brand),
     [scheme, schemeColors, brand],
+  );
+
+  const contextValue = useMemo<ThemeContextValue>(
+    () => ({
+      scheme,
+      colors: { ...schemeColors, brand, primary: defaultColors.primary },
+      ...tokens,
+    }),
+    [scheme, schemeColors, brand, tokens],
   );
 
   return (
