@@ -2,17 +2,31 @@ import { Stack } from 'expo-router';
 
 import { AuthGate } from '../../features/auth/AuthGate.tsx';
 
-// Bare passthrough (`phase-05-app-shell/router-skeleton/01`), the (client)
-// counterpart to (coach)/_layout.tsx. The focus modes — workout, scan,
-// record-form-check, live — sit outside the tab layout by design
-// (`screen-composition` §1.3), which is why they are siblings of (tabs)
-// here and not children of it.
+/** The (coach) counterpart's `FOCUS_MODE`, and the same reasoning. */
+const FOCUS_MODE = {
+  presentation: 'fullScreenModal',
+  gestureEnabled: false,
+} as const;
+
+// The (client) counterpart to (coach)/_layout.tsx: a stack whose first screen
+// is the tab navigator, so the focus modes — the workout logger and the live
+// call — are siblings of `(tabs)` and render with no dock (`CLAUDE.md` §9.2,
+// `UI-UX.md` §UX1.1). `headerShown: false` and `AuthGate`: see (coach).
 //
-// `AuthGate` (`providers-and-gates/03`): see (coach)/_layout.tsx.
+// `log-food`, `scan` and `record-form-check` are deliberately absent.
+// §9.1 marks them modals, and `navigation-primitives/04` gives them
+// `presentation: 'modal'` — a short dismissible task, not a focus mode.
 export default function ClientLayout() {
   return (
     <AuthGate group="(client)">
-      <Stack />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="workout/[sessionId]" options={FOCUS_MODE} />
+        <Stack.Screen name="live/[sessionId]" options={FOCUS_MODE} />
+        {/* Not a focus mode: the post-session summary is read afterwards, so
+            it is an ordinary push with a working back. */}
+        <Stack.Screen name="workout/[sessionId]/summary" />
+      </Stack>
     </AuthGate>
   );
 }
