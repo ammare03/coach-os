@@ -100,13 +100,37 @@ function caller(ip = 'default-test-ip') {
   return appRouter.createCaller(ctx);
 }
 
-// A real wait, not a microtask tick — `requestReset`'s work (Argon2id-
-// adjacent hashing, a Redis round trip, the mocked send) is genuinely
-// async across more than one tick, and a fire-and-forget chain still
-// running when the next test's `beforeEach` clears the mock is exactly
-// the kind of cross-test race a `setImmediate` doesn't reliably avoid.
-function waitForFireAndForget(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 50));
+// `requestReset` returns before its own work finishes (Argon2id-adjacent
+// hashing, a Redis round trip, the mocked send), so the assertions below
+// have to wait for a fire-and-forget chain.
+//
+// They wait for the OUTCOME, never for a duration. A fixed sleep here was
+// the previous approach and it passed this file in isolation while failing
+// the full `pnpm --filter api test` run: 70-odd suites hash concurrently,
+// the deliberately-expensive Argon2 work loses the CPU, and any budget
+// tuned on an idle machine becomes a coin flip under load. Polling costs
+// nothing when the work is already done and cannot be out-raced when it
+// is not.
+async function waitFor(condition: () => boolean | Promise<boolean>, what: string): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    if (await condition()) return;
+    if (Date.now() >= deadline) throw new Error(`timed out after 10s waiting for ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+/** Wait until the reset email has actually been handed to `sendEmail`. */
+function waitForResetEmail(): Promise<void> {
+  return waitFor(() => sendEmailMock.mock.calls.length >= 1, 'the reset email to be sent');
+}
+
+// Proving an email was NOT sent is the one case with no condition to poll:
+// absence is only ever "nothing yet". This stays a bounded wait, and is
+// deliberately far longer than the 50ms it replaces — a false pass here is
+// silent, so buy margin the positive cases no longer need to.
+function waitForSendToSettle(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 500));
 }
 
 async function seedCoach(email: string) {
@@ -141,7 +165,10 @@ describe('auth.requestReset', () => {
     const ip = 'ip-sends';
     await caller(ip).auth.requestReset({ email: 'sends@reset-test.com' });
     await caller(ip).auth.requestReset({ email: 'does-not-exist@reset-test.com' });
-    await waitForFireAndForget();
+    await waitForResetEmail();
+    // ...and settle, so a wrongly-sent second email fails this rather than
+    // arriving just after the assertion.
+    await waitForSendToSettle();
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
     expect(sendEmailMock.mock.calls[0]?.[0]).toMatchObject({ to: 'sends@reset-test.com' });
   });
@@ -153,14 +180,20 @@ describe('auth.requestReset', () => {
       .set({ deletedAt: new Date() })
       .where(eq(schema.users.id, user.id));
     await caller('ip-deleted').auth.requestReset({ email: 'deleted@reset-test.com' });
-    await waitForFireAndForget();
+    await waitForSendToSettle();
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 
   it('writes an audit_log row for a real request, with no email in it', async () => {
     const user = await seedCoach('audited@reset-test.com');
     await caller('ip-audited').auth.requestReset({ email: 'audited@reset-test.com' });
-    await waitForFireAndForget();
+    await waitFor(async () => {
+      const written = await db
+        .select()
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.action, 'auth.reset.requested'));
+      return written.some((r) => r.targetId === user.id);
+    }, 'the audit_log row to be written');
     const rows = await db
       .select()
       .from(schema.auditLog)
@@ -174,7 +207,7 @@ describe('auth.requestReset', () => {
 describe('auth.resetPassword', () => {
   async function requestAndCaptureToken(email: string, ip: string): Promise<string> {
     await caller(ip).auth.requestReset({ email });
-    await waitForFireAndForget();
+    await waitForResetEmail();
     const call = sendEmailMock.mock.calls.at(-1);
     // `PasswordResetEmail({ resetUrl })` is called directly, not written as
     // JSX (`../features/auth/password-reset.ts`) — it returns the
