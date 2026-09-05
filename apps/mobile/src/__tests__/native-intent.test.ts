@@ -7,7 +7,12 @@ import { useAuthStore } from '../features/auth/store.ts';
 // comes back, and an unrecognised one comes back unchanged.
 
 beforeEach(() => {
-  useAuthStore.setState({ status: 'unauthenticated', userId: null, role: null });
+  useAuthStore.setState({
+    status: 'unauthenticated',
+    userId: null,
+    role: null,
+    isOnboarded: false,
+  });
 });
 
 describe('redirectSystemPath', () => {

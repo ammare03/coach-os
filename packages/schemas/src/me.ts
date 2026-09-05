@@ -83,6 +83,41 @@ export const requestExportForDependentInput = strictObject({
   dependentUserId: id,
 });
 
+/**
+ * The wordings of the §21.3 medical disclaimer this API will accept an
+ * acknowledgment of (`phase-06-onboarding/onboarding-infrastructure/03`).
+ * A closed set, so a patched client cannot record agreement to a string
+ * nobody has ever seen.
+ *
+ * **Add a version here in the same change that changes the words** — most
+ * immediately, when §21.3's "get a lawyer before launch" review replaces
+ * the placeholder copy. Never edit an existing entry's meaning: a person
+ * acknowledged the text that shipped under that identifier, and rewriting
+ * it under them is exactly what the version exists to prevent. Old
+ * versions stay in this list forever; they are what already-stored rows
+ * refer to.
+ *
+ * The copy itself lives with the component that renders it
+ * (`packages/ui/src/MedicalDisclaimer/copy.ts`), which cannot import this
+ * package — `apps/mobile`'s `medical-disclaimer-version.test.ts` is what
+ * asserts the two agree.
+ */
+/** The wording currently shown to a user. */
+export const CURRENT_MEDICAL_DISCLAIMER_VERSION = '2026-09-placeholder';
+
+export const MEDICAL_DISCLAIMER_VERSIONS = [CURRENT_MEDICAL_DISCLAIMER_VERSION] as const;
+
+export const medicalDisclaimerVersion = z.enum(MEDICAL_DISCLAIMER_VERSIONS);
+
+/**
+ * `me.medicalDisclaimer.acknowledge` — the client sends back the version it
+ * actually displayed rather than the server assuming the current one, so a
+ * device running an older build records what that build showed.
+ */
+export const acknowledgeMedicalDisclaimerInput = strictObject({
+  version: medicalDisclaimerVersion,
+});
+
 // `me.exportHistory`'s input is the package-root `paginationInput`
 // (`./pagination.ts`), imported directly at the router call site, never
 // redeclared here — this module's own layout test restricts every §6.1

@@ -18,7 +18,7 @@ function makeAccessToken(payload: unknown): string {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  useAuthStore.setState({ status: 'loading', userId: null, role: null });
+  useAuthStore.setState({ status: 'loading', userId: null, role: null, isOnboarded: false });
 });
 
 describe('bootstrap', () => {
@@ -45,6 +45,7 @@ describe('bootstrap', () => {
       accessToken: makeAccessToken({ sub: 'user-1', role: 'coach' }),
       refreshToken: 'refresh-2',
       expiresAt: new Date('2026-08-28T01:00:00.000Z'),
+      onboardingCompletedAt: new Date('2026-08-01T00:00:00.000Z'),
     });
 
     await bootstrap();
@@ -53,6 +54,33 @@ describe('bootstrap', () => {
       status: 'authenticated',
       userId: 'user-1',
       role: 'coach',
+      isOnboarded: true,
+    });
+  });
+
+  // The cold-start half of `onboarding-infrastructure/02`: a session that
+  // was killed mid-onboarding must come back mid-onboarding, and rotation
+  // is the only call made before the first screen renders.
+  it('resolves a session with no onboarding timestamp as not onboarded', async () => {
+    (getTokens as jest.Mock).mockResolvedValue({
+      accessToken: 'old',
+      refreshToken: 'refresh-1',
+      accessExpiresAt: '2026-08-28T00:00:00.000Z',
+    });
+    (refreshTokenPair as jest.Mock).mockResolvedValue({
+      accessToken: makeAccessToken({ sub: 'user-1', role: 'client' }),
+      refreshToken: 'refresh-2',
+      expiresAt: new Date('2026-08-28T01:00:00.000Z'),
+      onboardingCompletedAt: null,
+    });
+
+    await bootstrap();
+
+    expect(useAuthStore.getState()).toMatchObject({
+      status: 'authenticated',
+      userId: 'user-1',
+      role: 'client',
+      isOnboarded: false,
     });
   });
 
@@ -75,7 +103,12 @@ describe('bootstrap', () => {
   });
 
   it('follows a sign-out signal from outside the bootstrap flow', () => {
-    useAuthStore.setState({ status: 'authenticated', userId: 'user-1', role: 'coach' });
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'user-1',
+      role: 'coach',
+      isOnboarded: true,
+    });
 
     signalSignOutRequired();
 

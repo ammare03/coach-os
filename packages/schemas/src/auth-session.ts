@@ -34,12 +34,20 @@ export type AuthSession = z.infer<typeof authSession>;
  * What a successful `auth.refresh` returns — a new access/refresh pair,
  * same shape as the `accessToken`/`refreshToken`/`expiresAt` fields of
  * {@link authSession}, minus `deviceId` (unchanged by rotation, so not
- * worth returning again) and `user` (rotation doesn't re-fetch the
- * profile; `me.get` is the one place for that).
+ * worth returning again) and the rest of `user` (rotation doesn't re-fetch
+ * the profile; `me.get` is the one place for that).
+ *
+ * `onboardingCompletedAt` is the one exception, added by
+ * `phase-06-onboarding/onboarding-infrastructure/02`. Refresh is the only
+ * call the app makes before its first screen renders, and the route gate
+ * has to know which of two homes a role has at that moment — so this is a
+ * routing fact travelling with the session, not the profile creeping back
+ * in. It costs no extra query: rotation already reads this row for `role`.
  */
 export const refreshOutput = z.object({
   accessToken: z.string(),
   refreshToken: z.string(),
   expiresAt: z.iso.datetime(),
+  onboardingCompletedAt: z.iso.datetime().nullable(),
 });
 export type RefreshOutput = z.infer<typeof refreshOutput>;

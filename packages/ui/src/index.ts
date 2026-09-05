@@ -265,6 +265,23 @@ export {
   type ForbiddenStateProps,
 } from './components/ForbiddenState.tsx';
 
+// ── Legal notices ───────────────────────────────────────────────────────
+// `CLAUDE.md` §21.3's standing medical disclaimer, in the two places §21.3
+// names it: once during onboarding, behind an explicit acknowledgment, and
+// in settings forever after. One component with a `variant`, deliberately
+// not two — the whole point is that the words a person re-reads later are
+// byte-identical to the words they agreed to.
+//
+// ⚠️ The copy is PLACEHOLDER, pending the legal review §21.3 requires
+// before launch. `MedicalDisclaimer/copy.ts` carries that warning and the
+// version identifier every acknowledgment is recorded against.
+export {
+  MedicalDisclaimer,
+  type MedicalDisclaimerProps,
+  type MedicalDisclaimerVariant,
+} from './MedicalDisclaimer/MedicalDisclaimer.tsx';
+export { MEDICAL_DISCLAIMER_COPY, MEDICAL_DISCLAIMER_VERSION } from './MedicalDisclaimer/copy.ts';
+
 // ── Haptics ─────────────────────────────────────────────────────────────
 // Three functions, and deliberately no generic `triggerHaptic`. `CLAUDE.md`
 // §7.5 sanctions exactly three haptics in the product — `Light` on set

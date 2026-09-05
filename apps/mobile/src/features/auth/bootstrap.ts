@@ -47,7 +47,15 @@ export async function bootstrap(): Promise<void> {
       refreshToken: refreshed.refreshToken,
       accessExpiresAt: refreshed.expiresAt.toISOString(),
     });
-    useAuthStore.getState().setAuthenticated({ userId: claims.userId, role: claims.role });
+    // `onboardingCompletedAt` rides on the rotation response rather than a
+    // second `me.get` call, which is what keeps the budget above intact
+    // while still giving the route gate its third dimension at cold start
+    // (`phase-06-onboarding/onboarding-infrastructure/02`).
+    useAuthStore.getState().setAuthenticated({
+      userId: claims.userId,
+      role: claims.role,
+      isOnboarded: refreshed.onboardingCompletedAt !== null,
+    });
   } catch {
     // Expired, revoked, or reused refresh token — the session is over.
     // Clearing now means the next launch doesn't repeat this same failed

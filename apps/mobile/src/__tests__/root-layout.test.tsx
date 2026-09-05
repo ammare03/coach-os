@@ -86,7 +86,12 @@ beforeEach(() => {
   // `providers-and-gates/03` made the splash outlast the auth bootstrap, so
   // a resolved session is now part of "setup is done". Which session does not
   // matter here — the route gate itself is asserted in `auth-gate.test.tsx`.
-  useAuthStore.setState({ status: 'unauthenticated', userId: null, role: null });
+  useAuthStore.setState({
+    status: 'unauthenticated',
+    userId: null,
+    role: null,
+    isOnboarded: false,
+  });
 });
 
 /**

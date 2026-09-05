@@ -6,6 +6,7 @@ import { DatesSection } from './DatesSection.tsx';
 import { FormsSection } from './FormsSection.tsx';
 import { HapticsSection } from './HapticsSection.tsx';
 import { LabelsSection } from './LabelsSection.tsx';
+import { LegalNoticesSection } from './LegalNoticesSection.tsx';
 import { LoadingSection } from './LoadingSection.tsx';
 import { OverlaysSection } from './OverlaysSection.tsx';
 import { PeopleSection } from './PeopleSection.tsx';
@@ -39,5 +40,6 @@ export const GALLERY_SECTIONS: readonly GalleryEntry[] = [
   { name: 'People', Section: PeopleSection },
   { name: 'Loading', Section: LoadingSection },
   { name: 'Screen states', Section: ScreenStatesSection },
+  { name: 'Legal notices', Section: LegalNoticesSection },
   { name: 'Haptics', Section: HapticsSection },
 ];
