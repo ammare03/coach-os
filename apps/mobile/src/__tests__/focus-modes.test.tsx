@@ -15,6 +15,9 @@ import ClientNutritionScreen from '../app/(client)/(tabs)/nutrition.tsx';
 import ClientProgressScreen from '../app/(client)/(tabs)/progress.tsx';
 import ClientLayout from '../app/(client)/_layout.tsx';
 import ClientLiveScreen from '../app/(client)/live/[sessionId].tsx';
+import ClientLogFoodScreen from '../app/(client)/log-food.tsx';
+import ClientRecordFormCheckScreen from '../app/(client)/record-form-check.tsx';
+import ClientScanScreen from '../app/(client)/scan.tsx';
 import ClientWorkoutSummaryScreen from '../app/(client)/workout/[sessionId]/summary.tsx';
 import ClientWorkoutScreen from '../app/(client)/workout/[sessionId].tsx';
 import CoachTabsLayout from '../app/(coach)/(tabs)/_layout.tsx';
@@ -112,6 +115,11 @@ function renderClientGroup(initialUrl: string) {
       '(client)/workout/[sessionId]': ClientWorkoutScreen,
       '(client)/workout/[sessionId]/summary': ClientWorkoutSummaryScreen,
       '(client)/live/[sessionId]': ClientLiveScreen,
+      // Declared by the layout as modals (`navigation-primitives/04`);
+      // registered so this tree stays complete, not asserted on here.
+      '(client)/log-food': ClientLogFoodScreen,
+      '(client)/scan': ClientScanScreen,
+      '(client)/record-form-check': ClientRecordFormCheckScreen,
     },
     { initialUrl },
   );
