@@ -84,6 +84,18 @@ const noRawColorRule = {
     '**/app/(auth)/complete-social-signup.tsx',
     // Asserts against the real token hex values by design.
     '**/theme/useTheme.test.tsx',
+    // The contrast audit (`component-gallery/03`). `contrast.ts` is pure
+    // colour arithmetic whose only "literal" is the error message naming
+    // the formats it parses; its test has to feed the parser hexes and
+    // rgba strings — including invalid ones — that no token can supply.
+    // `contrast-audit.test.ts` composites `rgba()` values DESIGN.md states
+    // but `tokens.ts` does not name (§8's record scrim), and its
+    // exception reasons quote the measured hex so a reader can check the
+    // number without leaving the file. Same exemption class as
+    // `tokens.test.ts`: this IS the file that audits the colours.
+    '**/theme/contrast.ts',
+    '**/theme/contrast.test.ts',
+    '**/theme/contrast-audit.test.ts',
     // `GlassSurface` composes a white-label tint into an `rgba()` string at
     // the contrast clamp — the alpha is computed, so no token can express
     // the result. Its test supplies a synthetic brand hex for the same
@@ -120,6 +132,12 @@ const adherenceColorsOnlyRule = {
     // the theme module, same exemption class as tokens.ts itself.
     '**/theme/tokens.test.ts',
     '**/theme/useTheme.test.tsx',
+    // The contrast audit measures every token against every surface,
+    // `state.*` and `urgent-text` included — it renders nothing, so §8's
+    // "never hue alone" rule has no consumer here to bind. Leaving the
+    // adherence ramp out of the audit would exempt the four colours whose
+    // legibility a coach's dashboard depends on most.
+    '**/theme/contrast-audit.test.ts',
     // `Button`'s `danger` variant. `DESIGN.md` §1.1 makes `urgent` the
     // destructive colour and §9 makes the variant outlined-and-lettered
     // rather than filled — a filled red rectangle reads as an adherence

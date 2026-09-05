@@ -71,7 +71,10 @@ export const schemes: Record<Scheme, SchemeColors> = {
       DEFAULT: '#161E2F',
       glass: '#161E2F',
       warm: '#7A4530',
-      'warm-muted': '#8C5A44',
+      // Darkened from #8C5A44, which measured 4.37:1 on `bg.outer` —
+      // under SC 1.4.3's 4.5:1 floor (`contrast-audit.test.ts`). #835340
+      // clears it on all six light surfaces at 4.88:1 worst case.
+      'warm-muted': '#835340',
       muted: '#59637A',
       subtle: '#78829A',
       faint: '#A8B1C4',
@@ -97,6 +100,11 @@ export const schemes: Record<Scheme, SchemeColors> = {
     deep: '#7A2C42',
     urgent: '#9C1626',
     'urgent-text': '#9C1626',
-    'on-deep': '#7A4530',
+    // `on-deep` is the label ON the maroon surface (DESIGN.md §1.1,
+    // "labels on maroon"), and `deep` stays dark in both schemes — so the
+    // ink does not invert with the rest of the ramp. The previous #7A4530
+    // was role-inverted along with `warm`, which put brown on maroon at
+    // 1.20:1. Unchanged from dark, it reads 6.81:1 on the light `deep`.
+    'on-deep': colors['on-deep'],
   },
 };

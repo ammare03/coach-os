@@ -143,7 +143,11 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             icon={<X size={16} color={colors.fg.muted} />}
             variant="ghost"
             size="sm"
-            accessibilityLabel="Clear"
+            // Names the field it clears when the field has a name — a form
+            // of six inputs otherwise announces six identical "Clear"
+            // buttons (`accessibility` §2). `FormField` supplies the label,
+            // so this is the normal case, not the rare one.
+            accessibilityLabel={accessibilityLabel ? `Clear ${accessibilityLabel}` : 'Clear'}
             onPress={() => onChangeText('')}
           />
         </View>

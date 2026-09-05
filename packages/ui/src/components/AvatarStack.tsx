@@ -105,11 +105,15 @@ export function AvatarStack({ people, max = 4, size = 'sm', testID }: AvatarStac
             ]}
           >
             {/* Capped for the same reason `Avatar`'s initials are: the chip is
-                one of the circles in the stack and cannot grow past it. */}
+                one of the circles in the stack and cannot grow past it.
+                `default`, not `muted`: the chip's fill is `border.strong`,
+                against which `fg.muted` measures 3.38:1 (dark) / 3.21:1
+                (light), under SC 1.4.3 for a count that is the only place
+                the hidden members are named at all. */}
             <Metric
               value={`+${overflowCount}`}
               size={AVATAR_TEXT_SIZE[size]}
-              tone="muted"
+              tone="default"
               maxFontSizeMultiplier={AVATAR_MAX_FONT_SCALE[size]}
             />
           </View>

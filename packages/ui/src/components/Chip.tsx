@@ -53,45 +53,65 @@ const CHIP_HIT_SLOP = Math.ceil((tapTarget.MIN - CHIP_HEIGHT) / 2);
 export function Chip({ label, selected = false, onPress, iconLeft, onRemove, testID }: ChipProps) {
   const interactive = Boolean(onPress);
 
+  const chipStyle = [
+    styles.chip,
+    selected
+      ? styles.chipSelected
+      : { backgroundColor: control.surface, borderColor: colors.border.strong },
+  ];
+
+  const body = (
+    <>
+      {selected ? (
+        <>
+          <LinearGradient
+            colors={selectionPill.gradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <View
+            pointerEvents="none"
+            style={[styles.hairlineTop, { backgroundColor: selectionPill.highlight }]}
+          />
+        </>
+      ) : null}
+      <View style={styles.content}>
+        {iconLeft}
+        <Text size="label" tone={selected ? 'bright' : 'muted'} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+    </>
+  );
+
   return (
     <View style={styles.row}>
-      <Pressable
-        onPress={onPress}
-        disabled={!interactive}
-        hitSlop={CHIP_HIT_SLOP}
-        accessibilityRole={interactive ? 'button' : undefined}
-        accessibilityLabel={label}
-        accessibilityState={{ selected }}
-        testID={testID}
-        containerStyle={selected ? styles.selectedShadow : undefined}
-        style={[
-          styles.chip,
-          selected
-            ? styles.chipSelected
-            : { backgroundColor: control.surface, borderColor: colors.border.strong },
-        ]}
-      >
-        {selected ? (
-          <>
-            <LinearGradient
-              colors={selectionPill.gradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            />
-            <View
-              pointerEvents="none"
-              style={[styles.hairlineTop, { backgroundColor: selectionPill.highlight }]}
-            />
-          </>
-        ) : null}
-        <View style={styles.content}>
-          {iconLeft}
-          <Text size="label" tone={selected ? 'bright' : 'muted'} numberOfLines={1}>
-            {label}
-          </Text>
+      {interactive ? (
+        <Pressable
+          onPress={onPress}
+          hitSlop={CHIP_HIT_SLOP}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          accessibilityState={{ selected }}
+          testID={testID}
+          containerStyle={selected ? styles.selectedShadow : undefined}
+          style={chipStyle}
+        >
+          {body}
+        </Pressable>
+      ) : (
+        // A chip with no `onPress` is a tag, not a control. As a disabled
+        // `Pressable` it announced as a dimmed button carrying a `selected`
+        // state — three claims, none true of a read-only label
+        // (`component-gallery/03`). The shadow sits on an outer view because
+        // `chip` clips its own children.
+        <View style={selected ? styles.selectedShadow : undefined}>
+          <View accessible accessibilityLabel={label} testID={testID} style={chipStyle}>
+            {body}
+          </View>
         </View>
-      </Pressable>
+      )}
 
       {onRemove ? (
         <IconButton

@@ -236,7 +236,12 @@ export function MacroBar({
             <View key={part.key} style={{ flexGrow: part.fraction, flexBasis: 0 }}>
               {part.fraction * fillFraction >= MIN_LABEL_FRACTION ? (
                 <View style={styles.label}>
-                  <Text size="micro" tone="subtle">
+                  {/* `muted`, never `subtle`: this renders at 11px and
+                      DESIGN.md §13 restricts `fg.subtle` to ≥14px — it
+                      measured 3.63:1 on the canvas and 2.90:1 on a card,
+                      under SC 1.4.3, for the letter that names which macro
+                      the number beside it belongs to. */}
+                  <Text size="micro" tone="muted">
                     {part.glyph}
                   </Text>
                   <Metric value={round(part.grams)} unit="g" size="micro" tone="muted" />
