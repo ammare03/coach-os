@@ -1,6 +1,7 @@
 import { useAuthStore } from '../features/auth/store.ts';
 import { resolveDeepLink } from '../features/navigation/deep-links/link-table.ts';
 import { parseDeepLink } from '../features/navigation/deep-links/parse.ts';
+import { holdPendingDeepLink } from '../features/navigation/deep-links/pending.ts';
 
 // `phase-05-app-shell/deep-linking/02`. expo-router calls this with every
 // incoming URL before its own file-based resolution runs. Composition only
@@ -22,6 +23,19 @@ export function redirectSystemPath({ path }: { path: string; initial: boolean })
     return path;
   }
 
-  const target = resolveDeepLink(link, useAuthStore.getState().role);
-  return target.status === 'resolved' ? target.href : path;
+  const { status, role } = useAuthStore.getState();
+  const target = resolveDeepLink(link, role);
+  if (target.status === 'resolved') {
+    return target.href;
+  }
+
+  // `deep-linking/04`. The cold-start case: the link is one of ours and
+  // role-dependent, and the bootstrap has not answered yet. Park it — the
+  // gate is about to redirect to a group root, and `PendingDeepLinkReplay`
+  // navigates on top of that once it has.
+  if (target.status === 'needs-role' && status === 'loading') {
+    holdPendingDeepLink(link);
+  }
+
+  return path;
 }
