@@ -6,6 +6,7 @@ import InviteRoute from '../app/(auth)/invite/[code].tsx';
 import SignInRoute from '../app/(auth)/sign-in.tsx';
 import SignUpRoute from '../app/(auth)/sign-up.tsx';
 import WelcomeRoute from '../app/(auth)/welcome.tsx';
+import { useAuthStore } from '../features/auth/store.ts';
 
 // The closest rigorous stand-in for `router-skeleton/02`'s own verification
 // ("navigate the full (auth) group on a device"), which needs hardware this
@@ -71,6 +72,11 @@ jest.mock('../features/auth/screens/InviteScreen.tsx', () => ({
 beforeEach(() => {
   mockStackScreenNames.length = 0;
   mockParams = {};
+  // `(auth)`'s layout is wrapped in `AuthGate` (`providers-and-gates/03`),
+  // which renders nothing at all while the session is still resolving — the
+  // store's default. These are composition tests, so put the session in the
+  // one state where this group is the permitted one and its screens mount.
+  useAuthStore.setState({ status: 'unauthenticated', userId: null, role: null });
 });
 
 describe('(auth)/_layout', () => {

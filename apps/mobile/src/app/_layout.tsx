@@ -8,8 +8,10 @@ import * as SystemUI from 'expo-system-ui';
 import { useCallback, useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { bootstrap } from '../features/auth/bootstrap.ts';
+import { useAuthStore } from '../features/auth/store.ts';
 import { AnalyticsProvider } from '../lib/analytics/index.ts';
-import { queryClient } from '../lib/query/client.ts';
+import { queryClient, queryPersistence } from '../lib/query/client.ts';
 import { initSentry } from '../lib/sentry.ts';
 import { TRPCProvider } from '../lib/trpc-provider.tsx';
 import '../global.css';
@@ -39,6 +41,35 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 export default function RootLayout() {
   const [isNativeChromeReady, setIsNativeChromeReady] = useState(false);
   const [hasRootPainted, setHasRootPainted] = useState(false);
+  const [isCacheRestored, setIsCacheRestored] = useState(false);
+  const authStatus = useAuthStore((state) => state.status);
+
+  // `auth-client/04`'s cold-start sequence, kicked off from the one place
+  // that knows the app has mounted. It is not re-implemented here — this is
+  // its only caller, and without it `status` never leaves `'loading'` and
+  // the splash below never lifts.
+  useEffect(() => {
+    void bootstrap();
+  }, []);
+
+  // `providers-and-gates/02` starts the persisted-cache restore at module
+  // scope and exports the promise for exactly this. Waiting on it is the
+  // same decision as waiting on the auth bootstrap: the first authenticated
+  // screen would otherwise mount before its cache exists, paint empty, and
+  // swap — the flash this file's whole sequence is here to prevent, and the
+  // reason a cached dashboard is allowed a 200ms budget (CLAUDE.md §19).
+  // The promise never rejects; an unavailable cache resolves as such.
+  useEffect(() => {
+    let cancelled = false;
+    void queryPersistence.finally(() => {
+      if (!cancelled) {
+        setIsCacheRestored(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,10 +100,11 @@ export default function RootLayout() {
   // the first frame and there is nothing to await. A runtime `useFonts`
   // here would reintroduce the fallback-face flash that decision removed.
   //
-  // `providers-and-gates/03` adds the auth-bootstrap condition to this
-  // line — the splash must also outlast the SecureStore read and the one
-  // refresh call, or the app shows a route group and then swaps it.
-  const isReady = isNativeChromeReady;
+  // `providers-and-gates/03` added the last two conditions. The splash has
+  // to outlast the SecureStore read and the one refresh call, or the app
+  // shows a route group and then swaps it; and it has to outlast the cache
+  // restore for the same reason one level down.
+  const isReady = isNativeChromeReady && isCacheRestored && authStatus !== 'loading';
 
   const handleRootPaint = useCallback(() => setHasRootPainted(true), []);
 
@@ -116,9 +148,21 @@ export default function RootLayout() {
       <AnalyticsProvider>
         <QueryClientProvider client={queryClient}>
           <TRPCProvider>
-            {/* Slot — the auth gate (`providers-and-gates/03`) mounts here:
-                inside the API providers whose data it needs, outside the
-                route tree it redirects. */}
+            {/* The auth gate (`providers-and-gates/03`) was slotted here and
+                is NOT here. It renders a `<Redirect>` instead of its children
+                — that substitution is what makes it flash-free — so wrapping
+                `<Stack>` with it unmounts the only navigator in expo-router's
+                internal slot while the redirect is in flight. That changes the
+                slot's route key and remounts this layout and every provider
+                under it: a second `bootstrap()` and its refresh round trip, a
+                second analytics init, a restarted splash sequence. Measured,
+                not assumed (`features/auth/AuthGate.tsx`).
+
+                So the gate guards each group from inside instead —
+                `(auth)`, `(coach)`, and `(client)`'s own layouts — and this
+                layout keeps the two halves of the handoff that do belong at
+                the root: it starts the bootstrap, and it holds the splash
+                until the bootstrap has answered. */}
             <ThemeProvider>
               <BottomSheetModalProvider>
                 {/* `style="light"` — light content (icons/text) for CoachOS's

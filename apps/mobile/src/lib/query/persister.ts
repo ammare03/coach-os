@@ -205,8 +205,17 @@ export async function createSQLitePersister(): Promise<Persister> {
 /**
  * Wipes the persisted read cache. Called on logout — `offline-sync` §8: no
  * user's data may survive an account switch on a shared device, and coaches
- * do hand phones to clients. `providers-and-gates/03` wires this into the
- * sign-out path; P08 extends the wipe to the mirror and the outbox.
+ * do hand phones to clients.
+ *
+ * ⚠️ Still unwired, and the owner moved. This said `providers-and-gates/03`
+ * wires it in; that task built the route gate and deliberately did not,
+ * because the app has no user-initiated sign-out yet and the only existing
+ * trigger — `signalSignOutRequired` — is already consumed inside
+ * `features/auth/bootstrap.ts`. `phase-08-offline-core/local-database/03-
+ * wipe-on-logout.md` owns the sign-out wipe: it modifies `features/auth/
+ * store.ts` so the wipe runs before or with the store's own sign-out, which
+ * is the ordering this call needs and which a listener added afterwards
+ * cannot give it. Call this from there, alongside the mirror and the outbox.
  */
 export async function clearPersistedQueryCache(): Promise<void> {
   const database = await openCacheDatabase();

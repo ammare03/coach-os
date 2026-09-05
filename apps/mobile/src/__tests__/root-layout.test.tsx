@@ -10,6 +10,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import type { ReactTestInstance } from 'react-test-renderer';
 
 import RootLayout from '../app/_layout.tsx';
+import { useAuthStore } from '../features/auth/store.ts';
 import { api } from '../lib/trpc.ts';
 
 // The acceptance criteria of `phase-05-app-shell/providers-and-gates/01`,
@@ -45,6 +46,12 @@ jest.mock('expo-system-ui', () => ({
   setBackgroundColorAsync: jest.fn(() => Promise.resolve()),
 }));
 
+// `providers-and-gates/03` made the splash outlast the auth bootstrap too.
+// Stubbed here so the sequencing assertions below stay about the splash: the
+// real cold-start sequence has its own tests in `features/auth/__tests__`,
+// and the store is driven directly instead.
+jest.mock('../features/auth/bootstrap.ts', () => ({ bootstrap: jest.fn(() => Promise.resolve()) }));
+
 const mockHideAsync = jest.mocked(SplashScreen.hideAsync);
 const mockSetBackgroundColorAsync = jest.mocked(SystemUI.setBackgroundColorAsync);
 
@@ -60,16 +67,27 @@ function ProbeScreen() {
   return <Text>{PROBE}</Text>;
 }
 
+function renderTree(): void {
+  renderRouter({ _layout: RootLayout, index: ProbeScreen }, { initialUrl: '/' });
+}
+
 /**
  * The real root layout, the real `Stack`, and one route under it — so the
  * ordering is asserted against the tree the app actually mounts. Resolves
  * once the route has rendered and the native-chrome effect has settled.
  */
 async function renderRootLayout(): Promise<void> {
-  renderRouter({ _layout: RootLayout, index: ProbeScreen }, { initialUrl: '/' });
+  renderTree();
   expect(await screen.findByText(PROBE)).toBeTruthy();
   await waitFor(() => expect(mockSetBackgroundColorAsync).toHaveBeenCalled());
 }
+
+beforeEach(() => {
+  // `providers-and-gates/03` made the splash outlast the auth bootstrap, so
+  // a resolved session is now part of "setup is done". Which session does not
+  // matter here — the route gate itself is asserted in `auth-gate.test.tsx`.
+  useAuthStore.setState({ status: 'unauthenticated', userId: null, role: null });
+});
 
 /**
  * Matched on element type by identity rather than through
@@ -164,7 +182,7 @@ describe('the root layout', () => {
         }),
     );
 
-    renderRouter({ _layout: RootLayout, index: ProbeScreen }, { initialUrl: '/' });
+    renderTree();
     expect(await screen.findByText(PROBE)).toBeTruthy();
     fireEvent(rootHostElement(), 'layout', LAYOUT_EVENT);
 
