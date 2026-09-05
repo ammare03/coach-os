@@ -1,19 +1,20 @@
-import { QueryClientProvider } from '@tanstack/react-query';
 import { type PropsWithChildren, useState } from 'react';
 
 import { queryClient } from './query-client.ts';
 import { buildLinks } from './trpc-links.ts';
 import { api } from './trpc.ts';
 
-// Composes the tRPC client and `queryClient` into one provider. Mounted in
-// `app/_layout.tsx` — minimal, temporary wiring; `phase-05-app-shell/providers-and-gates/`
-// replaces the whole file, this component included.
+// The tRPC client, and only that. `QueryClientProvider` used to be nested
+// inside this component; `providers-and-gates/01` lifted it out to
+// `src/app/_layout.tsx`, one layer further out, so the dependency direction
+// — tRPC's React integration is a layer over TanStack Query — is visible in
+// the one file that owns provider order rather than hidden here.
 export function TRPCProvider({ children }: PropsWithChildren) {
   const [trpcClient] = useState(() => api.createClient({ links: buildLinks() }));
 
   return (
     <api.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      {children}
     </api.Provider>
   );
 }

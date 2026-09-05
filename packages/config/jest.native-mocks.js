@@ -162,3 +162,13 @@ jest.mock('@shopify/react-native-skia', () => {
     Skia: { Path: { Make: makePath } },
   };
 });
+
+// `react-native-gesture-handler`'s `GestureHandlerRootView` calls
+// `RNGestureHandlerModule.install()` during render, and the root layout
+// (`providers-and-gates/01`) mounts it at the true root of the app — so any
+// test that renders the real tree hits a native module Jest's Node
+// environment cannot provide. Unlike Reanimated's, the library's own shipped
+// Jest setup works: it swaps in the mocks that live alongside it. Required
+// here rather than per-suite so `apps/mobile` and `packages/ui` share one
+// registration.
+require('react-native-gesture-handler/jestSetup');
