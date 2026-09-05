@@ -5,6 +5,8 @@ import { Stack } from 'expo-router';
 import { renderRouter, screen } from 'expo-router/testing-library';
 import type { ComponentType } from 'react';
 
+import { useAuthStore } from '../features/auth/store.ts';
+
 // The verification section of `phase-05-app-shell/router-skeleton/01`, as a
 // test rather than a manual pass through expo-router's dev URL bar. It
 // answers the two questions that task's Risks section raises:
@@ -217,6 +219,26 @@ function routeContext(): Record<string, ComponentType> {
   return modules;
 }
 
+/**
+ * `providers-and-gates/03` put an `AuthGate` in each group's layout, so a
+ * route only resolves for a session that belongs to its group. This test is
+ * about route resolution, not about the gate — so it hands each case the
+ * session that owns the URL and lets the gate agree. `(auth)` URLs are
+ * reached signed out, which is also the default here and what the `/`
+ * assertion below relies on.
+ */
+function signInAsOwnerOf(url: string): void {
+  if (url.startsWith('/(coach)')) {
+    useAuthStore.setState({ status: 'authenticated', userId: 'coach-1', role: 'coach' });
+  } else if (url.startsWith('/(client)')) {
+    useAuthStore.setState({ status: 'authenticated', userId: 'client-1', role: 'client' });
+  }
+}
+
+beforeEach(() => {
+  useAuthStore.setState({ status: 'unauthenticated', userId: null, role: null });
+});
+
 describe('the §9.1 route tree', () => {
   it('matches CLAUDE.md §9.1 file-for-file, bracket names included', () => {
     expect(routeFilesOnDisk()).toEqual(EXPECTED_ROUTE_FILES);
@@ -233,6 +255,7 @@ describe('the §9.1 route tree', () => {
   });
 
   it.each(PLACEHOLDER_ROUTES)('renders %s at %s', (route, url) => {
+    signInAsOwnerOf(url);
     renderRouter(routeContext(), { initialUrl: url });
 
     expect(screen.getByText(route)).toBeTruthy();

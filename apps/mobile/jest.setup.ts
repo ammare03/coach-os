@@ -33,3 +33,15 @@
 // copy, in `@coachos/config`, since `packages/ui` needs exactly the same
 // two and a second copy would drift.
 require('@coachos/config/jest.native-mocks');
+
+// `providers-and-gates/05`. `src/app/_layout.tsx` calls `initSentry()` at
+// module scope, so every test that renders the root layout pulls in
+// `@sentry/react-native` — which resolves to its untranspiled `src/js` entry
+// and from there to `@sentry/core`'s ESM build, neither of which jest-expo's
+// `transformIgnorePatterns` covers. Mocked here rather than widening that
+// pattern: transforming two more ESM packages in node_modules would slow
+// every suite down to spin up an SDK that must not send anything from a test
+// run anyway. `init` is the only member the app calls; `src/lib/sentry.ts`'s
+// own test declares its own copy of this mock so it can assert on the call.
+// This mock lives in apps/mobile only — packages/ui imports no Sentry.
+jest.mock('@sentry/react-native', () => ({ init: jest.fn() }));

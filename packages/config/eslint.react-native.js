@@ -8,6 +8,7 @@ const base = require('./eslint.base');
 const noRawColor = require('./eslint-rules/no-raw-color.js');
 const adherenceColorsOnly = require('./eslint-rules/adherence-colors-only.js');
 const noArbitraryTailwind = require('./eslint-rules/no-arbitrary-tailwind.js');
+const noBareInvalidateQueries = require('./eslint-rules/no-bare-invalidate-queries.js');
 
 // eslint-config-expo bundles its own eslint-plugin-import registration in
 // several entries. `base` already registers `import` workspace-wide with no
@@ -43,6 +44,29 @@ const noArbitraryTailwindRule = {
   files: ['**/*.{ts,tsx}'],
   plugins: THEME_PLUGIN,
   rules: { 'theme/no-arbitrary-tailwind': 'error' },
+};
+
+// providers-and-gates/02 — the query-cache rules. A second plugin name
+// rather than a fourth entry under `theme`: the concern is data fetching,
+// not colour, and a reader looking for why an invalidation failed lint
+// should not have to read a theme plugin to find it. Same single-object
+// discipline as THEME_PLUGIN above (flat config throws "Cannot redefine
+// plugin" if two distinct objects claim one name).
+const QUERY_PLUGIN = {
+  query: {
+    rules: {
+      'no-bare-invalidate-queries': noBareInvalidateQueries,
+    },
+  },
+};
+
+// No `ignores`. Unlike the colour rules there is no file that legitimately
+// needs to refetch the whole cache — `keys.ts` exists so that even the
+// broadest invalidation names a prefix.
+const noBareInvalidateQueriesRule = {
+  files: ['**/*.{ts,tsx}'],
+  plugins: QUERY_PLUGIN,
+  rules: { 'query/no-bare-invalidate-queries': 'error' },
 };
 
 // `no-raw-color` and `adherence-colors-only` each carry their own explicit
@@ -199,4 +223,5 @@ module.exports = [
   noArbitraryTailwindRule,
   noRawColorRule,
   adherenceColorsOnlyRule,
+  noBareInvalidateQueriesRule,
 ];

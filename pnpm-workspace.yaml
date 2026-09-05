@@ -8,6 +8,15 @@ packages:
 # actually uses. Declined (false): skips their native builds rather than
 # compiling crypto acceleration nobody exercises here.
 allowBuilds:
+  # `providers-and-gates/05`, transitive via `@sentry/react-native`. Its
+  # postinstall fetches the platform `sentry-cli` binary, and that binary is
+  # the entire source-map story: both the Expo config plugin's generated
+  # native upload build phase and `pnpm --filter mobile sentry:sourcemaps`
+  # shell out to it. Declining it leaves crash reports as minified stack
+  # traces, which `release-ops` §3 rates as equivalent to no crash reporting
+  # at all. Allowed (true). Two versions resolve (the SDK's own, plus
+  # `@sentry/expo-upload-sourcemaps`'); one key covers both.
+  '@sentry/cli': true
   # `ui-primitives-data/02`. Its postinstall (`scripts/install-libs.js`) only
   # COPIES the prebuilt Skia binaries out of the `react-native-skia-android` /
   # `-apple-*` sibling packages into the package's own `libs/` — it compiles

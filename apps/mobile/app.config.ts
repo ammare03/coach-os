@@ -69,6 +69,28 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // postinstall copies the prebuilt Skia binaries into place; that build
     // script is allowed explicitly in `pnpm-workspace.yaml`.
     'expo-router',
+    // `providers-and-gates/05`. Unlike the three modules above, Sentry DOES
+    // ship a config plugin, and it is the whole source-map story: it writes
+    // `sentry.properties` into the generated iOS and Android projects and
+    // adds the upload build phase, so a `eas build` symbolicates without any
+    // further wiring. Native — needs a dev-client rebuild, never an OTA
+    // (`configuration` skill §8).
+    //
+    // `authToken` is deliberately absent and must stay absent: the plugin
+    // would write it into `sentry.properties`, which is generated into
+    // `ios/`/`android/` and shipped in the build. The token comes from the
+    // `SENTRY_AUTH_TOKEN` environment variable instead — an EAS Secret,
+    // never a repo value, and never an `EXPO_PUBLIC_` one (`configuration`
+    // §3's server-only list). `organization`/`project` are plain identifiers,
+    // not secrets, and fall back to `SENTRY_ORG`/`SENTRY_PROJECT` when unset
+    // so a fork with a different Sentry account needs no code change.
+    [
+      '@sentry/react-native/expo',
+      {
+        organization: process.env.SENTRY_ORG ?? 'coachos',
+        project: process.env.SENTRY_PROJECT ?? 'mobile',
+      },
+    ],
     [
       'expo-splash-screen',
       {
