@@ -8,6 +8,7 @@ import * as SystemUI from 'expo-system-ui';
 import { useCallback, useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { AnalyticsProvider } from '../lib/analytics/index.ts';
 import { queryClient } from '../lib/query/client.ts';
 import { TRPCProvider } from '../lib/trpc-provider.tsx';
 import '../global.css';
@@ -92,30 +93,38 @@ export default function RootLayout() {
     // innermost because it is purely presentational and nothing else
     // depends on it.
     <GestureHandlerRootView style={{ flex: 1 }} onLayout={handleRootPaint}>
-      {/* Slot — Sentry (`providers-and-gates/05`) and PostHog (`.../04`)
-          wrap here, outside everything else, so a failure while any
-          provider below initialises is still observed and reported. */}
-      <QueryClientProvider client={queryClient}>
-        <TRPCProvider>
-          {/* Slot — the auth gate (`providers-and-gates/03`) mounts here:
-              inside the API providers whose data it needs, outside the
-              route tree it redirects. */}
-          <ThemeProvider>
-            <BottomSheetModalProvider>
-              {/* `style="light"` — light content (icons/text) for CoachOS's
-                  dark chrome, explicit rather than `"auto"` so it never
-                  follows the device's own light/dark setting. */}
-              <StatusBar style="light" />
-              {/* No screen in this app uses the native header yet — every
-                  route builds its own chrome (the (auth) group's glass nav
-                  bar, this placeholder's plain body).
-                  `phase-05-app-shell/router-skeleton/` revisits this once a
-                  screen actually needs one. */}
-              <Stack screenOptions={{ headerShown: false }} />
-            </BottomSheetModalProvider>
-          </ThemeProvider>
-        </TRPCProvider>
-      </QueryClientProvider>
+      {/* Slot — Sentry (`providers-and-gates/05`) wraps here, outside
+          everything else including PostHog, so a failure while any
+          provider below initialises is still observed and reported.
+
+          PostHog (`providers-and-gates/04`) sits directly inside it and
+          outside the API providers: it depends on none of them, and an
+          event fired during the auth bootstrap should still be captured.
+          It is our own provider, never PostHog's — see the file's own
+          comment for why that matters. */}
+      <AnalyticsProvider>
+        <QueryClientProvider client={queryClient}>
+          <TRPCProvider>
+            {/* Slot — the auth gate (`providers-and-gates/03`) mounts here:
+                inside the API providers whose data it needs, outside the
+                route tree it redirects. */}
+            <ThemeProvider>
+              <BottomSheetModalProvider>
+                {/* `style="light"` — light content (icons/text) for CoachOS's
+                    dark chrome, explicit rather than `"auto"` so it never
+                    follows the device's own light/dark setting. */}
+                <StatusBar style="light" />
+                {/* No screen in this app uses the native header yet — every
+                    route builds its own chrome (the (auth) group's glass nav
+                    bar, this placeholder's plain body).
+                    `phase-05-app-shell/router-skeleton/` revisits this once a
+                    screen actually needs one. */}
+                <Stack screenOptions={{ headerShown: false }} />
+              </BottomSheetModalProvider>
+            </ThemeProvider>
+          </TRPCProvider>
+        </QueryClientProvider>
+      </AnalyticsProvider>
     </GestureHandlerRootView>
   );
 }
