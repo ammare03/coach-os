@@ -1,6 +1,7 @@
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 
+import { NOT_FOUND_COPY } from '@coachos/ui';
 import { Stack } from 'expo-router';
 import { renderRouter, screen } from 'expo-router/testing-library';
 import type { ComponentType } from 'react';
@@ -158,7 +159,9 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   ['(client)/live/[sessionId]', '/(client)/live/l2'],
   ['(client)/settings/index', '/(client)/settings'],
 
-  ['+not-found', '/no-such-route'],
+  // `+not-found` was here until `navigation-primitives/02` made it a real
+  // screen. It no longer renders its own route key, so it gets its own
+  // assertion at the bottom of this file instead of a row here.
 ];
 
 function TestRootLayout() {
@@ -250,8 +253,9 @@ describe('the §9.1 route tree', () => {
       (route) => !covered.has(route) && !SUBSTITUTED.has(route) && !route.endsWith('_layout'),
     );
 
-    // The root redirect is the one non-placeholder route, asserted below.
-    expect(uncovered).toEqual(['index']);
+    // The two non-placeholder routes, both asserted below: the root
+    // redirect, and the catch-all.
+    expect(uncovered).toEqual(['+not-found', 'index']);
   });
 
   it.each(PLACEHOLDER_ROUTES)('renders %s at %s', (route, url) => {
@@ -268,5 +272,14 @@ describe('the §9.1 route tree', () => {
     const router = renderRouter(routeContext(), { initialUrl: '/' });
 
     expect(router.getPathname()).toBe('/welcome');
+  });
+
+  // What the screen then renders, and where its recovery action goes, is
+  // `not-found-route.test.tsx`. This asserts only the tree's half: that a
+  // URL matching nothing still lands there.
+  it('catches a URL matching no route in the tree', () => {
+    renderRouter(routeContext(), { initialUrl: '/no-such-route' });
+
+    expect(screen.getByText(NOT_FOUND_COPY.title)).toBeTruthy();
   });
 });
