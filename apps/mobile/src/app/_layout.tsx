@@ -10,6 +10,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AnalyticsProvider } from '../lib/analytics/index.ts';
 import { queryClient } from '../lib/query/client.ts';
+import { initSentry } from '../lib/sentry.ts';
 import { TRPCProvider } from '../lib/trpc-provider.tsx';
 import '../global.css';
 
@@ -19,6 +20,13 @@ import '../global.css';
 // `<ThemeProvider>` mounts and is exempt from the no-raw-colour lint rule
 // (theme-tokens/05) for the same reason app.config.ts's splash colour is.
 const NATIVE_ROOT_BACKGROUND = '#161E2F';
+
+// Sentry (`providers-and-gates/05`) — the outermost thing in the app, and
+// therefore not a provider at all. `initSentry()` installs the global error
+// and unhandled-rejection handlers synchronously, at module scope, so a crash
+// while any provider below is still initialising is caught. A component would
+// have to render first, which is exactly the window this needs to cover.
+initSentry();
 
 // Module scope, not an effect: the OS dismisses the splash on its own as
 // soon as the first frame is ready, which is before any effect runs. By
@@ -93,15 +101,18 @@ export default function RootLayout() {
     // innermost because it is purely presentational and nothing else
     // depends on it.
     <GestureHandlerRootView style={{ flex: 1 }} onLayout={handleRootPaint}>
-      {/* Slot — Sentry (`providers-and-gates/05`) wraps here, outside
-          everything else including PostHog, so a failure while any
-          provider below initialises is still observed and reported.
+      {/* No Sentry wrapper here — it is initialised at module scope above,
+          which is strictly earlier than any component this slot could have
+          held. `Sentry.wrap()` was the alternative and was rejected: the only
+          things it adds are the touch-event boundary, which breadcrumbs
+          whatever text is under the user's thumb, and the render profiler,
+          which needs the tracing this app leaves off (see `lib/sentry.ts`).
 
-          PostHog (`providers-and-gates/04`) sits directly inside it and
-          outside the API providers: it depends on none of them, and an
-          event fired during the auth bootstrap should still be captured.
-          It is our own provider, never PostHog's — see the file's own
-          comment for why that matters. */}
+          PostHog (`providers-and-gates/04`) is therefore the outermost
+          provider, and sits outside the API providers: it depends on none of
+          them, and an event fired during the auth bootstrap should still be
+          captured. It is our own provider, never PostHog's — see the file's
+          own comment for why that matters. */}
       <AnalyticsProvider>
         <QueryClientProvider client={queryClient}>
           <TRPCProvider>

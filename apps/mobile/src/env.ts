@@ -22,7 +22,6 @@ import { z } from 'zod';
 // never carry this prefix (CLAUDE.md §25.4).
 //
 // **Adding a variable:** add it in two places, `rawEnv` and `envSchema`.
-// (`providers-and-gates/05` adds `EXPO_PUBLIC_SENTRY_DSN` here next.)
 //
 // `EXPO_PUBLIC_API_URL` is not here yet — `lib/api-url.ts` reads it inside
 // its dev-host fallback, where the variable is only one of three inputs.
@@ -56,11 +55,22 @@ const rawEnv = {
   // correct state for a fresh clone and for CI.
   EXPO_PUBLIC_POSTHOG_KEY: process.env.EXPO_PUBLIC_POSTHOG_KEY,
   EXPO_PUBLIC_POSTHOG_HOST: process.env.EXPO_PUBLIC_POSTHOG_HOST,
+
+  // The Sentry DSN is public by design (`configuration` skill §3): it is
+  // an ingestion endpoint plus a write-only public key, and the SDK has to
+  // hold it on the device to send anything at all. The genuinely sensitive
+  // Sentry credential is `SENTRY_AUTH_TOKEN`, which uploads source maps at
+  // build time — it lives in EAS Secrets, is never read by app code, and
+  // must never acquire an `EXPO_PUBLIC_` twin (`lib/sentry.ts`).
+  // Unset means crash reporting is disabled, which is the correct state
+  // for a fresh clone and for CI.
+  EXPO_PUBLIC_SENTRY_DSN: process.env.EXPO_PUBLIC_SENTRY_DSN,
 };
 
 const envSchema = z.object({
   EXPO_PUBLIC_POSTHOG_KEY: optionalText(),
   EXPO_PUBLIC_POSTHOG_HOST: urlWithDefault(DEFAULT_POSTHOG_HOST),
+  EXPO_PUBLIC_SENTRY_DSN: optionalText(),
 });
 
 export type MobileEnv = z.infer<typeof envSchema>;
@@ -68,6 +78,7 @@ export type MobileEnv = z.infer<typeof envSchema>;
 const FALLBACK_ENV: MobileEnv = {
   EXPO_PUBLIC_POSTHOG_KEY: null,
   EXPO_PUBLIC_POSTHOG_HOST: DEFAULT_POSTHOG_HOST,
+  EXPO_PUBLIC_SENTRY_DSN: null,
 };
 
 export function parseMobileEnv(input: Record<string, string | undefined>): MobileEnv {

@@ -11,6 +11,7 @@
     "web": "expo start --web",
     "lint": "eslint .",
     "test": "jest",
+    "sentry:sourcemaps": "sentry-expo-upload-sourcemaps dist",
     "reset-project": "node ./scripts/reset-project.js"
   },
   "dependencies": {
@@ -19,6 +20,7 @@
     "@coachos/utils": "workspace:*",
     "@gorhom/bottom-sheet": "^5.2.14",
     "@hookform/resolvers": "5.2.2",
+    "@sentry/react-native": "8.25.0",
     "@shopify/react-native-skia": "2.6.2",
     "@tanstack/query-persist-client-core": "5.102.0",
     "@tanstack/react-query": "5.102.0",
