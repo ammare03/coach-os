@@ -216,6 +216,19 @@ themselves take on assistants (one level of delegation only). Full spec:
 - (For the root) "See what my team is doing with my clients without asking them for
   a screenshot."
 
+**Gym admin (Phase 3, organisation plan).** A gym — a business, not a person — subscribes
+so that the coaches who work there use CoachOS under the gym's name. The admin is a new
+`user_role` (`'org_admin'`), never a coach or client: they hold the gym's billing, generate
+single-use join codes that attach a root coach to the organisation, and see a roster of
+attached coaches with their active-client **counts** — never a client's name, log, media,
+or message. Attached coaches keep their own client books and their P25 hierarchy; the gym
+is an umbrella that carries entitlements and a brand, not an ownership edge into client
+data. Full spec: `.claude/plan/phase-28-gym-organisations/`. Jobs:
+
+- "Put my whole floor on one app, on one invoice, under my gym's name."
+- "Know how many clients each of my coaches is carrying, without reading anyone's file."
+- (For the coach) "Show my clients I'm with this gym, and stop paying for my own plan."
+
 ---
 
 ## 3. Tech stack — pinned decisions
@@ -813,6 +826,34 @@ process coach↔client payments in v1 — doing so would make us a payment facil
 with the KYC, RBI recurring-mandate, and refund-liability burden that implies. This is
 tracked as an open decision (§27), not a permanent no.
 
+### 15.10 Organisation plans (gyms)
+
+A gym subscribes as an **organisation** (§2's gym-admin persona) and its attached coaches
+are covered by it. This is the second non-IAP billing path after Agency (§15.7), and it
+follows the same rules: Stripe-invoiced, operator-onboarded, RevenueCat never involved.
+
+- **What an attached coach gets:** Studio-equivalent features, with client seats, storage,
+  and live minutes **pooled** across every coach in the organisation. `billing.entitlements`
+  reports `source: 'organisation'`; the paywall and seat-pack upsell are hidden; Restore
+  Purchases stays reachable (a review blocker either way).
+- **Seat counting:** an attached coach's `SEAT_LIMIT_REACHED` resolves against the pool —
+  every active or invited client of every root coach in the organisation, through each
+  root's hierarchy (§15.5's definition, applied org-wide). Limit notifications go to the
+  organisation's admins, who can act on them, not to the coach, who cannot.
+- **Leaving or removal:** the coach keeps every client and every row of history, reverts to
+  their own subscription, and §15.5's overage rule applies if they are over it. Removal never
+  requires reassigning clients — clients are the client's (§21.3).
+- **A coach's own IAP subscription is untouched while attached.** We cannot cancel it and do
+  not try; the app tells them once that it is unused.
+- **The admin never gates the client experience.** §15.4's rule holds: an attached coach's
+  clients see the gym's badge and brand and nothing else changes for them.
+- **Pricing is undecided** (§27). Pools are operator-set per organisation; no default in code,
+  seed, or copy may look like a price.
+
+Schema: `DATABASE.md` DB§5.1 (`organisations`, `org_admin_profiles`,
+`coach_profiles.organisation_id`, `organisation_memberships`, `organisation_join_codes`).
+Build: `.claude/plan/phase-28-gym-organisations/`.
+
 ---
 
 ## 19. Performance budgets
@@ -978,7 +1019,7 @@ only the gate each phase must clear.
 | Product phase           | What it covers                                                                                                                                                                                                     | Ship gate                                                                                                                                    |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | **1 — MVP**             | Auth, coach dashboard, client detail, program builder, offline workout logger, nutrition logging, comments, messaging, basic video upload + playback, **trust & safety (report/block/filter) and support tooling** | 10 real coaches, 3+ real clients each, running 2 weeks with **no WhatsApp fallback** for workout feedback — run per `docs/PILOT-PLAYBOOK.md` |
-| **2 — Differentiators** | Video annotation, side-by-side compare, structured check-ins, live 1:1 check-in calls, Live Workout Mode, progress reports, habits                                                                                 | 50 paying coaches; annotation used on **>40%** of uploaded videos                                                                            |
+| **2 — Differentiators** | Video annotation, side-by-side compare, structured check-ins, live 1:1 check-in calls, Live Workout Mode, progress reports, habits, in-person coaching (`phase-27-in-person-coaching/`)                            | 50 paying coaches; annotation used on **>40%** of uploaded videos                                                                            |
 | **3 — Scale**           | AI assistant, health sync, white-label, group live, web dashboard, agency/team accounts                                                                                                                            | **$10k MRR**; **< 5%** monthly coach churn                                                                                                   |
 
 ### Definition of done (every ticket)
@@ -1045,20 +1086,23 @@ Written down because each of these has cost someone a day:
 
 ## 26. Glossary
 
-| Term                | Meaning                                                                                                                  |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| **RPE**             | Rate of Perceived Exertion, 1–10                                                                                         |
-| **RIR**             | Reps In Reserve                                                                                                          |
-| **1RM**             | One-rep max; estimated via Epley: `w × (1 + r/30)`                                                                       |
-| **Tempo**           | 4-digit eccentric/pause/concentric/pause, e.g. `3010`                                                                    |
-| **Superset**        | Two+ exercises performed back to back                                                                                    |
-| **Check-in**        | Structured periodic client report                                                                                        |
-| **Form check**      | Client video reviewed by the coach                                                                                       |
-| **Adherence**       | Computed compliance score, `packages/utils`, `.claude/plan/phase-10-coach-review-surfaces/adherence-engine/`             |
-| **Seat**            | One active client slot against a coach's tier limit                                                                      |
-| **Client-week**     | One client, one week — the unit of the north star metric                                                                 |
-| **Root coach**      | A coach with `parent_coach_id IS NULL` — bills directly, can hold assistant coaches (§2, Studio+)                        |
-| **Assistant coach** | A coach with `parent_coach_id` set — delegated by, and billed under, a root; single level of delegation only (§2, §15.2) |
+| Term                | Meaning                                                                                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **RPE**             | Rate of Perceived Exertion, 1–10                                                                                                                                |
+| **RIR**             | Reps In Reserve                                                                                                                                                 |
+| **1RM**             | One-rep max; estimated via Epley: `w × (1 + r/30)`                                                                                                              |
+| **Tempo**           | 4-digit eccentric/pause/concentric/pause, e.g. `3010`                                                                                                           |
+| **Superset**        | Two+ exercises performed back to back                                                                                                                           |
+| **Check-in**        | Structured periodic client report                                                                                                                               |
+| **Form check**      | Client video reviewed by the coach                                                                                                                              |
+| **Adherence**       | Computed compliance score, `packages/utils`, `.claude/plan/phase-10-coach-review-surfaces/adherence-engine/`                                                    |
+| **Seat**            | One active client slot against a coach's tier limit                                                                                                             |
+| **Client-week**     | One client, one week — the unit of the north star metric                                                                                                        |
+| **Root coach**      | A coach with `parent_coach_id IS NULL` — bills directly, can hold assistant coaches (§2, Studio+)                                                               |
+| **Assistant coach** | A coach with `parent_coach_id` set — delegated by, and billed under, a root; single level of delegation only (§2, §15.2)                                        |
+| **Organisation**    | A gym: a non-person tenant with its own Stripe subscription, brand, and pooled seats; attached root coaches carry `coach_profiles.organisation_id` (§2, §15.10) |
+| **Gym admin**       | A `role='org_admin'` user who runs an organisation's billing, roster, and join codes — never a coach, never sees client data (§2, §15.10)                       |
+| **Join code**       | A single-use, per-coach, 14-day code a gym admin generates; a root coach redeems it to attach to the organisation (`phase-28-gym-organisations/`)               |
 
 ---
 
@@ -1079,6 +1123,9 @@ Track these here; move them into the body of the file when decided.
 - [ ] Whether a third price track is ever worth it (SEA / LatAm / Africa / E. Europe). Deliberately dropped from §15.6 in favour of two tracks; revisit only with revenue from those territories, never speculatively.
 - [ ] Whether to reinstate any _read_ direction on health data — Apple Health / Health Connect metrics, or OAuth wearables (Whoop, Garmin, Fitbit). The wearables phase was removed in favour of write-only export (`.claude/plan/phase-24-health-sync/`). Reinstating a read direction means restoring `wearable_data`, `wearable_connections`, per-metric consent, encrypted token columns, the sensitive-data classification, and the purge-order entries — deliberately, as a decision, never by feature creep.
 - [ ] When to revisit web checkout: the 15% commission becomes worth engineering around somewhere north of ~$20k MRR.
+- [ ] **Organisation (gym) pricing** — per pooled seat, per coach, or flat; INR and USD tracks; whether a self-serve checkout ever replaces operator onboarding. §15.10 and `phase-28-gym-organisations/` are built so no number lives in code until this is decided.
+- [ ] Whether a gym admin should ever see client **names** on the roster (counts only today, §15.10). A privacy decision, not a feature request — revisit only with a concrete, written need from a pilot gym.
+- [ ] Whether a reusable "noticeboard" organisation join code is worth the leaked-code risk over single-use codes. Decided against for P28; revisit with pilot feedback.
 
 ### 27.1 Deferred to future scope
 
