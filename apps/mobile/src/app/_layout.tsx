@@ -8,7 +8,7 @@ import * as SystemUI from 'expo-system-ui';
 import { useCallback, useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { queryClient } from '../lib/query-client.ts';
+import { queryClient } from '../lib/query/client.ts';
 import { TRPCProvider } from '../lib/trpc-provider.tsx';
 import '../global.css';
 

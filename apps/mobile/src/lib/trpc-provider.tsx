@@ -1,6 +1,6 @@
 import { type PropsWithChildren, useState } from 'react';
 
-import { queryClient } from './query-client.ts';
+import { queryClient } from './query/client.ts';
 import { buildLinks } from './trpc-links.ts';
 import { api } from './trpc.ts';
 

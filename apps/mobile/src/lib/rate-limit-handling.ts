@@ -20,7 +20,7 @@ export function getRateLimitInfo(error: unknown): RateLimitInfo | null {
  * toast" requirement) — `packages/ui` has no components yet (its own
  * barrel is still empty), so this can't call a real one today.
  * `setRateLimitNotifier` is how that phase swaps this default for the real
- * toast, in one line, with no change to `query-client.ts` or this file's
+ * toast, in one line, with no change to `query/client.ts` or this file's
  * other exports. Until then, dev-only console output keeps a rate limit
  * observable during development instead of silently swallowed — CLAUDE.md
  * §7.5: a failed action gets a designed state, not nothing.
@@ -36,7 +36,7 @@ export function setRateLimitNotifier(notifier: (info: RateLimitInfo) => void): v
 }
 
 /**
- * Wired into `query-client.ts`'s `QueryCache`/`MutationCache` `onError` —
+ * Wired into `query/client.ts`'s `QueryCache`/`MutationCache` `onError` —
  * every query and mutation passes through here, so a `RATE_LIMITED`
  * rejection is caught centrally instead of requiring each feature to check
  * for it itself. Every other error is left alone; the generic error path
