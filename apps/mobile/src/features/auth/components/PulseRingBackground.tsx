@@ -1,3 +1,4 @@
+import { createThemedStyles } from '@coachos/ui';
 import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
@@ -16,6 +17,13 @@ import Animated, {
 // positions to 4 so the ambient motion reaches the whole screen, not just
 // one corner. Values (scale, opacity, curve, duration) are ported as-is
 // from the approved design canvas, not re-derived.
+//
+// The stroke was the retired `DESIGN-SYSTEM.md` indigo (#6366F1) and now
+// reads `DESIGN.md` §1.1's `brand` through `useTheme()`, finishing the
+// migration `AuthScreenShell` started — the shell around these rings is
+// already warm, so an indigo ring was the one visible straggler. This is
+// `DESIGN.md` §3's ambient layer: decorative, sub-30% opacity, carrying no
+// meaning, so no contrast floor applies to it.
 interface RingSpec {
   size: number;
   top?: number;
@@ -46,6 +54,7 @@ const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1); // `animate` skill's strong ea
 
 function Ring({ size, top, bottom, left, right, delay }: RingSpec) {
   const reducedMotion = useReducedMotion();
+  const themed = useThemedStyles();
   const progress = useSharedValue(0);
 
   useEffect(() => {
@@ -74,6 +83,7 @@ function Ring({ size, top, bottom, left, right, delay }: RingSpec) {
       pointerEvents="none"
       style={[
         styles.ring,
+        themed.ring,
         { width: size, height: size, borderRadius: size / 2, top, bottom, left, right },
         style,
       ]}
@@ -92,10 +102,15 @@ export function PulseRingBackground() {
   );
 }
 
+// Scheme-invariant geometry at module scope; the one colour goes through
+// the theme, matching `AuthScreenShell`'s split.
 const styles = StyleSheet.create({
   ring: {
     position: 'absolute',
     borderWidth: 1.5,
-    borderColor: '#6366F1',
   },
 });
+
+const useThemedStyles = createThemedStyles((theme) => ({
+  ring: { borderColor: theme.colors.brand.DEFAULT },
+}));

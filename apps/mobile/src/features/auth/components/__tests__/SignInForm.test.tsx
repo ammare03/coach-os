@@ -5,6 +5,10 @@ import { SignInForm } from '../SignInForm.tsx';
 const mockReplace = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: mockReplace }),
+  // `router-skeleton/02` made the "Forgot?" affordance a real `Link`;
+  // stood in with a plain `Text` so it still renders under the test
+  // renderer without a router mounted.
+  Link: jest.requireActual('react-native').Text,
 }));
 
 const mockSignIn = jest.fn();

@@ -102,6 +102,42 @@ function isAdherenceHue(value: string): boolean {
 // tier's own gradient.
 const TINT_ALPHA = 0.14;
 
+// Every corner-radius key React Native's `ViewStyle` defines. The clip layer
+// below has to reproduce whatever the caller set on the surface, or a
+// rounded dock renders a square gradient inside it.
+const RADIUS_KEYS = [
+  'borderRadius',
+  'borderTopLeftRadius',
+  'borderTopRightRadius',
+  'borderBottomLeftRadius',
+  'borderBottomRightRadius',
+  'borderTopStartRadius',
+  'borderTopEndRadius',
+  'borderBottomStartRadius',
+  'borderBottomEndRadius',
+  'borderStartStartRadius',
+  'borderStartEndRadius',
+  'borderEndStartRadius',
+  'borderEndEndRadius',
+] as const satisfies readonly (keyof ViewStyle)[];
+
+/**
+ * The caller's corner radii, and nothing else, lifted out of `style` so the
+ * clip layer can wear the same shape the surface does. Only the radii —
+ * everything else in `style` (position, size, padding, margin) stays on the
+ * surface itself, where every existing consumer already depends on it
+ * landing.
+ */
+function clipRadius(style: StyleProp<ViewStyle>): ViewStyle {
+  const flat: ViewStyle | undefined = StyleSheet.flatten(style);
+  const picked: ViewStyle = {};
+  for (const key of RADIUS_KEYS) {
+    const value = flat?.[key];
+    if (value !== undefined) Object.assign(picked, { [key]: value });
+  }
+  return picked;
+}
+
 function tintOverlayColor(tint: string): string {
   const match = /^#([0-9a-fA-F]{6})$/.exec(tint);
   const digits = match?.[1];
@@ -131,6 +167,20 @@ function tintOverlayColor(tint: string): string {
  * absolutely-positioned 1px hairlines — a bright one at the top, a dark
  * one at the bottom. Skipping them collapses the effect.
  *
+ * **The outer drop belongs here too, on all three paths.** §4 gives tier 1
+ * and tier 2 "a long soft drop" and gives tier 3 none; §9's Dock row spells
+ * tier 1's out as `0 18px 40px -14px rgba(0,0,0,.8)`. It cannot ride on the
+ * same view that clips the decoration: `overflow: 'hidden'` is
+ * `clipsToBounds` on iOS and suppresses the view's own shadow. So the clip
+ * boundary moved INWARD — it is now an absolutely-filled layer holding the
+ * blur, the gradient, the border and the hairlines — and the surface view
+ * itself, which still receives the caller's `style` untouched, carries the
+ * shadow. A wrapper on the OUTSIDE would have had to swallow `style` to
+ * position itself, and `style` carries padding (the auth nav bar's status
+ * inset) and absolute insets (both docks) that have to keep applying to the
+ * surface. One consequence, and it is deliberate: `children` are no longer
+ * clipped to the surface's corners, only the material is.
+ *
  * **Never nest a `<GlassSurface>` inside another one, and never place one
  * over a chart** (DESIGN.md §4/§9) — the primitive does not and cannot
  * enforce either; both are review-checklist rules (`ui-conventions` §5).
@@ -147,6 +197,7 @@ export function GlassSurface<T extends string = string>({
   testID,
 }: GlassSurfaceProps<T>) {
   const { canUseGlass, transparencyAllowed } = useGlassAvailable();
+  const { glass } = useTheme();
 
   if (tint && isAdherenceHue(tint)) {
     throw new Error(
@@ -163,7 +214,10 @@ export function GlassSurface<T extends string = string>({
       <GlassView
         glassEffectStyle={GLASS_EFFECT_STYLE[tier]}
         isInteractive={interactive}
-        style={style}
+        // The tier's own drop, first so a caller's `style` can still
+        // override it. `undefined` on tier 3, which §4 gives no outer
+        // shadow — an absent shadow, never a zeroed one.
+        style={[glass[tier].shadow, style]}
         {...(tint ? { tintColor: tintOverlayColor(tint) } : {})}
         {...(testID ? { testID } : {})}
       >
@@ -174,7 +228,7 @@ export function GlassSurface<T extends string = string>({
 
   if (!transparencyAllowed) {
     return (
-      <OpaqueFallback style={style} testID={testID}>
+      <OpaqueFallback tier={tier} style={style} testID={testID}>
         {children}
       </OpaqueFallback>
     );
@@ -195,10 +249,12 @@ export function GlassSurface<T extends string = string>({
  * spec nor the accessibility need).
  */
 function OpaqueFallback({
+  tier,
   style,
   testID,
   children,
 }: {
+  tier: GlassTier;
   style?: StyleProp<ViewStyle>;
   // `| undefined` (not just `?`) so `GlassSurface` can forward its own
   // possibly-`undefined` `testID` straight through under
@@ -208,27 +264,32 @@ function OpaqueFallback({
   testID?: string | undefined;
   children?: ReactNode;
 }) {
-  const { elevation } = useTheme();
+  const { elevation, glass } = useTheme();
   const recipe = elevation.raised;
+  // The drop follows the MATERIAL, not the tier: this path renders L2, so
+  // it takes L2's own `0 10px 24px -14px` (DESIGN.md §2) rather than §4's
+  // longer glass drop, which is calibrated for a translucent surface.
+  // Whether the surface floats at all is still the TIER's decision — §4
+  // gives tier 3 no outer shadow, and a chip must not grow one just because
+  // Reduce Transparency is on.
+  const shadow = glass[tier].shadow ? recipe.shadow : undefined;
   return (
-    <View testID={testID} style={[styles.fallbackBase, style]}>
-      <LinearGradient
-        colors={recipe.gradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <View
-        pointerEvents="none"
-        style={[
-          StyleSheet.absoluteFill,
-          { borderWidth: recipe.borderWidth, borderColor: recipe.borderColor },
-        ]}
-      />
-      <View
-        pointerEvents="none"
-        style={[styles.hairlineTop, { backgroundColor: recipe.highlight }]}
-      />
+    <View testID={testID} style={[shadow, style]}>
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.clip, clipRadius(style)]}>
+        <LinearGradient
+          colors={recipe.gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            { borderWidth: recipe.borderWidth, borderColor: recipe.borderColor },
+          ]}
+        />
+        <View style={[styles.hairlineTop, { backgroundColor: recipe.highlight }]} />
+      </View>
       {children}
     </View>
   );
@@ -251,42 +312,36 @@ function BlurFallback({
   const { glass, scheme } = useTheme();
   const tierTokens = glass[tier];
   return (
-    <View testID={testID} style={[styles.fallbackBase, style]}>
-      <BlurView
-        // The blur samples what is BEHIND the surface, so it follows the
-        // canvas, not the tier — a dark blur over a light canvas is a smear.
-        tint={scheme === 'light' ? 'light' : 'dark'}
-        intensity={blurIntensityFor(tierTokens.blur, glass.tier1.blur)}
-        blurMethod="dimezisBlurViewSdk31Plus"
-        style={StyleSheet.absoluteFill}
-      />
-      <LinearGradient
-        colors={tierTokens.gradient}
-        locations={tierTokens.locations}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0.4, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      {tint ? (
-        <View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { backgroundColor: tintOverlayColor(tint) }]}
+    // §4's long soft drop, on the surface itself — the clip layer below is
+    // what wears `overflow: 'hidden'`, so nothing suppresses it.
+    <View testID={testID} style={[tierTokens.shadow, style]}>
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.clip, clipRadius(style)]}>
+        <BlurView
+          // The blur samples what is BEHIND the surface, so it follows the
+          // canvas, not the tier — a dark blur over a light canvas is a smear.
+          tint={scheme === 'light' ? 'light' : 'dark'}
+          intensity={blurIntensityFor(tierTokens.blur, glass.tier1.blur)}
+          blurMethod="dimezisBlurViewSdk31Plus"
+          style={StyleSheet.absoluteFill}
         />
-      ) : null}
-      <View
-        pointerEvents="none"
-        style={[StyleSheet.absoluteFill, { borderWidth: 1, borderColor: tierTokens.borderColor }]}
-      />
-      <View
-        pointerEvents="none"
-        style={[styles.hairlineTop, { backgroundColor: tierTokens.highlight }]}
-      />
-      {tierTokens.lowlight ? (
-        <View
-          pointerEvents="none"
-          style={[styles.hairlineBottom, { backgroundColor: tierTokens.lowlight }]}
+        <LinearGradient
+          colors={tierTokens.gradient}
+          locations={tierTokens.locations}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0.4, y: 1 }}
+          style={StyleSheet.absoluteFill}
         />
-      ) : null}
+        {tint ? (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: tintOverlayColor(tint) }]} />
+        ) : null}
+        <View
+          style={[StyleSheet.absoluteFill, { borderWidth: 1, borderColor: tierTokens.borderColor }]}
+        />
+        <View style={[styles.hairlineTop, { backgroundColor: tierTokens.highlight }]} />
+        {tierTokens.lowlight ? (
+          <View style={[styles.hairlineBottom, { backgroundColor: tierTokens.lowlight }]} />
+        ) : null}
+      </View>
       {children}
     </View>
   );
@@ -324,7 +379,12 @@ export function GlassSurfaceGroup({ spacing, children, style }: GlassSurfaceGrou
 }
 
 const styles = StyleSheet.create({
-  fallbackBase: {
+  // The clipping boundary, moved off the surface view so the surface can
+  // carry its own outer drop — `overflow: 'hidden'` is `clipsToBounds` on
+  // iOS and suppresses a view's shadow. `pointerEvents="none"` at the call
+  // site: this layer covers the whole surface and must never intercept a
+  // touch meant for what the caller put inside it.
+  clip: {
     overflow: 'hidden',
   },
   hairlineTop: {

@@ -69,19 +69,14 @@ const noRawColorRule = {
     // `<ThemeProvider>` exists to read a token from (theme-tokens/04).
     '**/app.config.ts',
     '**/app/_layout.tsx',
-    // Pre-existing Phase 3 screens, built ahead of this phase
-    // (theme-tokens/02's own header comment on packages/ui's original
-    // stub components). Out of scope for a theme-tokens PR under
-    // CLAUDE.md §0 rule 8 ("one PR, one concern") — migrate on next touch.
-    '**/CompleteSocialSignUpForm.tsx',
+    // Google's Sign-In branding guidelines fix this button's face and
+    // lettering; a compliant button is a condition of using the provider,
+    // and DESIGN.md §1.1's warm ramp would break it. NOT grandfathering —
+    // the eight files that were listed here alongside it were migrated onto
+    // DESIGN.md's ramp and this rule now enforces on all of them. See the
+    // component's own docblock for the full reasoning and the measured
+    // contrast.
     '**/GoogleSignInButton.tsx',
-    '**/SignInForm.tsx',
-    '**/SignUpForm.tsx',
-    '**/PulseRingBackground.tsx',
-    '**/UnitRow.tsx',
-    '**/app/(auth)/sign-in.tsx',
-    '**/app/(auth)/sign-up.tsx',
-    '**/app/(auth)/complete-social-signup.tsx',
     // Asserts against the real token hex values by design.
     '**/theme/useTheme.test.tsx',
     // The contrast audit (`component-gallery/03`). `contrast.ts` is pure

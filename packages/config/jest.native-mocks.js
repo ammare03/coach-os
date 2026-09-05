@@ -22,28 +22,28 @@
 // the components call: a shared value with a mutable `.value`, an animated
 // style resolved eagerly (no real animation happens in a behavioural test),
 // and `Easing.bezier` resolving to a no-op curve.
-jest.mock('react-native-reanimated', () => {
-  const { View } = jest.requireActual('react-native');
-  const identity = (value) => value;
-  return {
-    __esModule: true,
-    default: { View, createAnimatedComponent: identity },
-    Easing: { bezier: () => (t) => t },
-    useSharedValue: (initial) => ({ value: initial }),
-    useAnimatedStyle: (factory) => factory(),
-    useDerivedValue: (factory) => ({ value: factory() }),
-    withTiming: identity,
-    withSpring: identity,
-    withDelay: (_delay, value) => value,
-    // `Skeleton` (`ui-primitives-data/06`) loops its shimmer sweep; the
-    // double resolves the loop to its target so nothing animates in a
-    // behavioural test, and cancellation is a no-op with nothing running.
-    withRepeat: (value) => value,
-    cancelAnimation: () => undefined,
-    runOnJS: (fn) => fn,
-    interpolate: (value) => value,
-  };
-});
+// The double itself lives in `./jest-doubles/reanimated.js` — it is
+// registered twice below, and `babel-plugin-jest-hoist` requires each
+// `jest.mock` factory to be an inline function that closes over nothing.
+// An inline factory may still `require`, which is how one definition
+// serves both registrations.
+jest.mock('react-native-reanimated', () => require('./jest-doubles/reanimated.js')());
+
+// The same double under the SUB-PATH, and it is load-bearing for every
+// route test. `expo-router/testing-library` (build/testing-library/mocks.js)
+// overrides whatever is registered for `react-native-reanimated` with its
+// own factory, which is `require('react-native-reanimated/mock')` inside a
+// `try` whose fallback is `{}`. On Reanimated 4 that shipped mock reaches
+// the missing native module and throws, so the module resolves to an empty
+// object — and any route that transitively imports `@coachos/ui` then dies
+// at module scope on `Pressable`'s `Easing.bezier`, before a test body runs.
+//
+// Mocking the sub-path is the smallest lever that fixes it: expo-router's
+// factory requires exactly this specifier, so satisfying it makes the
+// override resolve to a working double instead of `{}`. Found independently
+// by `phase-05-app-shell/router-skeleton/` tasks 03 and 04, each of which
+// had been carrying a local copy.
+jest.mock('react-native-reanimated/mock', () => require('./jest-doubles/reanimated.js')());
 
 // `@gorhom/bottom-sheet` (`ui-primitives-core/04`) pulls in
 // `react-native-gesture-handler`'s `GestureDetector`, which calls
