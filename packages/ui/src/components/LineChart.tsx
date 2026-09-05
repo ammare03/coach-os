@@ -510,7 +510,13 @@ export function LineChart({
 
       <View style={styles.axisRow}>
         {axisLabels.map((label) => (
-          <Metric key={label.key} value={label.label} size="micro" tone="muted" />
+          // Each label shrinks inside its own share of the row: at 200% text
+          // three dates are wider than the plot, and without this they push
+          // past the chart's own bounds instead of wrapping
+          // (`accessibility` §3).
+          <View key={label.key} style={styles.axisLabel}>
+            <Metric value={label.label} size="micro" tone="muted" />
+          </View>
         ))}
       </View>
 
@@ -674,7 +680,13 @@ const styles = StyleSheet.create({
   axisRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: spacing(4),
     paddingHorizontal: spacing(6),
+  },
+  axisLabel: {
+    flexShrink: 1,
+    minWidth: 0,
   },
   tableAction: {
     minHeight: tapTarget.MIN,

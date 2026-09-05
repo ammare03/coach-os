@@ -67,7 +67,14 @@ export function Text({ size = 'body', tone = 'default', className, style, ...res
   const classes = [`text-${size}`, SIZE_FONT_CLASS[size], TONE_CLASS[tone], className]
     .filter(Boolean)
     .join(' ');
-  const scale = useTextScale();
+  // `maxFontSizeMultiplier` is React Native's own cap on the OS font scale;
+  // the gallery's scale has to honour the same cap or a component that legally
+  // caps itself (an avatar's initials inside a fixed circle) looks broken under
+  // the toggle and correct on a device (`accessibility` §3).
+  // React Native types this `number | null`, and both `null` and `0` mean
+  // "inherit / no cap" rather than "clamp to zero".
+  const cap = rest.maxFontSizeMultiplier;
+  const scale = Math.min(useTextScale(), cap == null || cap <= 0 ? Infinity : cap);
   const scaled = scale === 1 ? undefined : scaleLineBox(size, scale);
 
   return <RNText className={classes} style={scaled ? [scaled, style] : style} {...rest} />;

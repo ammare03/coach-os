@@ -113,8 +113,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   chip: {
-    height: CHIP_HEIGHT,
+    // Min-height, never height: DESIGN.md §9's 33px is the resting geometry,
+    // but a `label` line box is 40px at 200% text and `overflow: 'hidden'`
+    // below would silently cut it in half (`accessibility` §3).
+    minHeight: CHIP_HEIGHT,
     paddingHorizontal: CHIP_PADDING_HORIZONTAL,
+    paddingVertical: 3,
     borderRadius: radius.full,
     borderWidth: 1,
     alignItems: 'center',

@@ -1,8 +1,14 @@
 import { StyleSheet, View } from 'react-native';
 
-import { colors, radius, type TextSize } from '../theme/tokens.ts';
+import { colors, radius } from '../theme/tokens.ts';
 
-import { Avatar, type AvatarSize } from './Avatar.tsx';
+import {
+  Avatar,
+  AVATAR_DIAMETER,
+  AVATAR_MAX_FONT_SCALE,
+  AVATAR_TEXT_SIZE,
+  type AvatarSize,
+} from './Avatar.tsx';
 import { Metric } from './Metric.tsx';
 
 export interface AvatarStackPerson {
@@ -20,13 +26,6 @@ export interface AvatarStackProps {
   testID?: string;
 }
 
-const DIAMETER: Record<AvatarSize, number> = { xs: 24, sm: 32, md: 48, lg: 72 };
-const OVERFLOW_TEXT_SIZE: Record<AvatarSize, TextSize> = {
-  xs: 'micro',
-  sm: 'caption',
-  md: 'label',
-  lg: 'title',
-};
 const RING_WIDTH = 2;
 const OVERLAP_FRACTION = 0.3;
 
@@ -41,7 +40,7 @@ const OVERLAP_FRACTION = 0.3;
 export function AvatarStack({ people, max = 4, size = 'sm', testID }: AvatarStackProps) {
   if (people.length === 0) return null;
 
-  const diameter = DIAMETER[size];
+  const diameter = AVATAR_DIAMETER[size];
   const overlap = Math.round(diameter * OVERLAP_FRACTION);
   const visible = people.slice(0, max);
   const overflowCount = Math.max(0, people.length - max);
@@ -105,7 +104,14 @@ export function AvatarStack({ people, max = 4, size = 'sm', testID }: AvatarStac
               { width: diameter, height: diameter, borderRadius: radius.full },
             ]}
           >
-            <Metric value={`+${overflowCount}`} size={OVERFLOW_TEXT_SIZE[size]} tone="muted" />
+            {/* Capped for the same reason `Avatar`'s initials are: the chip is
+                one of the circles in the stack and cannot grow past it. */}
+            <Metric
+              value={`+${overflowCount}`}
+              size={AVATAR_TEXT_SIZE[size]}
+              tone="muted"
+              maxFontSizeMultiplier={AVATAR_MAX_FONT_SCALE[size]}
+            />
           </View>
         </View>
       ) : null}

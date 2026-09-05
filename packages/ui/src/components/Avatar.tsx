@@ -3,7 +3,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { colors, radius, type TextSize } from '../theme/tokens.ts';
+import { colors, fontSize, radius, type TextSize } from '../theme/tokens.ts';
 
 import { getAvatarFallback } from './avatar-fallback.ts';
 import { Text } from './Text.tsx';
@@ -29,15 +29,36 @@ export interface AvatarProps {
   style?: StyleProp<ViewStyle>;
 }
 
-// `ui-primitives-core/06`'s consumer table.
-const DIAMETER: Record<AvatarSize, number> = { xs: 24, sm: 32, md: 48, lg: 72 };
+// `ui-primitives-core/06`'s consumer table. Exported because `AvatarStack`
+// draws its `+n` chip at exactly these sizes and the two must not drift.
+export const AVATAR_DIAMETER: Record<AvatarSize, number> = { xs: 24, sm: 32, md: 48, lg: 72 };
 
-const INITIALS_TEXT_SIZE: Record<AvatarSize, TextSize> = {
+export const AVATAR_TEXT_SIZE: Record<AvatarSize, TextSize> = {
   xs: 'micro',
   sm: 'caption',
   md: 'label',
   lg: 'title',
 };
+
+/**
+ * The one `accessibility` §3 case where capping the scale is the right answer
+ * rather than growing the box: an avatar is a fixed graphic whose diameter is
+ * load-bearing for the row it sits in and for `AvatarStack`'s overlap maths,
+ * so it cannot grow. The cap is the largest multiple of the size's own line
+ * box that still fits inside the circle — never a blanket
+ * `allowFontScaling={false}`, which would freeze the initials at 11px.
+ */
+export const AVATAR_MAX_FONT_SCALE: Record<AvatarSize, number> = {
+  xs: fitScale('xs'),
+  sm: fitScale('sm'),
+  md: fitScale('md'),
+  lg: fitScale('lg'),
+};
+
+function fitScale(size: AvatarSize): number {
+  const lineBox = Number.parseFloat(fontSize[AVATAR_TEXT_SIZE[size]][1].lineHeight);
+  return Math.max(1, Math.floor((AVATAR_DIAMETER[size] / lineBox) * 10) / 10);
+}
 
 const PRESENCE_DIAMETER: Record<AvatarSize, number> = { xs: 8, sm: 9, md: 12, lg: 16 };
 const PRESENCE_RING_WIDTH = 2;
@@ -74,7 +95,7 @@ export function Avatar({
   style,
 }: AvatarProps) {
   const [imageFailed, setImageFailed] = useState(false);
-  const diameter = DIAMETER[size];
+  const diameter = AVATAR_DIAMETER[size];
   const { initials, gradient } = getAvatarFallback(name, userId);
 
   return (
@@ -91,13 +112,17 @@ export function Avatar({
         style={StyleSheet.absoluteFill}
       />
       {/*
-        Font scaling stays on (`accessibility` skill §3 — never disabled),
-        even though at 200% two uppercase letters can crowd an `xs` circle.
-        `numberOfLines` plus the parent's flex centring keeps them centred
-        and legible rather than overflowing unpredictably; there is no
-        prop here to shrink the avatar itself to compensate.
+        Font scaling stays on (`accessibility` §3 — never disabled), but it is
+        CAPPED per size: the circle cannot grow, so past `AVATAR_MAX_FONT_SCALE`
+        the initials would be clipped by `overflow: 'hidden'` rather than
+        merely crowded.
       */}
-      <Text size={INITIALS_TEXT_SIZE[size]} tone="bright" numberOfLines={1}>
+      <Text
+        size={AVATAR_TEXT_SIZE[size]}
+        tone="bright"
+        numberOfLines={1}
+        maxFontSizeMultiplier={AVATAR_MAX_FONT_SCALE[size]}
+      >
         {initials}
       </Text>
       {uri && !imageFailed ? (

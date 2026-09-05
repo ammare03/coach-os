@@ -7,15 +7,18 @@ import { EmptyState } from './EmptyState.tsx';
  * The action's height lives on `Button`'s inner animated view, not on the
  * accessible host, so the tap floor is read by walking down from the label.
  */
+// `minHeight`, not `height`: the button's box is a FLOOR so a wrapped label
+// at 200% text can grow it (`accessibility` §3) — reading `height` here would
+// pass only while the button was still able to clip its own label.
 function actionHeight(label: string): number {
   const host = screen.getByLabelText(label);
   const sized = host
     .findAll((node) => typeof node.type === 'string')
     .map((node) => StyleSheet.flatten(node.props.style as ViewStyle | undefined))
-    .find((style) => typeof style?.height === 'number');
+    .find((style) => typeof style?.minHeight === 'number');
 
-  if (typeof sized?.height !== 'number') throw new Error('no height on the action');
-  return sized.height;
+  if (typeof sized?.minHeight !== 'number') throw new Error('no height on the action');
+  return sized.minHeight;
 }
 
 const action = { label: 'Invite your first client', onPress: () => {} };

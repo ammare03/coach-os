@@ -237,8 +237,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   countdown: {
-    width: COUNTDOWN_SIZE,
-    height: COUNTDOWN_SIZE,
+    // Min, never fixed — a `label` line box is 40px at 200% text and would
+    // be cut in half by a 28px circle (`accessibility` §3).
+    minWidth: COUNTDOWN_SIZE,
+    minHeight: COUNTDOWN_SIZE,
+    paddingHorizontal: spacing(6),
     borderRadius: radius.full,
     alignItems: 'center',
     justifyContent: 'center',

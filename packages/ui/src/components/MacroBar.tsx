@@ -311,6 +311,10 @@ const styles = StyleSheet.create({
   },
   label: {
     flexDirection: 'row',
+    // Wraps rather than overflowing its segment: at 200% text "P" and "140 g"
+    // are wider than the share of the bar the segment owns
+    // (`accessibility` §3).
+    flexWrap: 'wrap',
     alignItems: 'baseline',
     gap: spacing(3),
   },

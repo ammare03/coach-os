@@ -81,7 +81,11 @@ export function Badge({ count, label, tone = 'neutral', size = 'sm', testID }: B
         styles.base,
         {
           minWidth: diameter,
-          height: diameter,
+          // Min-height, never height — a `caption` line box is 34px at 200%
+          // text inside a 20px box with `overflow: 'hidden'`
+          // (`accessibility` §3). The pill radius keeps it circular while it
+          // is square and a pill once it is not.
+          minHeight: diameter,
           borderRadius: radius.full,
           borderWidth: BORDER_WIDTH,
           borderColor: isBrand ? BRAND_BORDER : colors.border.strong,
@@ -99,14 +103,11 @@ export function Badge({ count, label, tone = 'neutral', size = 'sm', testID }: B
         />
       ) : null}
       {!isDot ? (
-        // `default` is the closest tone `Metric` currently offers to the
-        // dark ink DESIGN.md §1.1's "primary fill inverts" rule calls for
-        // against this bright gradient (the same rule `primary.from/to`
-        // follows). `Metric` has no `onBrand` tone (unlike `Text`, which
-        // does) — flagged as a follow-up for `Metric.tsx`, out of this
-        // component's scope; on `neutral`'s dark translucent fill `default`
-        // already has full contrast.
-        <Metric value={content} size={METRIC_SIZE[size]} tone="default" />
+        // DESIGN.md §1.1 — the primary fill inverts: `fg.DEFAULT` on the peach
+        // gradient reads 2.6:1 and is forbidden, so `brand` takes the dark
+        // `onBrand` ink (8.4:1). On `neutral`'s dark translucent fill
+        // `default` already has full contrast.
+        <Metric value={content} size={METRIC_SIZE[size]} tone={isBrand ? 'onBrand' : 'default'} />
       ) : null}
     </View>
   );

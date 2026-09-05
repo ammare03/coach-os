@@ -9,6 +9,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { useTextScale } from '../theme/TextScaleProvider.tsx';
 import {
   colors,
   control,
@@ -295,6 +296,7 @@ export function NumberStepper({
     if (event.nativeEvent.actionName === 'decrement') applyStep(-1);
   };
 
+  const textScale = useTextScale();
   const keySize = densityTokens[densityProp].button;
   // Mirrors `Button`'s pattern: the visible box is the design's, the tap
   // area reaches the floor through symmetric `hitSlop` rather than by
@@ -377,7 +379,10 @@ export function NumberStepper({
               styles.valueInput,
               {
                 minHeight: keySize,
-                fontSize: fontSize[VALUE_SIZE[densityProp]][0],
+                // Scaled explicitly for the same reason `Input`'s is: a raw
+                // `TextInput` tracks the OS font setting but not the gallery's
+                // scale toggle (`component-gallery/02`).
+                fontSize: fontSize[VALUE_SIZE[densityProp]][0] * textScale,
               },
             ]}
           />

@@ -136,7 +136,10 @@ export function SegmentedControl<V extends string>({
         {
           borderRadius: radius.card,
           padding: TRACK_PADDING,
-          height: ITEM_HEIGHT + TRACK_PADDING * 2,
+          // Min-height, never height — a `label` line box is 40px at 200%
+          // text and the 38px item would clip it (`accessibility` §3). The
+          // pill stretches to whatever height the segments settle at.
+          minHeight: ITEM_HEIGHT + TRACK_PADDING * 2,
         },
       ]}
     >
@@ -148,8 +151,8 @@ export function SegmentedControl<V extends string>({
             pillStyle,
             {
               top: TRACK_PADDING,
+              bottom: TRACK_PADDING,
               left: TRACK_PADDING,
-              height: ITEM_HEIGHT,
               borderRadius: radius.control,
             },
             selectionPill.shadow,
@@ -212,8 +215,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   segment: {
-    height: ITEM_HEIGHT,
+    minHeight: ITEM_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 2,
   },
 });

@@ -210,7 +210,10 @@ export function Button({
         return [
           styles.base,
           {
-            height,
+            // Min-height, never height: at 200% text the `label` line box is
+            // 40px and a `sm` button's 32px box would clip it
+            // (`accessibility` §3).
+            minHeight: Math.max(height, tapTarget.MIN),
             paddingHorizontal: PADDING_HORIZONTAL[size],
             borderRadius: radius.full,
             backgroundColor: v.backgroundColor,
@@ -251,7 +254,11 @@ export function Button({
             <View style={styles.content}>
               <View style={[styles.labelRow, loading && styles.labelRowHidden]}>
                 {iconLeft}
-                <Text size={FONT_SIZE[size]} numberOfLines={1} style={{ color: v.textColor }}>
+                {/* No `numberOfLines`: `accessibility` §3 forbids truncating a
+                    primary action's label. A constrained (`fullWidth`) button
+                    wraps and grows; an unconstrained one still sizes to its
+                    content, so nothing changes at the default scale. */}
+                <Text size={FONT_SIZE[size]} style={[styles.label, { color: v.textColor }]}>
                   {children}
                 </Text>
                 {iconRight}
@@ -291,6 +298,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: tapTarget.MIN,
+    // Only reached once the label is taller than the button's own box, i.e.
+    // at a large text scale — at the default scale `minHeight` wins and this
+    // changes nothing.
+    paddingVertical: spacing(4),
   },
   content: {
     alignItems: 'center',
@@ -300,6 +311,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing(32),
+    flexShrink: 1,
+  },
+  label: {
+    flexShrink: 1,
+    textAlign: 'center',
   },
   labelRowHidden: {
     opacity: 0,

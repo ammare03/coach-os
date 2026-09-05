@@ -118,7 +118,10 @@ export function LoadingState({
           key={index}
           style={[
             styles.row,
-            { height: densityValues.row },
+            // Min-height, never height: the two `SkeletonText` lines inside
+            // reserve the real text's line box, which doubles at 200%
+            // (`accessibility` §3).
+            { minHeight: densityValues.row },
             index < count - 1 && styles.rowDivider,
           ]}
         >
