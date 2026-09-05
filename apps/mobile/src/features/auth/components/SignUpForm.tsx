@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
 });
 
 // The retired indigo ramp mapped onto `DESIGN.md` §1.1 by role: #F2F5F9 →
-// `fg.DEFAULT` (body ink), #5F6C7E → `fg.subtle` (the same secondary-
+// `fg.DEFAULT` (body ink), #5F6C7E → `fg.muted` (the secondary-
 // metadata role it held), #868CF8 → `brand` (link/accent).
 //
 // The "Coach" pill was a hand-composed indigo tint at 12%/30%. That is
@@ -233,12 +233,12 @@ const styles = StyleSheet.create({
 // under `brand` text, against 4.5:1 for 11px.
 const useThemedStyles = createThemedStyles((theme) => ({
   heading: { color: theme.colors.fg.DEFAULT },
-  subtitle: { color: theme.colors.fg.subtle },
+  subtitle: { color: theme.colors.fg.muted },
   badge: {
     backgroundColor: theme.elevation.tinted.gradient[0],
     borderColor: theme.elevation.tinted.borderColor,
   },
   badgeText: { color: theme.colors.brand.DEFAULT },
   formError: { color: theme.colors.fg.DEFAULT },
-  terms: { color: theme.colors.fg.subtle },
+  terms: { color: theme.colors.fg.muted },
 }));

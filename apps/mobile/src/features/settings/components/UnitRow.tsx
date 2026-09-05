@@ -230,7 +230,7 @@ const useThemedStyles = createThemedStyles((theme) => ({
     backgroundColor: theme.colors.bg.raised,
     borderColor: theme.colors.border.soft,
   },
-  exampleCaption: { color: theme.colors.fg.subtle },
+  exampleCaption: { color: theme.colors.fg.muted },
   tileIdle: {
     backgroundColor: theme.colors.bg.inset,
     borderColor: theme.colors.border.soft,
@@ -239,10 +239,10 @@ const useThemedStyles = createThemedStyles((theme) => ({
     backgroundColor: theme.elevation.tinted.gradient[1],
     borderColor: theme.colors.brand.DEFAULT,
   },
-  tileLabel: { color: theme.colors.fg.subtle },
+  tileLabel: { color: theme.colors.fg.muted },
   tileLabelSelected: { color: theme.colors.brand.DEFAULT },
   tileValue: { color: theme.colors.fg.DEFAULT },
   tileValueIdle: { color: theme.colors.fg.subtle },
-  tileCaption: { color: theme.colors.fg.subtle },
-  footnote: { color: theme.colors.fg.subtle },
+  tileCaption: { color: theme.colors.fg.muted },
+  footnote: { color: theme.colors.fg.muted },
 }));

@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
 const useThemedStyles = createThemedStyles((theme) => ({
   heading: { color: theme.colors.fg.DEFAULT },
   dividerLine: { backgroundColor: theme.colors.border.soft },
-  dividerText: { color: theme.colors.fg.subtle },
+  dividerText: { color: theme.colors.fg.muted },
   socialErrorText: { color: theme.colors.fg.DEFAULT },
   footerText: { color: theme.colors.fg.muted },
   footerLink: { color: theme.colors.brand.DEFAULT },

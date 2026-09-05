@@ -245,7 +245,9 @@ const styles = StyleSheet.create({
 //
 //   #F2F5F9 → fg.DEFAULT   body ink
 //   #97A2B4 → fg.muted     secondary text, and the avatar glyph's stroke
-//   #5F6C7E → fg.subtle    the same secondary-metadata role
+//   #5F6C7E → fg.muted     the secondary-metadata role, stepped up
+//                          from `fg.subtle` because both call sites are
+//                          under 14px (§13 restricts `fg.subtle` to ≥14px)
 //   #868CF8 → brand        link/accent (§1.1, "accent, active state")
 //   #12161D → bg.raised    the row's own fill
 //   #1E242E → border.soft  its hairline
@@ -262,10 +264,10 @@ const useThemedStyles = createThemedStyles((theme) => ({
     borderColor: theme.colors.border.soft,
   },
   identityAvatar: { backgroundColor: theme.elevation.raised.highlight },
-  identityLabel: { color: theme.colors.fg.subtle },
+  identityLabel: { color: theme.colors.fg.muted },
   identityEmail: { color: theme.colors.fg.DEFAULT },
   formError: { color: theme.colors.fg.DEFAULT },
-  terms: { color: theme.colors.fg.subtle },
+  terms: { color: theme.colors.fg.muted },
   termsLink: { color: theme.colors.brand.DEFAULT, fontWeight: '500' },
   footerText: { color: theme.colors.fg.muted },
   footerLink: { color: theme.colors.brand.DEFAULT },
