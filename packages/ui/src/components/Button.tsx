@@ -2,15 +2,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import {
-  colors,
-  control,
-  density,
-  radius,
-  spacing,
-  tapTarget,
-  type Density,
-} from '../theme/tokens.ts';
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import type { ThemeContextValue } from '../theme/ThemeProvider.tsx';
+import { density, radius, spacing, tapTarget, type Density } from '../theme/tokens.ts';
+import { DEFAULT_THEME, useTheme } from '../theme/useTheme.ts';
 
 import { Pressable, type PressableRenderState } from './Pressable.tsx';
 import { Text } from './Text.tsx';
@@ -104,7 +99,10 @@ export function resolveButtonVariantVisuals(
   variant: ButtonVariant,
   pressed: boolean,
   disabled: boolean,
+  /** The active scheme. Defaults to dark so a bare call site keeps today's answer. */
+  theme: ThemeContextValue = DEFAULT_THEME,
 ): VariantVisuals {
+  const { colors, control } = theme;
   if (disabled) {
     // CONTRACT.md §5 — `bg.inset` at 40%, text `fg.faint`. One disabled
     // treatment for every variant; the difference between variants stops
@@ -188,6 +186,8 @@ export function Button({
   accessibilityLabel,
   testID,
 }: ButtonProps) {
+  const theme = useTheme();
+  const themed = useThemedStyles();
   const blocked = disabled || loading;
   const height = size === 'md' ? density[densityProp].button : (FIXED_HEIGHT[size] ?? 44);
 
@@ -203,10 +203,10 @@ export function Button({
       containerStyle={[
         styles.outer,
         fullWidth && styles.fullWidth,
-        variant === 'primary' && !disabled && styles.primaryShadow,
+        variant === 'primary' && !disabled && themed.primaryShadow,
       ]}
       style={({ pressed }: PressableRenderState) => {
-        const v = resolveButtonVariantVisuals(variant, pressed, disabled);
+        const v = resolveButtonVariantVisuals(variant, pressed, disabled, theme);
         return [
           styles.base,
           {
@@ -227,12 +227,12 @@ export function Button({
       }}
     >
       {({ pressed }: PressableRenderState) => {
-        const v = resolveButtonVariantVisuals(variant, pressed, disabled);
+        const v = resolveButtonVariantVisuals(variant, pressed, disabled, theme);
         return (
           <>
             {v.useGradient && (
               <LinearGradient
-                colors={[colors.primary.from, colors.primary.to]}
+                colors={[theme.colors.primary.from, theme.colors.primary.to]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 0, y: 1 }}
                 style={StyleSheet.absoluteFill}
@@ -243,11 +243,11 @@ export function Button({
                 {/* the inset-edge trick (CONTRACT.md §4) — collapses on press */}
                 <View
                   pointerEvents="none"
-                  style={[styles.hairlineTop, pressed && styles.hairlineHidden]}
+                  style={[themed.hairlineTop, pressed && styles.hairlineHidden]}
                 />
                 <View
                   pointerEvents="none"
-                  style={[styles.hairlineBottom, pressed && styles.hairlineHidden]}
+                  style={[themed.hairlineBottom, pressed && styles.hairlineHidden]}
                 />
               </>
             )}
@@ -276,23 +276,12 @@ export function Button({
   );
 }
 
-// DESIGN.md §9's primary-button glow: `0 10px 22px -8px rgba(255,165,134,.5)`.
-// `shadowColor` routes through `colors.brand.DEFAULT` rather than a bare
-// hex; the offset/radius geometry is component-specific (like `SIZES`
-// above) and isn't a reusable token.
 const styles = StyleSheet.create({
   outer: {
     alignSelf: 'flex-start',
   },
   fullWidth: {
     alignSelf: 'stretch',
-  },
-  primaryShadow: {
-    shadowColor: colors.brand.DEFAULT,
-    shadowOpacity: 0.5,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
   },
   base: {
     alignItems: 'center',
@@ -323,13 +312,29 @@ const styles = StyleSheet.create({
   spinner: {
     position: 'absolute',
   },
+  hairlineHidden: {
+    opacity: 0,
+  },
+});
+
+// DESIGN.md §9's primary-button glow: `0 10px 22px -8px rgba(255,165,134,.5)`.
+// The offset/radius geometry is component-specific and isn't a reusable
+// token; the two hairlines are §4's inset-edge trick.
+const useThemedStyles = createThemedStyles((theme) => ({
+  primaryShadow: {
+    shadowColor: theme.colors.brand.DEFAULT,
+    shadowOpacity: 0.5,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+  },
   hairlineTop: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: control.primaryHighlight,
+    backgroundColor: theme.control.primaryHighlight,
   },
   hairlineBottom: {
     position: 'absolute',
@@ -337,9 +342,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 2,
-    backgroundColor: control.primaryLowlight,
+    backgroundColor: theme.control.primaryLowlight,
   },
-  hairlineHidden: {
-    opacity: 0,
-  },
-});
+}));

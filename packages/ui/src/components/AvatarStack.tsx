@@ -1,6 +1,8 @@
 import { StyleSheet, View } from 'react-native';
 
-import { colors, radius } from '../theme/tokens.ts';
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { radius } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import {
   Avatar,
@@ -38,6 +40,9 @@ const OVERLAP_FRACTION = 0.3;
  * hidden from the screen reader; this wrapper is what gets focused.
  */
 export function AvatarStack({ people, max = 4, size = 'sm', testID }: AvatarStackProps) {
+  const { colors } = useTheme();
+  const themed = useThemedStyles();
+
   if (people.length === 0) return null;
 
   const diameter = AVATAR_DIAMETER[size];
@@ -100,7 +105,7 @@ export function AvatarStack({ people, max = 4, size = 'sm', testID }: AvatarStac
         >
           <View
             style={[
-              styles.overflowFill,
+              themed.overflowFill,
               { width: diameter, height: diameter, borderRadius: radius.full },
             ]}
           >
@@ -137,10 +142,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+});
+
+const useThemedStyles = createThemedStyles((theme) => ({
   overflowFill: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.border.strong,
+    backgroundColor: theme.colors.border.strong,
     overflow: 'hidden',
   },
-});
+}));

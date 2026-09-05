@@ -285,7 +285,12 @@ export {
   type ThemeProviderProps,
   type ThemeContextValue,
 } from './theme/ThemeProvider.tsx';
-export { useTheme } from './theme/useTheme.ts';
+export { useTheme, DEFAULT_THEME } from './theme/useTheme.ts';
+// The scheme-aware `StyleSheet` (`component-gallery/04`). A component that
+// sets a colour in a JS `style` object builds its sheet with this, so the
+// colour follows the active scheme instead of being baked to the dark
+// table at module load. The factory runs once per scheme, not per render.
+export { createThemedStyles, createThemedValue } from './theme/createThemedStyles.ts';
 // The component gallery's 200% text-size toggle (`component-gallery/01`).
 // Not a user-facing preference — dynamic type is the OS's job everywhere
 // else, and at the default scale of 1 `Text` renders exactly as it did
@@ -299,6 +304,12 @@ export type { Scheme } from './theme/schemes.ts';
 // Values, for the genuine non-Tailwind consumers — SVG fills, gradient
 // stops, Reanimated colour targets. A component that reads these to build
 // a `style` object is doing by hand what `className` does for free.
+//
+// `colors`, `elevation`, `glass`, `selectionPill`, `skeleton`, and `scrim`
+// below are the DARK column only (`theme/tokens.ts`). Read them from
+// `useTheme()` instead wherever the value reaches the screen; these
+// exports exist for the cases that genuinely predate a provider — a
+// boot-time root background, a native splash colour.
 export {
   colors,
   radius,

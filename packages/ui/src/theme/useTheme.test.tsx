@@ -2,7 +2,8 @@ import { render } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
 import { ThemeProvider } from './ThemeProvider.tsx';
-import { useTheme } from './useTheme.ts';
+import { darkSchemeTokens } from './tokens.ts';
+import { DEFAULT_THEME, useTheme } from './useTheme.ts';
 
 function Probe() {
   const theme = useTheme();
@@ -10,11 +11,22 @@ function Probe() {
 }
 
 describe('useTheme', () => {
-  it('throws outside a ThemeProvider', () => {
-    // Swallow the expected React error-boundary console noise for this one assertion.
-    const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => render(<Probe />)).toThrow('useTheme() must be called within a <ThemeProvider>.');
-    spy.mockRestore();
+  // Was "throws outside a ThemeProvider" until `component-gallery/04`.
+  // The throw is what kept `useTheme()` at zero consumers and left every
+  // JS-set colour baked to the dark table; a hook that throws is not a
+  // usable escape hatch. Dark is the same answer `ThemeProvider` gives with
+  // no props, so the default is not a guess.
+  it('returns the dark scheme outside a ThemeProvider', () => {
+    const { getByTestId } = render(<Probe />);
+    expect(getByTestId('probe').props.children).toBe('dark:#FFA586');
+  });
+
+  it('gives a bare component the dark derivation of every scheme-dependent group', () => {
+    expect(DEFAULT_THEME.control.surface).toBe(darkSchemeTokens.control.surface);
+    expect(DEFAULT_THEME.elevation.raised.gradient).toEqual(
+      darkSchemeTokens.elevation.raised.gradient,
+    );
+    expect(DEFAULT_THEME.scrim.color).toBe(darkSchemeTokens.scrim.color);
   });
 
   it('defaults to the dark scheme with no props', () => {

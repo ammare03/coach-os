@@ -21,11 +21,22 @@ const NEUTRAL_GLYPH = '•';
 // colour" rule — and none of the three is anywhere near the `state.*` /
 // `urgent` adherence hues, so a fallback colour can never be mistaken for
 // an adherence signal (DESIGN.md §8).
-const FALLBACK_PALETTE: readonly (readonly [string, string])[] = [
-  [colors.deep, colors.brand.deep],
-  [colors.brand.deep, colors.brand.shade],
-  [colors.brand.shade, colors.deep],
-];
+export type AvatarPalette = readonly (readonly [string, string])[];
+
+/** `deep` is scheme-dependent; the two brand stops are not (DESIGN.md §1.1 gives one ramp). */
+export function buildAvatarPalette(
+  deep: string,
+  brand: { deep: string; shade: string },
+): AvatarPalette {
+  return [
+    [deep, brand.deep],
+    [brand.deep, brand.shade],
+    [brand.shade, deep],
+  ];
+}
+
+/** The dark palette, and the default when no scheme is supplied. */
+const FALLBACK_PALETTE: AvatarPalette = buildAvatarPalette(colors.deep, colors.brand);
 
 /**
  * First grapheme of `word`, uppercased by the caller. Prefers
@@ -88,10 +99,14 @@ function hashUserId(userId: string): number {
  * two clients both called "Alex" in the same list get different colours
  * (`ui-primitives-core/06`'s "Why this exists").
  */
-export function getAvatarFallback(name: string, userId: string): AvatarFallback {
+export function getAvatarFallback(
+  name: string,
+  userId: string,
+  palette: AvatarPalette = FALLBACK_PALETTE,
+): AvatarFallback {
   const initials = getAvatarInitials(name);
-  const index = hashUserId(userId) % FALLBACK_PALETTE.length;
-  const gradient = FALLBACK_PALETTE[index];
+  const index = hashUserId(userId) % palette.length;
+  const gradient = palette[index];
 
   if (!gradient) {
     // Unreachable: `index` is always in range for a non-empty, fixed-size

@@ -17,7 +17,8 @@ import {
   View,
 } from 'react-native';
 
-import { colors, dataviz, radius, spacing, tapTarget } from '../theme/tokens.ts';
+import { radius, spacing, tapTarget } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import {
   CHART_MIN_SPAN,
@@ -174,6 +175,7 @@ export function LineChart({
   testID,
 }: LineChartProps) {
   const { fontScale } = useWindowDimensions();
+  const { colors, dataviz } = useTheme();
   const [width, setWidth] = useState(0);
   const [selection, setSelection] = useState<LineChartSelection | null>(null);
 
@@ -210,7 +212,7 @@ export function LineChart({
               : { pointIndex: lastIndex, dateISO: lastPoint.dateISO, value: lastPoint.value },
         } satisfies ResolvedSeries;
       }),
-    [series],
+    [series, colors.brand],
   );
 
   // A shared x scale, so an overlay compares like with like. Two series

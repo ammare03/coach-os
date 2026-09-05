@@ -11,37 +11,17 @@
 // Brand is scheme-invariant (§1.1 gives one ramp, not two) — `tokens.ts`
 // stays the source for it. `ThemeProvider` merges these tables with the
 // brand ramp; nothing outside `packages/ui/src/theme/` reads this file.
-import { colors } from './tokens.ts';
+import {
+  colors,
+  DARK_INK,
+  darkSchemeTokens,
+  deriveSchemeTokens,
+  type SchemeColors,
+  type SchemeInk,
+  type SchemeTokens,
+} from './tokens.ts';
 
 export type Scheme = 'dark' | 'light';
-
-type SchemeColors = {
-  bg: {
-    outer: string;
-    DEFAULT: string;
-    raised: string;
-    'raised-end': string;
-    inset: string;
-    'inset-alt': string;
-  };
-  fg: {
-    bright: string;
-    DEFAULT: string;
-    glass: string;
-    warm: string;
-    'warm-muted': string;
-    muted: string;
-    subtle: string;
-    faint: string;
-    onBrand: string;
-  };
-  border: { soft: string; DEFAULT: string; strong: string; tinted: string };
-  state: { onPlan: string; drifting: string; offPlan: string; notStarted: string };
-  deep: string;
-  urgent: string;
-  'urgent-text': string;
-  'on-deep': string;
-};
 
 export const schemes: Record<Scheme, SchemeColors> = {
   dark: {
@@ -107,4 +87,31 @@ export const schemes: Record<Scheme, SchemeColors> = {
     // 1.20:1. Unchanged from dark, it reads 6.81:1 on the light `deep`.
     'on-deep': colors['on-deep'],
   },
+};
+
+// The composition anchors (`tokens.ts`, `SchemeInk`). Only `edge` inverts:
+// every hairline, grabber, and selection pill is a fraction of it, and a
+// warm-white hairline over a white card is not an edge. The light column
+// takes its own `fg.muted` rather than a fifth literal, so the two cannot
+// drift apart. `sheen`, `shade`, and `scrim` are physical, not tonal — a
+// highlight is light, a shadow is black, and a modal scrim darkens what is
+// behind it — so all three are the dark values in both schemes.
+const LIGHT_INK: SchemeInk = {
+  edge: schemes.light.fg.muted,
+  sheen: DARK_INK.sheen,
+  shade: DARK_INK.shade,
+  scrim: DARK_INK.scrim,
+};
+
+export const schemeInk: Record<Scheme, SchemeInk> = { dark: DARK_INK, light: LIGHT_INK };
+
+/**
+ * Every scheme-dependent group, per scheme, derived once at module load —
+ * `ThemeProvider` picks a column rather than composing one per render, and
+ * the identity of each column is stable, which is what lets
+ * `createThemedStyles` cache a `StyleSheet` against it.
+ */
+export const schemeTokens: Record<Scheme, SchemeTokens> = {
+  dark: darkSchemeTokens,
+  light: deriveSchemeTokens(schemes.light, LIGHT_INK),
 };

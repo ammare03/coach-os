@@ -1,6 +1,7 @@
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
-import { colors, density as densityTokens, type Density } from '../theme/tokens.ts';
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { density as densityTokens, type Density } from '../theme/tokens.ts';
 
 export interface DividerProps {
   /** Insets to match the card's density padding so the line doesn't run under a card's rounded corners. */
@@ -14,6 +15,7 @@ export interface DividerProps {
  * need separating" without nesting a second card.
  */
 export function Divider({ density: densityProp = 'client', testID }: DividerProps) {
+  const styles = useThemedStyles();
   const inset = densityTokens[densityProp].cardPadding;
 
   return (
@@ -26,9 +28,9 @@ export function Divider({ density: densityProp = 'client', testID }: DividerProp
   );
 }
 
-const styles = StyleSheet.create({
+const useThemedStyles = createThemedStyles((theme) => ({
   line: {
     height: 1,
-    backgroundColor: colors.border.soft,
+    backgroundColor: theme.colors.border.soft,
   },
-});
+}));

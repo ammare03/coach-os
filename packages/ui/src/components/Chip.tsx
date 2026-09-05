@@ -3,14 +3,9 @@ import { X } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import {
-  colors,
-  control,
-  radius,
-  selectionPill,
-  tapTarget,
-  type Density,
-} from '../theme/tokens.ts';
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { radius, tapTarget, type Density } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import { IconButton } from './IconButton.tsx';
 import { Pressable } from './Pressable.tsx';
@@ -51,6 +46,8 @@ const CHIP_HIT_SLOP = Math.ceil((tapTarget.MIN - CHIP_HEIGHT) / 2);
  * fixed, always-visible 2-4 option set.
  */
 export function Chip({ label, selected = false, onPress, iconLeft, onRemove, testID }: ChipProps) {
+  const { colors, control, selectionPill } = useTheme();
+  const themed = useThemedStyles();
   const interactive = Boolean(onPress);
 
   const chipStyle = [
@@ -95,7 +92,7 @@ export function Chip({ label, selected = false, onPress, iconLeft, onRemove, tes
           accessibilityLabel={label}
           accessibilityState={{ selected }}
           testID={testID}
-          containerStyle={selected ? styles.selectedShadow : undefined}
+          containerStyle={selected ? themed.selectedShadow : undefined}
           style={chipStyle}
         >
           {body}
@@ -106,7 +103,7 @@ export function Chip({ label, selected = false, onPress, iconLeft, onRemove, tes
         // state — three claims, none true of a read-only label
         // (`component-gallery/03`). The shadow sits on an outer view because
         // `chip` clips its own children.
-        <View style={selected ? styles.selectedShadow : undefined}>
+        <View style={selected ? themed.selectedShadow : undefined}>
           <View accessible accessibilityLabel={label} testID={testID} style={chipStyle}>
             {body}
           </View>
@@ -148,9 +145,6 @@ const styles = StyleSheet.create({
   chipSelected: {
     borderWidth: 0,
   },
-  // DESIGN.md §4's selection-pill drop shadow, on the outer (non-clipped)
-  // container — `overflow: 'hidden'` on `chip` above would otherwise clip it.
-  selectedShadow: selectionPill.shadow,
   hairlineTop: {
     position: 'absolute',
     top: 0,
@@ -164,3 +158,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
 });
+
+// DESIGN.md §4's selection-pill drop shadow, on the outer (non-clipped)
+// container — `overflow: 'hidden'` on `chip` would otherwise clip it.
+const useThemedStyles = createThemedStyles((theme) => ({
+  selectedShadow: theme.selectionPill.shadow,
+}));

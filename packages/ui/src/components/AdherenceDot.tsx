@@ -1,7 +1,8 @@
 import { ADHERENCE_TOKEN, type AdherenceState } from '@coachos/utils';
 import { StyleSheet, View } from 'react-native';
 
-import { colors, radius, spacing, tapTarget } from '../theme/tokens.ts';
+import { createThemedValue } from '../theme/createThemedStyles.ts';
+import { radius, spacing, tapTarget } from '../theme/tokens.ts';
 
 import { Pressable } from './Pressable.tsx';
 import { Text } from './Text.tsx';
@@ -54,36 +55,40 @@ type DotVisual = {
 // identical in greyscale) by dashed-vs-solid ring, and by NOTHING else.
 // Dropping the dash makes a brand-new client indistinguishable from a
 // failing one, which is the single failure §10.5 exists to prevent.
-const VISUALS: Record<(typeof ADHERENCE_TOKEN)[AdherenceState], DotVisual> = {
-  onTrack: {
-    ring: colors.state.onPlan,
-    fill: colors.state.onPlan,
-    dashed: false,
-    glowOpacity: 0.6,
-    glowRadius: 10,
-  },
-  drifting: {
-    ring: colors.state.drifting,
-    fill: undefined,
-    dashed: false,
-    glowOpacity: 0.4,
-    glowRadius: 8,
-  },
-  offTrack: {
-    ring: colors.state.offPlan,
-    fill: undefined,
-    dashed: false,
-    glowOpacity: 0.4,
-    glowRadius: 8,
-  },
-  noData: {
-    ring: colors.state.notStarted,
-    fill: undefined,
-    dashed: true,
-    glowOpacity: 0,
-    glowRadius: 0,
-  },
-};
+// Built once per scheme, never per render: this renders 210 times in a
+// 30-row coach dashboard (`CLAUDE.md` §19).
+const useVisuals = createThemedValue<Record<(typeof ADHERENCE_TOKEN)[AdherenceState], DotVisual>>(
+  ({ colors }) => ({
+    onTrack: {
+      ring: colors.state.onPlan,
+      fill: colors.state.onPlan,
+      dashed: false,
+      glowOpacity: 0.6,
+      glowRadius: 10,
+    },
+    drifting: {
+      ring: colors.state.drifting,
+      fill: undefined,
+      dashed: false,
+      glowOpacity: 0.4,
+      glowRadius: 8,
+    },
+    offTrack: {
+      ring: colors.state.offPlan,
+      fill: undefined,
+      dashed: false,
+      glowOpacity: 0.4,
+      glowRadius: 8,
+    },
+    noData: {
+      ring: colors.state.notStarted,
+      fill: undefined,
+      dashed: true,
+      glowOpacity: 0,
+      glowRadius: 0,
+    },
+  }),
+);
 
 // `CoachOS-Coach.dc.html`'s client row draws an 11px dot; `DESIGN.dc.html`
 // §05's specimen draws 12px. Both at `border-radius:6px` with a `1.5px`
@@ -139,7 +144,7 @@ export interface AdherenceDotProps {
  * hears thirty sentences rather than four hundred and twenty dots.
  */
 export function AdherenceDot({ state, size = 'md', label, onPress, testID }: AdherenceDotProps) {
-  const visual = VISUALS[ADHERENCE_TOKEN[state]];
+  const visual = useVisuals()[ADHERENCE_TOKEN[state]];
   const diameter = ADHERENCE_DOT_DIAMETER[size];
   const stateLabel = ADHERENCE_STATE_LABEL[state];
 

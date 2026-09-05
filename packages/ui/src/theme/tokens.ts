@@ -1,3 +1,5 @@
+import { withAlpha } from './to-rgb-channels.ts';
+
 // The only file in the repository that may contain a colour, a radius, or a
 // spacing value. `DESIGN.md` is the source of truth for every value below —
 // this file never invents one. `DESIGN.md` supersedes the palette and type
@@ -185,238 +187,6 @@ export const tapTarget = {
   MIN: 44,
   MID_SET: 52,
 } as const;
-
-// §2 — the five-level elevation ladder. A surface sits on exactly one.
-// L4 (glass) is not here: it is a composite that needs blur and a gradient,
-// and it lives in `GlassSurface` (§4).
-export const elevation = {
-  /** L0 — canvas. The app background plus the ambient layer (§3). */
-  canvas: {
-    backgroundColor: colors.bg.DEFAULT,
-  },
-  /** L1 — inset. Recessed wells: inputs, tracks, ring remainders. */
-  inset: {
-    backgroundColor: 'rgba(19,26,41,0.5)',
-    borderWidth: 1,
-    borderColor: colors.border.soft,
-  },
-  /** L2 — raised card. The workhorse: gradient fill, hairline top highlight, soft drop. */
-  raised: {
-    gradient: [colors.bg.raised, colors.bg['raised-end']] as const,
-    borderWidth: 1,
-    borderColor: colors.border.DEFAULT,
-    highlight: 'rgba(255,229,218,0.07)',
-    shadow: {
-      shadowColor: '#000000',
-      shadowOpacity: 0.6,
-      shadowRadius: 12,
-      shadowOffset: { width: 0, height: 10 },
-      elevation: 6,
-    },
-  },
-  /** L3 — tinted card. The only way to say "this one is different" without colour-coding it. */
-  tinted: {
-    gradient: ['rgba(224,133,95,0.16)', 'rgba(255,165,134,0.07)'] as const,
-    borderWidth: 1,
-    borderColor: colors.border.tinted,
-  },
-} as const;
-
-// §4 — the three glass tiers. Every tier shares a 158° warm-white →
-// transparent → peach gradient, a bright inset top edge, a dark inset
-// bottom edge, and (tiers 1–2) a long soft drop.
-//
-// The two inset edges are the whole trick: React Native has no inset
-// box-shadow, so `GlassSurface` fakes them with absolutely-positioned 1px
-// hairlines. Skipping them collapses the effect (§12).
-export const glass = {
-  tier1: {
-    // dock, action bar, tool palette
-    gradient: [
-      'rgba(255,229,218,0.18)',
-      'rgba(255,229,218,0.07)',
-      'rgba(255,165,134,0.18)',
-    ] as const,
-    locations: [0, 0.48, 1] as const,
-    blur: 34,
-    borderColor: 'rgba(255,229,218,0.22)',
-    highlight: 'rgba(255,255,255,0.34)',
-    lowlight: 'rgba(0,0,0,0.28)',
-    shadow: {
-      shadowColor: '#000000',
-      shadowOpacity: 0.8,
-      shadowRadius: 20,
-      shadowOffset: { width: 0, height: 18 },
-      elevation: 12,
-    },
-  },
-  tier2: {
-    // hero card, sheet, screen header
-    gradient: [
-      'rgba(255,229,218,0.15)',
-      'rgba(255,229,218,0.05)',
-      'rgba(255,165,134,0.16)',
-    ] as const,
-    locations: [0, 0.46, 1] as const,
-    blur: 30,
-    borderColor: 'rgba(255,229,218,0.17)',
-    highlight: 'rgba(255,255,255,0.30)',
-    lowlight: 'rgba(0,0,0,0.28)',
-    shadow: {
-      shadowColor: '#000000',
-      shadowOpacity: 0.7,
-      shadowRadius: 22,
-      shadowOffset: { width: 0, height: 22 },
-      elevation: 14,
-    },
-  },
-  tier3: {
-    // chip, avatar, floating icon button — no outer shadow
-    gradient: ['rgba(255,229,218,0.16)', 'rgba(255,165,134,0.14)'] as const,
-    locations: [0, 1] as const,
-    blur: 18,
-    borderColor: 'rgba(255,229,218,0.20)',
-    highlight: 'rgba(255,255,255,0.28)',
-    lowlight: undefined,
-    shadow: undefined,
-  },
-} as const;
-
-export type GlassTier = keyof typeof glass;
-
-// §9 — the control surfaces. These are the translucent fills and hairlines
-// the button and stepper specimens are built from, and they live here for
-// the same reason every other value does: this is the only file allowed to
-// hold one. `bg.inset` at a fraction is not expressible as a token colour
-// (Tailwind's `/40` modifier does not reach a React Native `StyleSheet`),
-// so the resolved rgba is written down once rather than inlined at six
-// call sites.
-export const control = {
-  /** Secondary button and stepper fill — `bg.inset` at 50%. */
-  surface: 'rgba(19,26,41,0.5)',
-  /** Disabled fill, every variant. The difference between variants stops mattering once a control cannot be pressed. */
-  surfaceDisabled: 'rgba(19,26,41,0.4)',
-  /** A well that must stay legible under text — the input's own field (§9). */
-  surfaceSubtle: 'rgba(19,26,41,0.2)',
-  /** The segmented-control track (§9). It never recolours; the pill moves. */
-  track: 'rgba(19,26,41,0.6)',
-  /** The bottom sheet's 42x5 grabber (§9). */
-  grabber: 'rgba(255,229,218,0.35)',
-  /** The warm 1px hairline on a secondary control. */
-  border: 'rgba(255,229,218,0.14)',
-  /** Stepper's brighter hairline (§9). */
-  borderBright: 'rgba(255,229,218,0.16)',
-  /**
-   * The stepper key's inset top edge — §9's `inset 0 1px 0
-   * rgba(255,255,255,.14)`, rendered as a faked hairline (§12). Dimmer than
-   * `primaryHighlight` because the fill underneath is dark rather than peach.
-   */
-  stepperHighlight: 'rgba(255,255,255,0.14)',
-  /**
-   * The primary button's two inset edges (§9). Brighter and heavier than a
-   * card's, because the surface underneath is light rather than dark — this
-   * is what makes the fill read as a physical, pressable key. The press
-   * treatment collapses them (`Pressable`).
-   */
-  primaryHighlight: 'rgba(255,255,255,0.9)',
-  primaryLowlight: 'rgba(22,30,47,0.16)',
-  /**
-   * The ring a dock badge or a presence dot wears so it reads against a
-   * photo or a glass surface of any brightness — `bg.DEFAULT` at 60% (§9).
-   */
-  ring: 'rgba(22,30,47,0.6)',
-  /** The pressed scrim on a surface that cannot scale (a full-width card). */
-  pressScrim: 'rgba(0,0,0,0.12)',
-  /** The primary button's peach glow. */
-  primaryGlow: {
-    shadowColor: colors.brand.DEFAULT,
-    shadowOpacity: 0.5,
-    shadowRadius: 11,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 6,
-  },
-} as const;
-
-// §7 — data visualisation. Three values §2's elevation ladder does not
-// already carry, because a chart's own wells are a shade deeper than a
-// card's: `elevation.inset` is rgba(19,26,41,0.5) and `control.track` is
-// 0.6, and §7 pins a ring's remainder and a progress bar's track to two
-// different values again. Written down here rather than inlined at the two
-// call sites, for the same reason as everything else in this file.
-//
-// `overTarget` is the whole of §7's overflow rule: going past a target is
-// NOT a failure state and never renders in `urgent`. §7 says "over-target
-// is muted #3F4B62, never red" — that is `border.strong`, reached through
-// this alias so a reader of `ProgressRing` or `MacroBar` sees the intent
-// rather than a border token doing a job it was not named for. A coach
-// scanning a client list must not see a red macro bar and read it as an
-// off-track client (`ui-primitives-data/02`).
-export const dataviz = {
-  /** §7 ring — the remainder arc behind the value sweep. */
-  ringTrack: 'rgba(22,30,47,0.55)',
-  /** §7 progress bar — the well the fill sits in. */
-  barTrack: 'rgba(19,26,41,0.7)',
-  /** §7 — over-target fill and the dashed target reference line. Never red. */
-  overTarget: colors.border.strong,
-
-  // ── §7 line / area chart (`ui-primitives-data/04`) ────────────────────
-  /** §7 — the series stroke. 2.5px in a full chart, 2px in a list row. */
-  seriesStroke: 2.5,
-  sparkStroke: 2,
-  /**
-   * §7's area fill: `#FFA586` from `stop-opacity .34` down to `0`. The
-   * zero stop keeps the hue rather than becoming `transparent`, which is
-   * `rgba(0,0,0,0)` and interpolates through black on iOS — the same trap
-   * the skeleton sweep documents below.
-   */
-  seriesFill: ['rgba(255,165,134,0.34)', 'rgba(255,165,134,0)'] as const,
-  /**
-   * §7's gap treatment, and the second product failure this task exists to
-   * prevent: consecutive readings more than the cadence apart are joined
-   * dashed and dimmed, never solid. `3 5` is the only dash pattern §7
-   * states; `.5` is §7's own de-emphasis level for the same hue (the
-   * micro-spark's non-latest bars are `rgba(224,133,95,.5)`).
-   */
-  gapDash: [3, 5] as const,
-  gapOpacity: 0.5,
-  /** §7 — the reference/target line's dash. Solid axis, dashed reference. */
-  referenceDash: [3, 5] as const,
-  /** §7 — the latest point's dot, `4.5–5.5r`, `#FFFFFF`. */
-  latestPoint: colors.fg.bright,
-  latestPointRadius: 4.5,
-  /**
-   * The scrub crosshair's vertical rule. §7 names no colour for it — it is
-   * not data, so it takes the same weight as §7's non-data reference line
-   * rather than a hue of its own.
-   */
-  crosshair: colors.border.strong,
-} as const;
-
-// §4 — the selection pill inside a dock or segmented control. It MOVES
-// between options; the track itself never recolours.
-export const selectionPill = {
-  gradient: ['rgba(255,229,218,0.22)', 'rgba(255,229,218,0.10)'] as const,
-  highlight: 'rgba(255,255,255,0.40)',
-  shadow: {
-    shadowColor: '#000000',
-    shadowOpacity: 0.5,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-} as const;
-
-// §9's Media placeholder pairs `bg.inset` with `bg.inset-alt` for "content
-// that is not here"; those are the two colours a loading skeleton sweeps
-// between (DESIGN-SYSTEM.md DS§6.7 — a slow, low-contrast sweep, never a
-// pulsing opacity). The sweep's second stop is `bg.inset-alt` at zero
-// alpha rather than `transparent`, which is rgba(0,0,0,0) and interpolates
-// through black on iOS.
-export const skeleton = {
-  base: colors.bg.inset,
-  sweep: [colors.bg['inset-alt'], 'rgba(29,38,57,0)'] as const,
-} as const;
-
 // §5 — five durations, seven curves. Nothing animates on a duration or a
 // curve that is not here.
 export const duration = {
@@ -448,14 +218,369 @@ export const stagger = {
   plate: 90, // isometric rise
 } as const;
 
-// §4 — the scrim behind a sheet or modal.
-export const scrim = {
-  color: 'rgba(11,15,23,0.62)',
-  blur: 3,
-} as const;
+// ── Scheme-dependent tokens ─────────────────────────────────────────────
+//
+// Everything ABOVE this line is scheme-invariant — a radius, a spacing
+// step, a family, a size, a density, a tap floor, a duration, a curve, a
+// stagger. None of it carries a colour, so a component imports it directly
+// and no theme lookup is involved. Routing it through context would be
+// pure cost.
+//
+// Everything BELOW is scheme-dependent: `elevation`, `glass`, `control`,
+// `dataviz`, `selectionPill`, `skeleton`, and `scrim` are all compositions
+// over `bg`/`fg`/`border`, and those have two columns (`schemes.ts`). Each
+// group is therefore DERIVED from a scheme rather than written down twice,
+// so the light column cannot drift from the dark one.
+//
+// The seven exports at the end of this file are the DARK derivation. They
+// are the theme module's own copy and `useTheme()`'s no-provider default.
+// A component must not import them at module scope — it reads the active
+// scheme's copy from `useTheme()` instead, which is the whole point of
+// `component-gallery/04` and is enforced by `scheme-wiring.test.tsx`.
 
+/**
+ * The colour half of a scheme — the shape of both tables in `schemes.ts`.
+ * `brand` and `primary` are deliberately absent: DESIGN.md §1.1 gives one
+ * warm ramp and one primary fill, not two, so both are scheme-invariant.
+ */
+export type SchemeColors = {
+  bg: {
+    outer: string;
+    DEFAULT: string;
+    raised: string;
+    'raised-end': string;
+    inset: string;
+    'inset-alt': string;
+  };
+  fg: {
+    bright: string;
+    DEFAULT: string;
+    glass: string;
+    warm: string;
+    'warm-muted': string;
+    muted: string;
+    subtle: string;
+    faint: string;
+    onBrand: string;
+  };
+  border: { soft: string; DEFAULT: string; strong: string; tinted: string };
+  state: { onPlan: string; drifting: string; offPlan: string; notStarted: string };
+  deep: string;
+  urgent: string;
+  'urgent-text': string;
+  'on-deep': string;
+};
+
+/**
+ * The four composition anchors a scheme brings that its colour table does
+ * not hold, because none of them is ever a surface or a text colour on its
+ * own — each exists only as a FRACTION of itself over something else.
+ */
+export type SchemeInk = {
+  /**
+   * The ink every translucent hairline, edge, grabber, and selection pill
+   * is a fraction of. Dark surfaces take §4's warm white; light surfaces
+   * take a muted slate. This is the one anchor that genuinely inverts — an
+   * edge has to be visible against its own scheme's surfaces, and a
+   * warm-white hairline on a white card is not an edge.
+   */
+  edge: string;
+  /** Specular white. The same in both schemes: a highlight is light, not "the opposite of the background". */
+  sheen: string;
+  /** Shadow and press ink. Black in both schemes, for the same reason. */
+  shade: string;
+  /** The scrim behind a sheet or modal. Dark in both schemes: its job is to darken what is behind it, and a light scrim does not do that job. */
+  scrim: string;
+};
+
+/** §1.1's warm ramp, widened — a coach's white-label override (P25) is the same five roles, not the same five hexes. */
+export type BrandRamp = { lift: string; DEFAULT: string; mid: string; deep: string; shade: string };
+
+/** §4's warm white, §1.1's specular white, and the two inks nothing else names. */
+export const DARK_INK: SchemeInk = {
+  edge: '#FFE5DA',
+  sheen: '#FFFFFF',
+  shade: '#000000',
+  scrim: '#0B0F17',
+};
+
+/**
+ * Every scheme-dependent group, composed from one scheme's own base
+ * colours. A function rather than two hand-maintained tables, because a
+ * second table is how the light column silently drifted out of the product
+ * in the first place (`component-gallery/04`).
+ *
+ * `brand` is a parameter with a default rather than a closed-over constant
+ * so P25's white-label override has one place to flow through when it
+ * lands. Every caller passes the default ramp today, which is exactly what
+ * this file baked in before the split.
+ */
+export function deriveSchemeTokens(
+  base: SchemeColors,
+  ink: SchemeInk,
+  brand: BrandRamp = colors.brand,
+) {
+  return {
+    // §2 — the five-level elevation ladder. A surface sits on exactly one.
+    // L4 (glass) is not here: it is a composite that needs blur and a
+    // gradient, and it lives in `GlassSurface` (§4).
+    elevation: {
+      /** L0 — canvas. The app background plus the ambient layer (§3). */
+      canvas: {
+        backgroundColor: base.bg.DEFAULT,
+      },
+      /** L1 — inset. Recessed wells: inputs, tracks, ring remainders. */
+      inset: {
+        backgroundColor: withAlpha(base.bg.inset, '0.5'),
+        borderWidth: 1,
+        borderColor: base.border.soft,
+      },
+      /** L2 — raised card. The workhorse: gradient fill, hairline top highlight, soft drop. */
+      raised: {
+        gradient: [base.bg.raised, base.bg['raised-end']] as const,
+        borderWidth: 1,
+        borderColor: base.border.DEFAULT,
+        highlight: withAlpha(ink.edge, '0.07'),
+        shadow: {
+          shadowColor: ink.shade,
+          shadowOpacity: 0.6,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 10 },
+          elevation: 6,
+        },
+      },
+      /** L3 — tinted card. The only way to say "this one is different" without colour-coding it. */
+      tinted: {
+        gradient: [withAlpha(brand.mid, '0.16'), withAlpha(brand.DEFAULT, '0.07')] as const,
+        borderWidth: 1,
+        borderColor: base.border.tinted,
+      },
+    },
+
+    // §4 — the three glass tiers. Every tier shares a 158° warm-white to
+    // transparent to peach gradient, a bright inset top edge, a dark inset
+    // bottom edge, and (tiers 1–2) a long soft drop.
+    //
+    // The two inset edges are the whole trick: React Native has no inset
+    // box-shadow, so `GlassSurface` fakes them with absolutely-positioned
+    // 1px hairlines. Skipping them collapses the effect (§12).
+    glass: {
+      tier1: {
+        // dock, action bar, tool palette
+        gradient: [
+          withAlpha(ink.edge, '0.18'),
+          withAlpha(ink.edge, '0.07'),
+          withAlpha(brand.DEFAULT, '0.18'),
+        ] as const,
+        locations: [0, 0.48, 1] as const,
+        blur: 34,
+        borderColor: withAlpha(ink.edge, '0.22'),
+        highlight: withAlpha(ink.sheen, '0.34'),
+        lowlight: withAlpha(ink.shade, '0.28'),
+        shadow: {
+          shadowColor: ink.shade,
+          shadowOpacity: 0.8,
+          shadowRadius: 20,
+          shadowOffset: { width: 0, height: 18 },
+          elevation: 12,
+        },
+      },
+      tier2: {
+        // hero card, sheet, screen header
+        gradient: [
+          withAlpha(ink.edge, '0.15'),
+          withAlpha(ink.edge, '0.05'),
+          withAlpha(brand.DEFAULT, '0.16'),
+        ] as const,
+        locations: [0, 0.46, 1] as const,
+        blur: 30,
+        borderColor: withAlpha(ink.edge, '0.17'),
+        highlight: withAlpha(ink.sheen, '0.30'),
+        lowlight: withAlpha(ink.shade, '0.28'),
+        shadow: {
+          shadowColor: ink.shade,
+          shadowOpacity: 0.7,
+          shadowRadius: 22,
+          shadowOffset: { width: 0, height: 22 },
+          elevation: 14,
+        },
+      },
+      tier3: {
+        // chip, avatar, floating icon button — no outer shadow
+        gradient: [withAlpha(ink.edge, '0.16'), withAlpha(brand.DEFAULT, '0.14')] as const,
+        locations: [0, 1] as const,
+        blur: 18,
+        borderColor: withAlpha(ink.edge, '0.20'),
+        highlight: withAlpha(ink.sheen, '0.28'),
+        lowlight: undefined,
+        shadow: undefined,
+      },
+    },
+
+    // §9 — the control surfaces. These are the translucent fills and
+    // hairlines the button and stepper specimens are built from. `bg.inset`
+    // at a fraction is not expressible as a token colour (Tailwind's `/40`
+    // modifier does not reach a React Native `StyleSheet`), so the resolved
+    // rgba is composed once rather than inlined at six call sites.
+    control: {
+      /** Secondary button and stepper fill — `bg.inset` at 50%. */
+      surface: withAlpha(base.bg.inset, '0.5'),
+      /** Disabled fill, every variant. The difference between variants stops mattering once a control cannot be pressed. */
+      surfaceDisabled: withAlpha(base.bg.inset, '0.4'),
+      /** A well that must stay legible under text — the input's own field (§9). */
+      surfaceSubtle: withAlpha(base.bg.inset, '0.2'),
+      /** The segmented-control track (§9). It never recolours; the pill moves. */
+      track: withAlpha(base.bg.inset, '0.6'),
+      /** The bottom sheet's 42x5 grabber (§9). */
+      grabber: withAlpha(ink.edge, '0.35'),
+      /** The warm 1px hairline on a secondary control. */
+      border: withAlpha(ink.edge, '0.14'),
+      /** Stepper's brighter hairline (§9). */
+      borderBright: withAlpha(ink.edge, '0.16'),
+      /**
+       * The stepper key's inset top edge — §9's `inset 0 1px 0
+       * rgba(255,255,255,.14)`, rendered as a faked hairline (§12). Dimmer
+       * than `primaryHighlight` because the fill underneath is dark rather
+       * than peach.
+       */
+      stepperHighlight: withAlpha(ink.sheen, '0.14'),
+      /**
+       * The primary button's two inset edges (§9). Brighter and heavier
+       * than a card's, because the surface underneath is light rather than
+       * dark — this is what makes the fill read as a physical, pressable
+       * key. The press treatment collapses them (`Pressable`).
+       *
+       * Identical in both schemes on purpose: the primary fill is the same
+       * peach gradient either way, so its edges and its ink are too.
+       */
+      primaryHighlight: withAlpha(ink.sheen, '0.9'),
+      primaryLowlight: withAlpha(base.fg.onBrand, '0.16'),
+      /**
+       * The ring a dock badge or a presence dot wears so it reads against a
+       * photo or a glass surface of any brightness — `bg.DEFAULT` at 60%
+       * (§9).
+       */
+      ring: withAlpha(base.bg.DEFAULT, '0.6'),
+      /** The pressed scrim on a surface that cannot scale (a full-width card). */
+      pressScrim: withAlpha(ink.shade, '0.12'),
+      /** The primary button's peach glow. */
+      primaryGlow: {
+        shadowColor: brand.DEFAULT,
+        shadowOpacity: 0.5,
+        shadowRadius: 11,
+        shadowOffset: { width: 0, height: 10 },
+        elevation: 6,
+      },
+    },
+
+    // §7 — data visualisation. Three values §2's elevation ladder does not
+    // already carry, because a chart's own wells are a shade deeper than a
+    // card's: `elevation.inset` is `bg.inset` at .5 and `control.track` is
+    // at .6, and §7 pins a ring's remainder and a progress bar's track to
+    // two different values again.
+    //
+    // `overTarget` is the whole of §7's overflow rule: going past a target
+    // is NOT a failure state and never renders in `urgent`. §7 says
+    // "over-target is muted #3F4B62, never red" — that is `border.strong`,
+    // reached through this alias so a reader of `ProgressRing` or
+    // `MacroBar` sees the intent rather than a border token doing a job it
+    // was not named for. A coach scanning a client list must not see a red
+    // macro bar and read it as an off-track client (`ui-primitives-data/02`).
+    dataviz: {
+      /** §7 ring — the remainder arc behind the value sweep. */
+      ringTrack: withAlpha(base.bg.DEFAULT, '0.55'),
+      /** §7 progress bar — the well the fill sits in. */
+      barTrack: withAlpha(base.bg.inset, '0.7'),
+      /** §7 — over-target fill and the dashed target reference line. Never red. */
+      overTarget: base.border.strong,
+
+      // ── §7 line / area chart (`ui-primitives-data/04`) ────────────────
+      /** §7 — the series stroke. 2.5px in a full chart, 2px in a list row. */
+      seriesStroke: 2.5,
+      sparkStroke: 2,
+      /**
+       * §7's area fill: the accent from `stop-opacity .34` down to `0`. The
+       * zero stop keeps the hue rather than becoming `transparent`, which
+       * is rgba(0,0,0,0) and interpolates through black on iOS — the same
+       * trap the skeleton sweep documents below.
+       */
+      seriesFill: [withAlpha(brand.DEFAULT, '0.34'), withAlpha(brand.DEFAULT, '0')] as const,
+      /**
+       * §7's gap treatment, and the second product failure this task exists
+       * to prevent: consecutive readings more than the cadence apart are
+       * joined dashed and dimmed, never solid. `3 5` is the only dash
+       * pattern §7 states; `.5` is §7's own de-emphasis level for the same
+       * hue.
+       */
+      gapDash: [3, 5] as const,
+      gapOpacity: 0.5,
+      /** §7 — the reference/target line's dash. Solid axis, dashed reference. */
+      referenceDash: [3, 5] as const,
+      /** §7 — the latest point's dot, `4.5–5.5r`, the scheme's brightest ink. */
+      latestPoint: base.fg.bright,
+      latestPointRadius: 4.5,
+      /**
+       * The scrub crosshair's vertical rule. §7 names no colour for it — it
+       * is not data, so it takes the same weight as §7's non-data reference
+       * line rather than a hue of its own.
+       */
+      crosshair: base.border.strong,
+    },
+
+    // §4 — the selection pill inside a dock or segmented control. It MOVES
+    // between options; the track itself never recolours.
+    selectionPill: {
+      gradient: [withAlpha(ink.edge, '0.22'), withAlpha(ink.edge, '0.10')] as const,
+      highlight: withAlpha(ink.sheen, '0.40'),
+      shadow: {
+        shadowColor: ink.shade,
+        shadowOpacity: 0.5,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: 4,
+      },
+    },
+
+    // §9's Media placeholder pairs `bg.inset` with `bg.inset-alt` for
+    // "content that is not here"; those are the two colours a loading
+    // skeleton sweeps between (DESIGN-SYSTEM.md DS§6.7 — a slow,
+    // low-contrast sweep, never a pulsing opacity). The sweep's second stop
+    // is `bg.inset-alt` at zero alpha rather than `transparent`, which is
+    // rgba(0,0,0,0) and interpolates through black on iOS.
+    skeleton: {
+      base: base.bg.inset,
+      sweep: [base.bg['inset-alt'], withAlpha(base.bg['inset-alt'], '0')] as const,
+    },
+
+    // §4 — the scrim behind a sheet or modal.
+    scrim: {
+      color: withAlpha(ink.scrim, '0.62'),
+      blur: 3,
+    },
+  };
+}
+
+/** Every scheme-dependent group, for one scheme. */
+export type SchemeTokens = ReturnType<typeof deriveSchemeTokens>;
+
+/**
+ * The DARK derivation. `schemes.ts` builds the light one from the same
+ * function; nothing outside `packages/ui/src/theme/**` may read these seven
+ * at module scope.
+ */
+export const darkSchemeTokens: SchemeTokens = deriveSchemeTokens(colors, DARK_INK);
+
+export const elevation = darkSchemeTokens.elevation;
+export const glass = darkSchemeTokens.glass;
+export const control = darkSchemeTokens.control;
+export const dataviz = darkSchemeTokens.dataviz;
+export const selectionPill = darkSchemeTokens.selectionPill;
+export const skeleton = darkSchemeTokens.skeleton;
+export const scrim = darkSchemeTokens.scrim;
+
+export type GlassTier = keyof SchemeTokens['glass'];
+export type ElevationLevel = keyof SchemeTokens['elevation'];
 export type ColorTokens = typeof colors;
 export type RadiusTokens = typeof radius;
 export type FontFamilyTokens = typeof fontFamily;
 export type TextSize = keyof typeof fontSize;
-export type ElevationLevel = keyof typeof elevation;

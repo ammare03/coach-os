@@ -3,15 +3,8 @@ import { forwardRef } from 'react';
 import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
 import { useTextScale } from '../theme/TextScaleProvider.tsx';
-import {
-  colors,
-  control,
-  fontFamily,
-  fontSize,
-  radius,
-  tapTarget,
-  type Density,
-} from '../theme/tokens.ts';
+import { fontFamily, fontSize, radius, tapTarget, type Density } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import { IconButton } from './IconButton.tsx';
 
@@ -92,6 +85,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
   },
   ref,
 ) {
+  const { colors, control } = useTheme();
   const disabled = state === 'disabled';
   const showClear = value.length > 0 && !disabled && !multiline;
   // A raw `TextInput` scales with the OS font setting on its own but knows

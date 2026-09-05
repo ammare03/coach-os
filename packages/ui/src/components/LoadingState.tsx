@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
-import { colors, density as densityTokens, spacing, type Density } from '../theme/tokens.ts';
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { density as densityTokens, spacing, type Density } from '../theme/tokens.ts';
 
 import { Card } from './Card.tsx';
 import { SkeletonCircle } from './SkeletonCircle.tsx';
@@ -80,6 +81,7 @@ export function LoadingState({
   density: densityProp = 'client',
   testID,
 }: LoadingStateProps) {
+  const themed = useThemedStyles();
   const densityValues = densityTokens[densityProp];
 
   if (shape === 'card') {
@@ -122,7 +124,7 @@ export function LoadingState({
             // reserve the real text's line box, which doubles at 200%
             // (`accessibility` §3).
             { minHeight: densityValues.row },
-            index < count - 1 && styles.rowDivider,
+            index < count - 1 && themed.rowDivider,
           ]}
         >
           <SkeletonCircle
@@ -145,10 +147,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing(12),
   },
-  rowDivider: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.soft,
-  },
   rowText: {
     flex: 1,
     gap: spacing(6),
@@ -160,3 +158,10 @@ const styles = StyleSheet.create({
     gap: spacing(8),
   },
 });
+
+const useThemedStyles = createThemedStyles((theme) => ({
+  rowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border.soft,
+  },
+}));

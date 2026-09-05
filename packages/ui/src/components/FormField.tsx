@@ -2,7 +2,9 @@ import { AlertCircle } from 'lucide-react-native';
 import { cloneElement, isValidElement, type ReactElement } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { colors, fontSize, spacing, type Density } from '../theme/tokens.ts';
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { fontSize, spacing, type Density } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import { Text } from './Text.tsx';
 
@@ -50,6 +52,8 @@ export function FormField({
   density: densityProp = 'client',
   children,
 }: FormFieldProps) {
+  const { colors } = useTheme();
+  const themed = useThemedStyles();
   const isError = error !== undefined;
   const message = error ?? hint;
 
@@ -79,7 +83,7 @@ export function FormField({
             )}
             <Text
               size="body-sm"
-              style={[styles.messageText, isError && { color: colors['urgent-text'] }]}
+              style={[themed.messageText, isError && { color: colors['urgent-text'] }]}
             >
               {message}
             </Text>
@@ -104,8 +108,11 @@ const styles = StyleSheet.create({
   messageGlyph: {
     marginTop: 2,
   },
+});
+
+const useThemedStyles = createThemedStyles((theme) => ({
   messageText: {
     flex: 1,
-    color: colors.fg.muted,
+    color: theme.colors.fg.muted,
   },
-});
+}));

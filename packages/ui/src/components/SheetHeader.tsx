@@ -1,7 +1,8 @@
 import { X } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 
-import { colors, density as densityTokens, type Density } from '../theme/tokens.ts';
+import { density as densityTokens, type Density } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import { IconButton } from './IconButton.tsx';
 import { Text } from './Text.tsx';
@@ -23,6 +24,7 @@ export type SheetHeaderProps = {
  * the subtitle.
  */
 export function SheetHeader({ title, subtitle, onClose, density = 'client' }: SheetHeaderProps) {
+  const { colors } = useTheme();
   const pad = densityTokens[density].cardPadding;
 
   return (

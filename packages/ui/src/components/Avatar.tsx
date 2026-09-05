@@ -3,9 +3,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { colors, fontSize, radius, type TextSize } from '../theme/tokens.ts';
+import { createThemedValue } from '../theme/createThemedStyles.ts';
+import { fontSize, radius, type TextSize } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
-import { getAvatarFallback } from './avatar-fallback.ts';
+import { buildAvatarPalette, getAvatarFallback } from './avatar-fallback.ts';
 import { Text } from './Text.tsx';
 
 export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg';
@@ -60,6 +62,8 @@ function fitScale(size: AvatarSize): number {
   return Math.max(1, Math.floor((AVATAR_DIAMETER[size] / lineBox) * 10) / 10);
 }
 
+const usePalette = createThemedValue(({ colors }) => buildAvatarPalette(colors.deep, colors.brand));
+
 const PRESENCE_DIAMETER: Record<AvatarSize, number> = { xs: 8, sm: 9, md: 12, lg: 16 };
 const PRESENCE_RING_WIDTH = 2;
 
@@ -95,8 +99,10 @@ export function Avatar({
   style,
 }: AvatarProps) {
   const [imageFailed, setImageFailed] = useState(false);
+  const { colors } = useTheme();
+  const palette = usePalette();
   const diameter = AVATAR_DIAMETER[size];
-  const { initials, gradient } = getAvatarFallback(name, userId);
+  const { initials, gradient } = getAvatarFallback(name, userId, palette);
 
   return (
     <View

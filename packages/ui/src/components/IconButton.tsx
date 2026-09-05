@@ -2,7 +2,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { colors, control, radius, tapTarget } from '../theme/tokens.ts';
+import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { radius, tapTarget } from '../theme/tokens.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import { resolveButtonVariantVisuals, type ButtonVariant } from './Button.tsx';
 import { Pressable, type PressableRenderState } from './Pressable.tsx';
@@ -55,6 +57,8 @@ export function IconButton({
   accessibilityLabel,
   testID,
 }: IconButtonProps) {
+  const theme = useTheme();
+  const themed = useThemedStyles();
   const dimension = DIMENSION[size];
 
   return (
@@ -66,9 +70,9 @@ export function IconButton({
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
       testID={testID}
-      containerStyle={variant === 'primary' && !disabled ? styles.primaryShadow : undefined}
+      containerStyle={variant === 'primary' && !disabled ? themed.primaryShadow : undefined}
       style={({ pressed }: PressableRenderState) => {
-        const v = resolveButtonVariantVisuals(variant, pressed, disabled);
+        const v = resolveButtonVariantVisuals(variant, pressed, disabled, theme);
         return [
           styles.base,
           {
@@ -85,12 +89,12 @@ export function IconButton({
       }}
     >
       {({ pressed }: PressableRenderState) => {
-        const v = resolveButtonVariantVisuals(variant, pressed, disabled);
+        const v = resolveButtonVariantVisuals(variant, pressed, disabled, theme);
         return (
           <>
             {v.useGradient && (
               <LinearGradient
-                colors={[colors.primary.from, colors.primary.to]}
+                colors={[theme.colors.primary.from, theme.colors.primary.to]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 0, y: 1 }}
                 style={StyleSheet.absoluteFill}
@@ -100,11 +104,11 @@ export function IconButton({
               <>
                 <View
                   pointerEvents="none"
-                  style={[styles.hairlineTop, pressed && styles.hairlineHidden]}
+                  style={[themed.hairlineTop, pressed && styles.hairlineHidden]}
                 />
                 <View
                   pointerEvents="none"
-                  style={[styles.hairlineBottom, pressed && styles.hairlineHidden]}
+                  style={[themed.hairlineBottom, pressed && styles.hairlineHidden]}
                 />
               </>
             )}
@@ -125,8 +129,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  hairlineHidden: {
+    opacity: 0,
+  },
+});
+
+// Shares `Button`'s glow and inset edges - one treatment, two components.
+const useThemedStyles = createThemedStyles((theme) => ({
   primaryShadow: {
-    shadowColor: colors.brand.DEFAULT,
+    shadowColor: theme.colors.brand.DEFAULT,
     shadowOpacity: 0.5,
     shadowRadius: 22,
     shadowOffset: { width: 0, height: 10 },
@@ -138,7 +149,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: control.primaryHighlight,
+    backgroundColor: theme.control.primaryHighlight,
   },
   hairlineBottom: {
     position: 'absolute',
@@ -146,9 +157,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 2,
-    backgroundColor: control.primaryLowlight,
+    backgroundColor: theme.control.primaryLowlight,
   },
-  hairlineHidden: {
-    opacity: 0,
-  },
-});
+}));

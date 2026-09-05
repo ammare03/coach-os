@@ -2,8 +2,9 @@ import { Canvas, Path, Skia } from '@shopify/react-native-skia';
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { colors, dataviz, type TextSize } from '../theme/tokens.ts';
+import { type TextSize } from '../theme/tokens.ts';
 import { useBoxTextScale } from '../theme/useBoxTextScale.ts';
+import { useTheme } from '../theme/useTheme.ts';
 
 import { Metric } from './Metric.tsx';
 import { Text } from './Text.tsx';
@@ -165,6 +166,9 @@ export function ProgressRing({
   unitLabel,
   testID,
 }: ProgressRingProps) {
+  // Skia paints take a colour prop, not a style, so these read from the
+  // theme directly rather than through a themed `StyleSheet`.
+  const { colors, dataviz } = useTheme();
   const sweep = progressRingSweep(value, target);
   const indeterminate = isIndeterminate || sweep.isIndeterminate;
 

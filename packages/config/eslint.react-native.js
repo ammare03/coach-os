@@ -96,6 +96,17 @@ const noRawColorRule = {
     '**/theme/contrast.ts',
     '**/theme/contrast.test.ts',
     '**/theme/contrast-audit.test.ts',
+    // `to-rgb-channels.ts` holds no colour — it COMPOSES one. Its only
+    // "literal" is the `rgba(` prefix of the string `withAlpha` builds,
+    // which is a format, not a value. Same exemption class as
+    // `contrast.ts` above (`component-gallery/04`).
+    '**/theme/to-rgb-channels.ts',
+    // The scheme-wiring guard (`component-gallery/04`). Its first block
+    // pins the DARK derivation to DESIGN.md's literals byte for byte —
+    // that IS the assertion, and it cannot be written against a token
+    // without asserting a value equals itself. Same exemption class as
+    // `tokens.test.ts`.
+    '**/theme/scheme-wiring.test.tsx',
     // `GlassSurface` composes a white-label tint into an `rgba()` string at
     // the contrast clamp — the alpha is computed, so no token can express
     // the result. Its test supplies a synthetic brand hex for the same

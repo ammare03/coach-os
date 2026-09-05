@@ -22,9 +22,11 @@ import { colors, control, dataviz, elevation, glass, selectionPill } from './tok
 //    backdrop fails the moment content scrolls under it.
 //
 // The light scheme is audited on its own token values. It is a derived
-// fallback with no design spec behind it (`schemes.ts`), and it does not
-// currently reach components that build JS `style` objects from `tokens.ts`
-// — that gap is tracked separately and is not what this file measures.
+// fallback with no design spec behind it (`schemes.ts`). As of
+// `component-gallery/04` those values do reach the screen — every
+// scheme-dependent group is derived per scheme and read through
+// `useTheme()` — so the numbers below are what a user on light actually
+// sees, not a projection.
 
 const TEXT = 4.5; // WCAG 2.2 SC 1.4.3, normal text
 const LARGE_TEXT = 3; // SC 1.4.3, ≥24px or ≥18.66px bold
