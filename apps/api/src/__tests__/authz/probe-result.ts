@@ -1,7 +1,7 @@
 // Classifies what a probe call actually did (`04-authz-enumeration-test.md`
 // step 3) — a `TypeError` must never be mistaken for a refusal, and
-// neither must an empty result or a `NOT_FOUND`. Only one outcome counts
-// as the guard having fired.
+// neither must an empty result or a bare `NOT_FOUND`. Only a catalogued
+// refusal counts as the guard having fired.
 import { TRPCError } from '@trpc/server';
 
 import { isCatalogedError } from '../../lib/app-error.ts';
@@ -15,6 +15,11 @@ export type ProbeOutcome =
 // role-mismatched probe (a client probing a coach-only procedure) never
 // reaches the ownership check at all, and that is itself proof the caller
 // can't read the foreign row, not a gap in coverage.
+//
+// The refusal is identified by its app code, not its transport code:
+// `NOT_YOUR_CLIENT` travels as NOT_FOUND (`ERRORS.md` ER§2.1) and
+// `ROLE_REQUIRED` as FORBIDDEN. A NOT_FOUND *without* `NOT_YOUR_CLIENT`
+// is a resolver's own lookup answering "no such row", which is the oracle.
 const REFUSAL_APP_CODES = new Set(['NOT_YOUR_CLIENT', 'ROLE_REQUIRED']);
 
 export async function classifyProbe(call: () => Promise<unknown>): Promise<ProbeOutcome> {
@@ -23,16 +28,16 @@ export async function classifyProbe(call: () => Promise<unknown>): Promise<Probe
     result = await call();
   } catch (error: unknown) {
     if (error instanceof TRPCError) {
-      if (
-        error.code === 'FORBIDDEN' &&
-        isCatalogedError(error) &&
-        REFUSAL_APP_CODES.has(error.cause.appCode)
-      ) {
+      if (isCatalogedError(error) && REFUSAL_APP_CODES.has(error.cause.appCode)) {
         return { verdict: 'refused', code: error.code, appCode: error.cause.appCode };
       }
       if (error.code === 'NOT_FOUND') {
-        // An existence oracle, not a refusal — `03-owns-resource.md` step 2.
-        return { verdict: 'answered', description: 'NOT_FOUND (existence oracle, not a refusal)' };
+        // A resolver's own "no such row", not the guard — an existence
+        // oracle (`03-owns-resource.md` step 2).
+        return {
+          verdict: 'answered',
+          description: `NOT_FOUND without NOT_YOUR_CLIENT (existence oracle, not a refusal)${isCatalogedError(error) ? ` / ${error.cause.appCode}` : ''}`,
+        };
       }
       if (error.code === 'BAD_REQUEST' || error.code === 'PAYLOAD_TOO_LARGE') {
         // Likely the synthesiser's fault, not the guard's — but from the

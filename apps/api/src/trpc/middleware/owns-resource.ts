@@ -7,8 +7,12 @@ import { middleware } from '../init.ts';
 // The one message every failure of this guard produces (`03-owns-resource.md`
 // step 2) — a coach's foreign-client request, a client's foreign-resource
 // request, and a well-formed id that never existed are byte-identical.
-// Distinguishing them turns the API into an existence oracle.
-const NOT_YOUR_CLIENT_MESSAGE = "You don't have access to that.";
+// Distinguishing them turns the API into an existence oracle, so the code
+// is NOT_FOUND and the copy is `ERRORS.md`'s genuine-404 line (ER§2.1).
+const NOT_YOUR_CLIENT_MESSAGE = "We couldn't find that.";
+// A role that can never own this resource kind is a 403 — it reveals nothing
+// about any particular row.
+const WRONG_ROLE_MESSAGE = "You don't have access to that.";
 
 function toIdArray(raw: string | string[]): string[] {
   return Array.isArray(raw) ? raw : [raw];
@@ -134,7 +138,7 @@ async function resolveOwnership(ctx: Context, kind: ResourceKind, ids: string[])
         // Reached only if a `clientProcedure` is guarded with a coach-only
         // kind; refuse everything rather than silently grant nothing in a
         // way that could be mistaken for "checked and denied".
-        throw appError('ROLE_REQUIRED', NOT_YOUR_CLIENT_MESSAGE, { requiredRole: 'coach' });
+        throw appError('ROLE_REQUIRED', WRONG_ROLE_MESSAGE, { requiredRole: 'coach' });
       }
       const { clientProfileId } = ctx.user;
       if (clientProfileId === null) {
@@ -152,7 +156,7 @@ async function resolveOwnership(ctx: Context, kind: ResourceKind, ids: string[])
       break;
     }
     case 'assistant':
-      throw appError('ROLE_REQUIRED', NOT_YOUR_CLIENT_MESSAGE, { requiredRole: 'coach or client' });
+      throw appError('ROLE_REQUIRED', WRONG_ROLE_MESSAGE, { requiredRole: 'coach or client' });
   }
 
   for (const id of uncachedIds) {

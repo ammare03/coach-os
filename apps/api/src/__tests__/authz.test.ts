@@ -244,7 +244,7 @@ async function probeOneProcedure(procedure: WalkedProcedure): Promise<void> {
       if (outcome.verdict !== 'refused') {
         const detail = 'description' in outcome ? outcome.description : '';
         failures.push(
-          `${dottedPath}.${field} as ${roleLabel}: expected FORBIDDEN/NOT_YOUR_CLIENT, got ` +
+          `${dottedPath}.${field} as ${roleLabel}: expected NOT_FOUND/NOT_YOUR_CLIENT, got ` +
             `${outcome.verdict} — ${detail}`,
         );
       }

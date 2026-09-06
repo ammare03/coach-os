@@ -164,10 +164,10 @@ describe('ownsResource — the matrix', () => {
 
     await expect(
       coach.workoutSessionOwned({ workoutSessionId: world.fixture.clientB1.workoutSessionId }),
-    ).rejects.toMatchObject({ code: 'FORBIDDEN', cause: { appCode: 'NOT_YOUR_CLIENT' } });
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', cause: { appCode: 'NOT_YOUR_CLIENT' } });
     await expect(
       client.workoutSessionOwned({ workoutSessionId: world.fixture.clientB1.workoutSessionId }),
-    ).rejects.toMatchObject({ code: 'FORBIDDEN', cause: { appCode: 'NOT_YOUR_CLIENT' } });
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', cause: { appCode: 'NOT_YOUR_CLIENT' } });
   });
 
   it('lets the coach reach another of their own clients, but rejects a client reaching a sibling client', async () => {
@@ -179,15 +179,15 @@ describe('ownsResource — the matrix', () => {
     ).resolves.toEqual({ ok: true });
     await expect(
       client.workoutSessionOwned({ workoutSessionId: world.fixture.clientA2.workoutSessionId }),
-    ).rejects.toMatchObject({ code: 'FORBIDDEN', cause: { appCode: 'NOT_YOUR_CLIENT' } });
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', cause: { appCode: 'NOT_YOUR_CLIENT' } });
   });
 
-  it('rejects a well-formed id that has never existed, with NOT_YOUR_CLIENT — never NOT_FOUND', async () => {
+  it('rejects a well-formed id that has never existed with NOT_YOUR_CLIENT — the same code as a foreign row', async () => {
     const coach = await callerFor(world.fixture.coachA.userId);
 
     await expect(
       coach.workoutSessionOwned({ workoutSessionId: NONEXISTENT_ID }),
-    ).rejects.toMatchObject({ code: 'FORBIDDEN', cause: { appCode: 'NOT_YOUR_CLIENT' } });
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', cause: { appCode: 'NOT_YOUR_CLIENT' } });
   });
 
   it('serialises the foreign-row and the nonexistent-row rejection identically — no oracle', async () => {
@@ -253,7 +253,7 @@ describe('ownsResource — the matrix', () => {
         previousCoach.workoutSessionOwned({
           workoutSessionId: world.fixture.clientA1.workoutSessionId,
         }),
-      ).rejects.toMatchObject({ code: 'FORBIDDEN', cause: { appCode: 'NOT_YOUR_CLIENT' } });
+      ).rejects.toMatchObject({ code: 'NOT_FOUND', cause: { appCode: 'NOT_YOUR_CLIENT' } });
       await expect(
         newCoach.workoutSessionOwned({ workoutSessionId: world.fixture.clientA1.workoutSessionId }),
       ).resolves.toEqual({ ok: true });
@@ -279,7 +279,7 @@ describe('ownsResource — the matrix', () => {
     ).resolves.toEqual({ ok: true });
     await expect(
       coach.setLogOwned({ setLogId: world.fixture.clientB1.setLogId }),
-    ).rejects.toMatchObject({ code: 'FORBIDDEN', cause: { appCode: 'NOT_YOUR_CLIENT' } });
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', cause: { appCode: 'NOT_YOUR_CLIENT' } });
   });
 
   it("coachNote has no client-side ownership branch — a client is refused even for their own coach's note on them", async () => {
@@ -305,7 +305,7 @@ describe('ownsResource — the matrix', () => {
           world.fixture.clientB1.workoutSessionId,
         ],
       }),
-    ).rejects.toMatchObject({ code: 'FORBIDDEN', cause: { appCode: 'NOT_YOUR_CLIENT' } });
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', cause: { appCode: 'NOT_YOUR_CLIENT' } });
 
     await expect(
       coach.workoutSessionsOwnedBatch({
