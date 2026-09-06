@@ -95,6 +95,38 @@ export const keys = {
     return { key: prefixed(`guardianconsent:${tokenHash}`), ttlSeconds: 7 * 24 * HOUR };
   },
 
+  // `guardian-consent/04` — the *outstanding* guardian-consent token for one
+  // minor, stored in reverse (`userId` → `tokenHash`) so a correction can
+  // find and delete the previously-issued token before minting the next one.
+  // Written by `storeGuardianConsentToken` in the same `MULTI` as the entry
+  // above, so the two can never disagree. Same 7-day TTL as the token it
+  // points at — a pointer that outlived its token would only ever produce a
+  // wasted `DEL`.
+  guardianConsentOutstanding(userId: string): RedisKey {
+    return { key: prefixed(`guardianconsent:user:${userId}`), ttlSeconds: 7 * 24 * HOUR };
+  },
+
+  // `guardian-consent/04` — 3 per 15 minutes per calling minor. Deliberately
+  // NOT `rateLimit('invites.resendGuardianConsent', ...)`: that key is
+  // already in use by the structural 600/min default tier every procedure
+  // inherits (`../trpc/procedures.ts`), and two limits sharing one counter
+  // would fight over its TTL.
+  rateLimitGuardianConsentResend(userId: string): RedisKey {
+    return { key: prefixed(`rl:guardianConsentResend:${userId}`), ttlSeconds: 15 * MINUTE };
+  },
+
+  // `guardian-consent/04` — the second axis, keyed on the destination rather
+  // than the caller, exactly as `rateLimitResetEmail` above is: the
+  // correction field would otherwise let N free accounts mailbomb one
+  // stranger's inbox. `emailHash` is the caller's SHA-256 of the
+  // already-lowercased address — never the raw address in a key.
+  rateLimitGuardianConsentEmail(emailHash: string): RedisKey {
+    return {
+      key: prefixed(`rl:guardianConsentResend.email:${emailHash}`),
+      ttlSeconds: 15 * MINUTE,
+    };
+  },
+
   presence(conversationId: string): RedisKey {
     return { key: prefixed(`presence:${conversationId}`), ttlSeconds: 60 * SECOND };
   },

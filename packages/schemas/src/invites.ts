@@ -111,3 +111,24 @@ export const confirmGuardianConsentInput = strictObject({
   token: z.string().min(1).max(512),
 });
 export type ConfirmGuardianConsentInput = z.infer<typeof confirmGuardianConsentInput>;
+
+/**
+ * `invites.resendGuardianConsent` (`guardian-consent/04`) — sends the
+ * consent request again, optionally to a corrected address. Every field is
+ * optional because the ordinary call carries nothing at all: "the email
+ * never arrived, send it again".
+ *
+ * `guardianEmail` is `email.optional()` and never nullable — `users`'
+ * `users_minor_has_guardian` CHECK is `NOT is_minor OR guardian_email IS
+ * NOT NULL`, so a minor's address can be *replaced* but never cleared. An
+ * empty string and an explicit `null` both fail here rather than reaching
+ * a constraint violation.
+ *
+ * There is deliberately no `userId` or `clientProfileId`: the only account
+ * this procedure ever touches is `ctx.user`'s own. Adding one would turn a
+ * self-scoped procedure into one needing an ownership check.
+ */
+export const resendGuardianConsentInput = strictObject({
+  guardianEmail: email.optional(),
+});
+export type ResendGuardianConsentInput = z.infer<typeof resendGuardianConsentInput>;

@@ -39,15 +39,56 @@ export function issueGuardianConsentToken(): IssuedGuardianConsentToken {
 }
 
 /**
- * Writes `guardianconsent:{tokenHash} → userId`, TTL fixed by
- * `keys.guardianConsent` (DB§15: 7 days). No `safeRedis` fallback,
- * deliberately — Redis *is* the store, so a swallowed write failure would
- * mean emailing a guardian a link that can never work. The caller lets this
- * reject and sends nothing.
+ * Writes `guardianconsent:{tokenHash} → userId` **and** the reverse
+ * `guardianconsent:user:{userId} → tokenHash` pointer, TTLs fixed by their
+ * builders (DB§15: 7 days each). No `safeRedis` fallback, deliberately —
+ * Redis *is* the store, so a swallowed write failure would mean emailing a
+ * guardian a link that can never work. The caller lets this reject and
+ * sends nothing.
+ *
+ * The pointer is `guardian-consent/04`'s: correcting a mistyped guardian
+ * address has to kill the link the wrong recipient already holds, and the
+ * only way to find that token from a user id is to have written it down.
+ * One `MULTI`, so the two entries can never disagree about which token is
+ * outstanding.
  */
 export async function storeGuardianConsentToken(tokenHash: string, userId: string): Promise<void> {
-  const { key, ttlSeconds } = keys.guardianConsent(tokenHash);
-  await redis.set(key, userId, 'EX', ttlSeconds);
+  const token = keys.guardianConsent(tokenHash);
+  const outstanding = keys.guardianConsentOutstanding(userId);
+
+  const results = await redis
+    .multi()
+    .set(token.key, userId, 'EX', token.ttlSeconds)
+    .set(outstanding.key, tokenHash, 'EX', outstanding.ttlSeconds)
+    .exec();
+
+  // `exec()` resolves with `null` on an aborted transaction and reports a
+  // per-command failure inside the tuple rather than rejecting — both would
+  // otherwise pass for success and send an unusable link.
+  if (results === null) {
+    throw new Error('guardian consent token store was aborted');
+  }
+  for (const [error] of results) {
+    if (error) throw error;
+  }
+}
+
+/**
+ * Deletes whichever guardian-consent token is currently outstanding for
+ * `userId`, and the pointer to it (`guardian-consent/04` Approach step 6).
+ * Called before re-minting when the guardian address changes: without it,
+ * whoever received the mistyped email keeps a working activation link for
+ * up to seven days.
+ *
+ * A no-op when nothing is outstanding — an evicted or already-consumed
+ * token needs no revoking, and that case is the ordinary one on the
+ * recovery path this exists to serve.
+ */
+export async function revokeOutstandingGuardianConsentToken(userId: string): Promise<void> {
+  const tokenHash = await redis.getdel(keys.guardianConsentOutstanding(userId).key);
+  if (tokenHash !== null) {
+    await redis.del(keys.guardianConsent(tokenHash).key);
+  }
 }
 
 /**

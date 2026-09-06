@@ -73,6 +73,55 @@ describe('storeGuardianConsentToken', () => {
     expect(ttl).toBeGreaterThan(7 * 24 * 60 * 60 - 60);
     expect(ttl).toBeLessThanOrEqual(7 * 24 * 60 * 60);
   });
+
+  // `guardian-consent/04` — the reverse pointer, written in the same
+  // `MULTI`. Without it there is no way to find, and therefore no way to
+  // kill, the link a mistyped guardian address already received.
+  it('records the token as the outstanding one for that user, and only the newest', async () => {
+    const first = tokens.issueGuardianConsentToken();
+    const second = tokens.issueGuardianConsentToken();
+    const pointer = keys.guardianConsentOutstanding('user-outstanding').key;
+
+    await tokens.storeGuardianConsentToken(first.tokenHash, 'user-outstanding');
+    expect(await redis.get(pointer)).toBe(first.tokenHash);
+
+    await tokens.storeGuardianConsentToken(second.tokenHash, 'user-outstanding');
+    expect(await redis.get(pointer)).toBe(second.tokenHash);
+    const ttl = await redis.ttl(pointer);
+    expect(ttl).toBeGreaterThan(7 * 24 * 60 * 60 - 60);
+  });
+});
+
+describe('revokeOutstandingGuardianConsentToken', () => {
+  it('kills the outstanding token and the pointer to it', async () => {
+    const { token, tokenHash } = tokens.issueGuardianConsentToken();
+    await tokens.storeGuardianConsentToken(tokenHash, 'user-revoked');
+
+    await tokens.revokeOutstandingGuardianConsentToken('user-revoked');
+
+    expect(await redis.exists(keys.guardianConsent(tokenHash).key)).toBe(0);
+    expect(await redis.exists(keys.guardianConsentOutstanding('user-revoked').key)).toBe(0);
+    expect(await tokens.consumeGuardianConsentToken(token)).toBeNull();
+  });
+
+  it('leaves the token of every other user alone', async () => {
+    const mine = tokens.issueGuardianConsentToken();
+    const theirs = tokens.issueGuardianConsentToken();
+    await tokens.storeGuardianConsentToken(mine.tokenHash, 'user-mine');
+    await tokens.storeGuardianConsentToken(theirs.tokenHash, 'user-theirs');
+
+    await tokens.revokeOutstandingGuardianConsentToken('user-mine');
+
+    expect(await tokens.consumeGuardianConsentToken(theirs.token)).toBe('user-theirs');
+  });
+
+  // The ordinary case on the recovery path: the token this would revoke has
+  // already expired or been evicted, which is why a resend was needed.
+  it('is a no-op when nothing is outstanding', async () => {
+    await expect(
+      tokens.revokeOutstandingGuardianConsentToken('user-with-nothing-outstanding'),
+    ).resolves.toBeUndefined();
+  });
 });
 
 describe('consumeGuardianConsentToken', () => {

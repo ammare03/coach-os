@@ -569,10 +569,19 @@ describe('acceptInvite guardian-consent notifications', () => {
     const invite = await insertInvite(coachProfileId);
     const guardianEmail = `guardian-${++seq}@accept-invite-test.com`;
     const ctx = createTestContext({ db });
-    // Every `redis.set` in this window fails. The session-cache write is
+    // Every Redis write in this window fails. The session-cache write is
     // wrapped in `safeRedis` and shrugs it off; the consent-token write is
     // deliberately not, so no link is emailed that could never work.
+    //
+    // Two spies, not one: `guardian-consent/04` made the token store a
+    // `MULTI` — the token and the reverse pointer that lets a corrected
+    // guardian address revoke it have to land together
+    // (`../../lib/auth/guardian-consent-token.ts`). What this test is about
+    // is the absence of a send, not which command carries the write.
     const setSpy = jest.spyOn(redis, 'set').mockRejectedValue(new Error('redis unavailable'));
+    const multiSpy = jest.spyOn(redis, 'multi').mockImplementation(() => {
+      throw new Error('redis unavailable');
+    });
 
     try {
       const session = await acceptInvite(db, ctx, {
@@ -590,6 +599,7 @@ describe('acceptInvite guardian-consent notifications', () => {
       expect(sentTo(guardianEmail)).toHaveLength(0);
     } finally {
       setSpy.mockRestore();
+      multiSpy.mockRestore();
     }
 
     // The account is still there, still held pending consent.
