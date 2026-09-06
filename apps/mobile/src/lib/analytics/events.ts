@@ -308,6 +308,18 @@ export interface AnalyticsEventRegistry {
     reporter_role: AnalyticsRole;
   };
   user_blocked: { blocker_role: AnalyticsRole };
+  /**
+   * `guardian-consent/06`. The highest-abandonment step in the client
+   * funnel and, until now, entirely unmeasured (§21.5).
+   *
+   * No properties, deliberately: AN§3.0's base `user_id` and `role`
+   * are the whole of what may be known here. The guardian's email
+   * address and the client's date of birth are both present on the
+   * screen that fires this, and neither may ever accompany it.
+   */
+  guardian_consent_pending_viewed: Record<string, never>;
+  /** `address_changed` distinguishes "it didn't arrive" from "I typed it wrong" — never the address itself. */
+  guardian_consent_resend_requested: { address_changed: boolean };
   /** Adoption only. No health value ever accompanies these two (ARCHITECTURE.md AI-15). */
   health_sync_enabled: Record<string, never>;
   health_sync_disabled: Record<string, never>;
@@ -369,6 +381,8 @@ export const ANALYTICS_EVENT_NAMES = [
   'account_deletion_requested',
   'user_reported',
   'user_blocked',
+  'guardian_consent_pending_viewed',
+  'guardian_consent_resend_requested',
   'health_sync_enabled',
   'health_sync_disabled',
   'sync_failed',

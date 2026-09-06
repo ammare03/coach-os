@@ -26,6 +26,11 @@ export const EXCLUDED_PROCEDURES: readonly string[] = [
   'auth.signInWithGoogle',
   'auth.completeSocialSignUp',
   'invites.accept',
+  // `guardian-consent/02` — the guardian is a parent with no CoachOS
+  // account, so this is `publicProcedure` on the server. Absent from
+  // this list until `guardian-consent/06`, which is when this file's
+  // cross-assertion against the server allowlist started failing.
+  'invites.confirmGuardianConsent',
 ];
 
 /** Also used by `refresh-interceptor.ts`, which sits above this link in

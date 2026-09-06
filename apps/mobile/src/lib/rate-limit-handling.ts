@@ -1,5 +1,3 @@
-import { MutationCache, QueryCache } from '@tanstack/react-query';
-
 import { getErrorCode, getErrorDetails } from './error-code.ts';
 
 export interface RateLimitInfo {
@@ -41,6 +39,12 @@ export function setRateLimitNotifier(notifier: (info: RateLimitInfo) => void): v
  * rejection is caught centrally instead of requiring each feature to check
  * for it itself. Every other error is left alone; the generic error path
  * (loading/empty/error states, `ui-conventions`) still handles those.
+ *
+ * This file used to export the two caches themselves. `guardian-consent/06`
+ * moved their construction into `query/client.ts`, because a cache takes
+ * exactly one `onError` and there are now two codes with a central answer —
+ * a `rateLimitCaches` here would have had to grow a second, unrelated
+ * handler to keep its name honest.
  */
 export function handleRateLimitError(error: unknown): void {
   const info = getRateLimitInfo(error);
@@ -48,8 +52,3 @@ export function handleRateLimitError(error: unknown): void {
     notifyRateLimited(info);
   }
 }
-
-export const rateLimitCaches = {
-  queryCache: new QueryCache({ onError: handleRateLimitError }),
-  mutationCache: new MutationCache({ onError: handleRateLimitError }),
-};
