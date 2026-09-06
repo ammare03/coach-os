@@ -1,4 +1,3 @@
-import { makeRedirectUri } from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 
 import { api } from '../../../lib/trpc.ts';
@@ -44,10 +43,15 @@ function genericError(): GoogleSignInResult {
 export function useGoogleSignIn() {
   const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
   const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+  // No `redirectUri` override: the provider defaults to
+  // `${applicationId}:/oauthredirect` (`com.coachos.app.dev:/oauthredirect`
+  // on a dev build), which is the only redirect shape Google's iOS and
+  // Android OAuth client types accept — a `coachos://` redirect is refused
+  // with `redirect_uri_mismatch` before the consent screen. `app.config.ts`
+  // registers the app id as a URL scheme so the browser can return to us.
   const [request, , promptAsync] = Google.useAuthRequest({
     ...(iosClientId !== undefined && { iosClientId }),
     ...(androidClientId !== undefined && { androidClientId }),
-    redirectUri: makeRedirectUri({ scheme: 'coachos' }),
   });
   const mutation = api.auth.signInWithGoogle.useMutation();
 

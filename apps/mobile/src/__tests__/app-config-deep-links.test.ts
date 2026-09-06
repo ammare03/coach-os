@@ -16,7 +16,15 @@ const HOST = 'app.coachos.com';
 
 describe('deep-link registration in app.config.ts', () => {
   it('registers the coachos:// scheme', () => {
-    expect(config.scheme).toBe('coachos');
+    expect([config.scheme].flat()).toContain('coachos');
+  });
+
+  // Google Sign-In (`useGoogleSignIn.ts`) redirects to
+  // `${applicationId}:/oauthredirect`; iOS registers the bundle id as a
+  // scheme by itself, Android only registers what is listed here.
+  it('registers the app id as a scheme so the Google Sign-In redirect can return', () => {
+    expect([config.scheme].flat()).toContain(config.android?.package);
+    expect(config.android?.package).toBe(config.ios?.bundleIdentifier);
   });
 
   it('claims the universal-link host in the iOS associated-domains entitlement', () => {
