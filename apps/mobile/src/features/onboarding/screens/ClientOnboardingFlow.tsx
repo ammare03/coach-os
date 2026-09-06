@@ -7,6 +7,7 @@ import { useClientOnboardingStore } from '../client-store.ts';
 import { OnboardingShell } from '../components/OnboardingShell.tsx';
 import { DisclaimerStep } from '../steps/DisclaimerStep.tsx';
 import { GoalsStep } from '../steps/GoalsStep.tsx';
+import { MeasurementsStep } from '../steps/MeasurementsStep.tsx';
 
 // `phase-06-onboarding/client-onboarding/` — the whole client flow is ONE
 // route (`(client-onboarding)/index`), not five, for exactly the reason
@@ -20,9 +21,9 @@ import { GoalsStep } from '../steps/GoalsStep.tsx';
 // flow state, and a step that could move itself would be a second place
 // the flow's position lives (`code-conventions` §5).
 //
-// Steps 03–05 (measurements, equipment and diet, notifications) add their
-// own branches to `renderStep` and their own entries to `primaryActionFor`
-// as those tasks land. Until then the flow ends after goals.
+// Steps 04 and 05 (equipment and diet, notifications) add their own
+// branches to `renderStep` and their own entries to `primaryActionFor` as
+// those tasks land. Until then the flow ends after measurements.
 
 interface StepContent {
   title: string;
@@ -57,6 +58,10 @@ export function ClientOnboardingFlow() {
   const setStep = useClientOnboardingStore((state) => state.setStep);
   const updateField = useClientOnboardingStore((state) => state.updateField);
   const goal = useClientOnboardingStore((state) => state.fields.goal);
+  const dateOfBirth = useClientOnboardingStore((state) => state.fields.dateOfBirth);
+  const sexAtBirth = useClientOnboardingStore((state) => state.fields.sexAtBirth);
+  const heightCm = useClientOnboardingStore((state) => state.fields.heightCm);
+  const experienceLevel = useClientOnboardingStore((state) => state.fields.experienceLevel);
   const startedAt = useClientOnboardingStore((state) => state.fields.startedAt);
 
   const step = clientStepAt(currentStep);
@@ -93,12 +98,27 @@ export function ClientOnboardingFlow() {
     if (current === 'goals') {
       return { label: 'Continue', onPress: goNext, disabled: goal.length === 0 };
     }
+    if (current === 'measurements') {
+      // Every field on the step, because a coach sizing training needs all
+      // four — and each one is only ever written to the draft once it is
+      // valid, so "present" and "valid" are the same check here.
+      return {
+        label: 'Continue',
+        onPress: goNext,
+        disabled:
+          dateOfBirth.length === 0 ||
+          sexAtBirth.length === 0 ||
+          heightCm === null ||
+          experienceLevel.length === 0,
+      };
+    }
     return undefined;
   }
 
   function renderStep(current: ClientOnboardingStep) {
     if (current === 'disclaimer') return <DisclaimerStep onAcknowledged={goNext} />;
     if (current === 'goals') return <GoalsStep />;
+    if (current === 'measurements') return <MeasurementsStep />;
     return null;
   }
 }
