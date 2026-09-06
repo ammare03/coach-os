@@ -16,6 +16,13 @@ const mockAcknowledge = {
   isError: false,
 };
 
+// The flow calls this on every render regardless of which step is on
+// screen; step 2 is `coach-profile-step.test.tsx`'s subject, not this
+// file's, so it is stood down here rather than exercised.
+jest.mock('../hooks/useUpdateCoachProfile.ts', () => ({
+  useUpdateCoachProfile: () => ({ mutate: jest.fn(), isPending: false }),
+}));
+
 jest.mock('../../settings/hooks/useMedicalDisclaimer.ts', () => ({
   useMedicalDisclaimer: () => ({
     status: { data: undefined },

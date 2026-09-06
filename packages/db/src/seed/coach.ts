@@ -59,7 +59,10 @@ export async function seedCoach(tx: Transaction): Promise<SeededCoach> {
     userId,
     businessName: 'Summit Strength Coaching',
     bio: faker.lorem.paragraph(),
-    specialties: ['powerlifting', 'hypertrophy', 'fat loss'],
+    // The slugs `packages/schemas`' `COACH_SPECIALTIES` closes the set to
+    // (`coach-onboarding/02`) — seeded data has to be data the product
+    // could actually have written.
+    specialties: ['powerlifting', 'hypertrophy', 'fat-loss'],
     certifications: ['NASM-CPT', 'Precision Nutrition L1'],
     instagramHandle: '@summitstrengthcoaching',
     website: 'https://summitstrength.example.com',

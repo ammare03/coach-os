@@ -1,8 +1,12 @@
+import { coach as coachSchemas } from '@coachos/schemas';
 import { Text } from '@coachos/ui';
+import { useState } from 'react';
 
 import { COACH_ONBOARDING_STEP_COUNT, stepAt, stepNumber } from '../coach-steps.ts';
 import { useCoachOnboardingStore } from '../coach-store.ts';
 import { CoachOnboardingShell } from '../components/CoachOnboardingShell.tsx';
+import { useUpdateCoachProfile } from '../hooks/useUpdateCoachProfile.ts';
+import { CoachProfileStep } from '../steps/CoachProfileStep.tsx';
 import { DisclaimerStep } from '../steps/DisclaimerStep.tsx';
 
 // `phase-06-onboarding/coach-onboarding/01` — the whole flow is ONE route
@@ -15,15 +19,19 @@ import { DisclaimerStep } from '../steps/DisclaimerStep.tsx';
 // `currentStep` is the position, and this screen renders it.
 //
 // The step's chrome — progress, back, title, primary action — is
-// `CoachOnboardingShell`'s; the step supplies its fields. Tasks 02–04
-// replace the placeholders below with the real ones.
+// `CoachOnboardingShell`'s; the step supplies its fields. Advancing, and
+// rolling back a failed advance, is this screen's: which step is on screen
+// is flow state, and a step that could move itself would be a second place
+// the flow's position lives (`code-conventions` §5).
+
+type Step = ReturnType<typeof stepAt>;
 
 interface StepContent {
   title: string;
   subtitle: string;
 }
 
-const STEP_CONTENT: Record<ReturnType<typeof stepAt>, StepContent> = {
+const STEP_CONTENT: Record<Step, StepContent> = {
   disclaimer: {
     title: 'Before you start',
     subtitle: 'Read this once. It stays in Settings if you want it again.',
@@ -42,14 +50,59 @@ const STEP_CONTENT: Record<ReturnType<typeof stepAt>, StepContent> = {
   },
 };
 
+const WRITE_FAILED = 'We couldn’t save that. Check your connection and try again.';
+
+/** Drops anything the current build no longer recognises — a draft can outlive a list (`COACH_SPECIALTIES`). */
+function knownSpecialties(values: readonly string[]): coachSchemas.CoachSpecialty[] {
+  return values.filter(
+    (value): value is coachSchemas.CoachSpecialty =>
+      coachSchemas.coachSpecialty.safeParse(value).success,
+  );
+}
+
 export function CoachOnboardingFlow() {
   const currentStep = useCoachOnboardingStore((state) => state.currentStep);
   const setStep = useCoachOnboardingStore((state) => state.setStep);
+  const businessName = useCoachOnboardingStore((state) => state.fields.businessName);
+  const specialties = useCoachOnboardingStore((state) => state.fields.specialties);
+
+  const [stepError, setStepError] = useState<string | null>(null);
+  const updateProfile = useUpdateCoachProfile();
+
   const step = stepAt(currentStep);
   const content = STEP_CONTENT[step];
 
-  const goNext = () => setStep(currentStep + 1);
-  const goBack = currentStep > 0 ? () => setStep(currentStep - 1) : undefined;
+  const goNext = () => {
+    setStepError(null);
+    setStep(currentStep + 1);
+  };
+  const goBack =
+    currentStep > 0
+      ? () => {
+          setStepError(null);
+          setStep(currentStep - 1);
+        }
+      : undefined;
+
+  /**
+   * `ui-conventions` §5's optimistic rule: the step advances now and the
+   * write finishes behind it. A genuine failure returns the coach to this
+   * step — with every value still in the draft store, so nothing typed is
+   * lost — and says so.
+   */
+  function submitProfile() {
+    const from = currentStep;
+    goNext();
+    updateProfile.mutate(
+      { businessName: businessName.trim(), specialties: knownSpecialties(specialties) },
+      {
+        onError: () => {
+          setStep(from);
+          setStepError(WRITE_FAILED);
+        },
+      },
+    );
+  }
 
   return (
     <CoachOnboardingShell
@@ -58,24 +111,36 @@ export function CoachOnboardingFlow() {
       title={content.title}
       subtitle={content.subtitle}
       onBack={goBack}
-      // Steps 2–4 pass their own action once they exist; step 1's Continue
-      // belongs to `MedicalDisclaimer` (see `CoachOnboardingShell`'s props).
-      primaryAction={
-        step === 'disclaimer' ? undefined : { label: 'Continue', onPress: goNext, disabled: true }
-      }
+      primaryAction={primaryActionFor(step)}
     >
-      {step === 'disclaimer' ? (
-        <DisclaimerStep onAcknowledged={goNext} />
-      ) : (
-        <Text tone="muted">This step is built in coach-onboarding/{stepTaskNumber(step)}.</Text>
-      )}
+      {renderStep(step)}
     </CoachOnboardingShell>
   );
+
+  function primaryActionFor(current: Step) {
+    // Step 1's Continue belongs to `MedicalDisclaimer` — the acknowledgment
+    // state that enables it is internal to that component by design.
+    if (current === 'disclaimer') return undefined;
+    if (current === 'profile') {
+      return {
+        label: 'Continue',
+        onPress: submitProfile,
+        disabled: businessName.trim().length === 0,
+      };
+    }
+    return { label: 'Continue', onPress: goNext, disabled: true };
+  }
+
+  function renderStep(current: Step) {
+    if (current === 'disclaimer') return <DisclaimerStep onAcknowledged={goNext} />;
+    if (current === 'profile') return <CoachProfileStep error={stepError ?? undefined} />;
+    return (
+      <Text tone="muted">This step is built in coach-onboarding/{stepTaskNumber(current)}.</Text>
+    );
+  }
 }
 
 /** Which task fills each placeholder — visible on screen while it is still one. */
-function stepTaskNumber(step: ReturnType<typeof stepAt>): string {
-  if (step === 'profile') return '02';
-  if (step === 'program') return '03';
-  return '04';
+function stepTaskNumber(step: Step): string {
+  return step === 'program' ? '03' : '04';
 }

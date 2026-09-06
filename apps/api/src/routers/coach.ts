@@ -1,5 +1,6 @@
 import { coach as coachSchemas } from '@coachos/schemas';
 
+import { updateCoachProfile } from '../features/coach/update-profile.ts';
 import { detachClient, notifyRelationshipEnded } from '../services/coach-client-transition.ts';
 import { router } from '../trpc/init.ts';
 import { coachProcedure, ownsResource, protectedProcedure } from '../trpc/procedures.ts';
@@ -13,6 +14,14 @@ import { coachProcedure, ownsResource, protectedProcedure } from '../trpc/proced
 // lifecycle/06`) lands ahead of that phase, same as `client.ts`'s
 // `leaveCoach`.
 export const coachRouter = router({
+  // `phase-06-onboarding/coach-onboarding/02` — onboarding step 2's write.
+  // `coachProcedure`, and no `ownsResource`: the row is addressed by
+  // `ctx.user.coachProfileId` alone and no id crosses the wire, the same
+  // reasoning `me.update` states.
+  updateProfile: coachProcedure
+    .input(coachSchemas.updateProfileInput)
+    .mutation(({ ctx, input }) => updateCoachProfile(ctx.db, ctx.user.coachProfileId, input)),
+
   clients: router({
     list: protectedProcedure.query(() => []),
 
