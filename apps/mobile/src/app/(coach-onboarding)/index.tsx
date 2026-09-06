@@ -1,18 +1,15 @@
-import { Text, View } from 'react-native';
+import { CoachOnboardingFlow } from '../../features/onboarding/screens/CoachOnboardingFlow.tsx';
 
-// Placeholder route, in the shape `phase-05-app-shell/router-skeleton/01`
-// established: structure only — it renders its own route path and nothing
-// else, deliberately. `phase-06-onboarding/coach-onboarding/01` designs and
-// builds the real flow shell here, behind the `design-gate`; anything added
-// first would have to be deleted then.
+// The coach onboarding flow's only route (`phase-06-onboarding/
+// coach-onboarding/01`). Composition only — the step sequence, its
+// persisted position, and every field live in the feature slice
+// (`code-conventions` §1).
 //
-// It exists now because `onboarding-infrastructure/02`'s gate needs a real
-// destination to redirect a non-onboarded coach to — a redirect to a route
-// that does not exist lands on `+not-found`.
+// The route GROUP is a deliberate, documented extension to `CLAUDE.md`
+// §9.1's tree, which predates P06 and lists no onboarding flow at all;
+// `AuthGate`'s own header and `onboarding-infrastructure/02` record the
+// same decision, and `__tests__/route-tree.test.tsx` carries it as an
+// expected entry rather than a drift.
 export default function CoachOnboardingScreen() {
-  return (
-    <View>
-      <Text>(coach-onboarding)/index</Text>
-    </View>
-  );
+  return <CoachOnboardingFlow />;
 }
