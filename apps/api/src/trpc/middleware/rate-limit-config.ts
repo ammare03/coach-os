@@ -21,4 +21,6 @@ export const RATE_LIMIT_TIERS = {
   commentsCreate: { windowSeconds: MINUTE, max: 60 },
   /** 600 / min / user — the structural fallback every procedure gets by deriving from `publicProcedure` (`procedures.ts`). */
   default: { windowSeconds: MINUTE, max: 600 },
+  /** 20 / 15 min / IP — `invites.confirmGuardianConsent` (`guardian-consent/02`). Public and unauthenticated, so `rateLimit` keys it by trusted IP. The token is 256 bits, so brute force is not what this bounds; a scripted replay against the public `APP_PUBLIC_URL` page is. Deliberately NOT the shared `auth` bucket — that one is scoped to sign-in-shaped attempts, which this would pollute. */
+  guardianConsentConfirm: { windowSeconds: 15 * MINUTE, max: 20 },
 } as const;

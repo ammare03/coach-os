@@ -106,4 +106,12 @@ export const PUBLIC_ALLOWLIST: readonly PublicAllowlistEntry[] = [
     addedBy: 'phase-03-identity-and-auth/invites/04-invite-acceptance.md',
     addedOn: '2026-08-28',
   },
+
+  {
+    path: 'invites.confirmGuardianConsent',
+    reason:
+      "The caller is a parent with no CoachOS account and will never install the app — confirming consent does not create one — so requiring a session would make the flow impossible. The single-use, Redis-backed consent token in the emailed URL is the entire proof of authority, and it resolves the minor's user id itself: no caller-supplied id is ever read, so no other account can be reached. Unknown, expired, and already-used tokens collapse into one identical outcome, and the procedure carries its own 20/15min per-IP tier rather than the shared auth.* bucket.",
+    addedBy: 'phase-07-exercise-and-program-authoring/guardian-consent/02-confirm-and-activate.md',
+    addedOn: '2026-09-06',
+  },
 ];

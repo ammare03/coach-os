@@ -93,3 +93,21 @@ export const previewInviteInput = strictObject({
   code: inviteCode,
 });
 export type PreviewInviteInput = z.infer<typeof previewInviteInput>;
+
+/**
+ * `invites.confirmGuardianConsent` (`guardian-consent/02`) — the single-use
+ * token from the guardian's email, and nothing else. The field is `token`,
+ * not `tokenId`: it is a credential, exactly like `resetPasswordInput`'s,
+ * not a reference to a row anyone could own. Naming it `*Id` would force a
+ * misleading entry in the authorisation test's identifier registry
+ * (`apps/api/src/trpc/authz/resource-fields.ts`).
+ *
+ * The caller is a parent with no CoachOS account, so there is no other
+ * input to take — no email, no name, no client id. Whether the token is
+ * unknown, expired, or already used is a runtime outcome
+ * (`{ outcome: 'invalid' }`), never a validation failure.
+ */
+export const confirmGuardianConsentInput = strictObject({
+  token: z.string().min(1).max(512),
+});
+export type ConfirmGuardianConsentInput = z.infer<typeof confirmGuardianConsentInput>;

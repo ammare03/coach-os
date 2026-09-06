@@ -2,6 +2,7 @@ import { invites as invitesSchemas } from '@coachos/schemas';
 
 import { acceptInviteAsExistingClient } from '../features/invites/accept-invite-as-existing-client.ts';
 import { acceptInvite } from '../features/invites/accept-invite.ts';
+import { confirmGuardianConsent } from '../features/invites/confirm-guardian-consent.ts';
 import { createInvite } from '../features/invites/create-invite.ts';
 import { listPendingInvites } from '../features/invites/list-pending-invites.ts';
 import { previewInvite } from '../features/invites/preview-invite.ts';
@@ -12,6 +13,9 @@ import {
   clientProcedure,
   coachProcedure,
   ownsResource,
+  publicProcedure,
+  rateLimit,
+  RATE_LIMIT_TIERS,
 } from '../trpc/procedures.ts';
 
 export const invitesRouter = router({
@@ -77,4 +81,19 @@ export const invitesRouter = router({
   listPending: coachProcedure.query(({ ctx }) =>
     listPendingInvites(ctx.db, ctx.user.coachProfileId),
   ),
+
+  // `guardian-consent/02` — `publicProcedure`, not `authProcedure`: the
+  // caller is a parent with no CoachOS account, following a link from an
+  // email, and the single-use token is the entire proof of authority
+  // (`../__tests__/authz-allowlist.ts`'s entry for this path). It gets its
+  // own tier rather than the shared `auth.*` per-IP bucket, which is scoped
+  // to sign-in-shaped attempts and which this would pollute.
+  //
+  // Returns an outcome instead of throwing for a replayed or dead link —
+  // `05`'s public page needs three values to switch on, not a transport
+  // error to interpret.
+  confirmGuardianConsent: publicProcedure
+    .use(rateLimit(RATE_LIMIT_TIERS.guardianConsentConfirm))
+    .input(invitesSchemas.confirmGuardianConsentInput)
+    .mutation(({ ctx, input }) => confirmGuardianConsent(ctx.db, ctx, input.token)),
 });

@@ -23,4 +23,8 @@ describe('RATE_LIMIT_TIERS', () => {
   it('everything else (default) — 600 / min / user', () => {
     expect(RATE_LIMIT_TIERS.default).toEqual({ windowSeconds: 60, max: 600 });
   });
+
+  it('invites.confirmGuardianConsent — 20 / 15 min / IP', () => {
+    expect(RATE_LIMIT_TIERS.guardianConsentConfirm).toEqual({ windowSeconds: 15 * 60, max: 20 });
+  });
 });
