@@ -17,6 +17,12 @@ import type { createTestContext as CreateTestContext } from '../../__tests__/tes
 import { unwrapDatabaseError } from '../../db/is-database-error.ts';
 import type { runAgeSweep as RunAgeSweep } from '../../jobs/age-sweep.ts';
 import type { isConfirmedGuardianOf as IsConfirmedGuardianOf } from '../../services/export/delegated.ts';
+import type { createContext as CreateContext } from '../../trpc/context.ts';
+import type { router as Router } from '../../trpc/init.ts';
+import type {
+  clientProcedure as ClientProcedure,
+  protectedProcedure as ProtectedProcedure,
+} from '../../trpc/procedures.ts';
 
 import type { acceptInvite as AcceptInvite } from './accept-invite.ts';
 import type { confirmGuardianConsent as ConfirmGuardianConsent } from './confirm-guardian-consent.ts';
@@ -35,6 +41,29 @@ let createTestContext: typeof CreateTestContext;
 let runAgeSweep: typeof RunAgeSweep;
 let isConfirmedGuardianOf: typeof IsConfirmedGuardianOf;
 let sendEmailMock: jest.Mock;
+let createContext: typeof CreateContext;
+// The pool `../../trpc/context.ts` opens at module scope. Held so
+// `afterAll` can close it — this suite's own `db` above is a second,
+// separate pool against the same container.
+let contextDb: DbClient;
+// Built from the dynamically-imported builders rather than declared with a
+// hand-written type — `ReturnType<typeof buildGateRouter>` is what carries
+// the two procedures' real inferred shapes out to the `describe` below,
+// the same trick `../../__tests__/middleware/has-role.test.ts` uses for its
+// own scratch router.
+function buildGateRouter(
+  router: typeof Router,
+  clientProcedure: typeof ClientProcedure,
+  protectedProcedure: typeof ProtectedProcedure,
+) {
+  return router({
+    gated: clientProcedure.query(({ ctx }) => ({ clientProfileId: ctx.user.clientProfileId })),
+    // `me.get` (what `06`'s pending screen renders from) and §21.4's
+    // deletion path are both built on this builder, deliberately ungated.
+    ungated: protectedProcedure.query(({ ctx }) => ({ userId: ctx.user.id })),
+  });
+}
+let gateRouter: ReturnType<typeof buildGateRouter>;
 
 beforeAll(async () => {
   [pgContainer, redisContainer] = await Promise.all([
@@ -85,10 +114,26 @@ beforeAll(async () => {
 
   ({ redis } = await import('../../lib/redis.ts'));
   await redis.connect();
+
+  // `guardian-consent/03`'s end-to-end half. The real `createContext` and
+  // the real exported builders, so the token is verified for real and
+  // `resolveUser` reads `is_minor` / `guardian_consent_at` out of Postgres
+  // on every call — which is the whole point: the state must not be cached
+  // anywhere between the two calls below. A scratch router rather than
+  // `appRouter` keeps `queues/registry.ts`'s eager BullMQ connections
+  // (`docs/UNFORGET.md` S9) out of this suite.
+  ({ createContext } = await import('../../trpc/context.ts'));
+  const { router } = await import('../../trpc/init.ts');
+  const { clientProcedure, protectedProcedure } = (await import('../../trpc/procedures.ts')) as {
+    clientProcedure: typeof ClientProcedure;
+    protectedProcedure: typeof ProtectedProcedure;
+  };
+  gateRouter = buildGateRouter(router, clientProcedure, protectedProcedure);
+  contextDb = (await createContext(new Request('http://localhost/trpc/health.ping'))).db;
 }, 60_000);
 
 afterAll(async () => {
-  await db.$client.end();
+  await Promise.all([db.$client.end(), contextDb.$client.end()]);
   await Promise.all([pgContainer.stop(), redisContainer.stop()]);
 }, 60_000);
 
@@ -147,6 +192,10 @@ interface MinorFixture {
   guardianEmail: string;
   token: string;
   clientName: string;
+  // The session `acceptInvite` opens for the minor there and then — there
+  // is no branch for a 13-17 acceptance, which is exactly why
+  // `guardian-consent/03`'s gate has to exist.
+  accessToken: string;
 }
 
 /**
@@ -164,7 +213,7 @@ async function acceptAsMinor(): Promise<MinorFixture> {
   await db.insert(schema.invites).values({ coachId: coachProfileId, email, code });
 
   const ctx = createTestContext({ db });
-  await acceptInvite(db, ctx, {
+  const session = await acceptInvite(db, ctx, {
     code,
     password: 'a-real-password',
     name: clientName,
@@ -202,7 +251,14 @@ async function acceptAsMinor(): Promise<MinorFixture> {
   expect(profile.status).toBe('invited');
   expect(profile.activatedAt).toBeNull();
 
-  return { userId: user.id, clientProfileId: profile.id, guardianEmail, token, clientName };
+  return {
+    userId: user.id,
+    clientProfileId: profile.id,
+    guardianEmail,
+    token,
+    clientName,
+    accessToken: session.accessToken,
+  };
 }
 
 async function readUser(userId: string) {
@@ -444,5 +500,68 @@ describe('confirmGuardianConsent', () => {
     await confirmGuardianConsent(db, createTestContext({ db }), minor.token);
 
     expect(await isConfirmedGuardianOf(db, guardianUser.id, minor.userId)).toBe(true);
+  });
+});
+
+// `guardian-consent/03`'s Verification, end to end. It lives here rather
+// than beside the middleware because the only honest way to reach the
+// blocked state is to accept an invite as a 15-year-old, and the only
+// honest way to leave it is `confirmGuardianConsent` above — both already
+// set up in this file, in these containers.
+describe('the GUARDIAN_CONSENT_PENDING gate', () => {
+  // One bearer header, reused. Each call rebuilds the context from it, so
+  // the second call succeeds only if the consent state is read fresh from
+  // Postgres — if it were an access-token claim, this token would still say
+  // "unconsented" and the assertion would fail. That is the point of the
+  // test.
+  async function callerOn(accessToken: string) {
+    const request = new Request('http://localhost/trpc/gated', {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    return gateRouter.createCaller(await createContext(request));
+  }
+
+  it('blocks a clientProcedure until the guardian confirms, on the same access token', async () => {
+    const minor = await acceptAsMinor();
+
+    await expect((await callerOn(minor.accessToken)).gated()).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+      cause: { appCode: 'GUARDIAN_CONSENT_PENDING' },
+    });
+
+    const result = await confirmGuardianConsent(db, createTestContext({ db }), minor.token);
+    expect(result.outcome).toBe('confirmed');
+
+    // No sign-out, no refresh, no app restart — the very next request.
+    await expect((await callerOn(minor.accessToken)).gated()).resolves.toEqual({
+      clientProfileId: minor.clientProfileId,
+    });
+  });
+
+  it('leaves protectedProcedure reachable while the block is in force', async () => {
+    const minor = await acceptAsMinor();
+
+    await expect((await callerOn(minor.accessToken)).ungated()).resolves.toEqual({
+      userId: minor.userId,
+    });
+  });
+
+  it('unblocks an account the age sweep has aged out, with consent still null', async () => {
+    const minor = await acceptAsMinor();
+    const nineteenYearsAgo = new Date();
+    nineteenYearsAgo.setFullYear(nineteenYearsAgo.getFullYear() - 19);
+    await db
+      .update(schema.users)
+      .set({ dateOfBirth: nineteenYearsAgo.toISOString().slice(0, 10) })
+      .where(eq(schema.users.id, minor.userId));
+
+    await runAgeSweep(db);
+
+    const user = await readUser(minor.userId);
+    expect(user.isMinor).toBe(false);
+    expect(user.guardianConsentAt).toBeNull();
+    await expect((await callerOn(minor.accessToken)).gated()).resolves.toEqual({
+      clientProfileId: minor.clientProfileId,
+    });
   });
 });

@@ -19,7 +19,17 @@ import { createOwnershipCache, type OwnershipCache } from './authz/ownership-cac
 // of querying. `Pick<User, ...>` rather than a hand-written shape, per
 // `code-conventions` §3 — every field here still traces back to Drizzle's
 // inference.
-export type ContextUser = Pick<User, 'id' | 'email' | 'role' | 'timezone' | 'locale'> & {
+//
+// `isMinor` and `guardianConsentAt` are the two `guardian-consent/03`
+// added: `./middleware/guardian-consent.ts` needs both on every request,
+// and they ride the same `users` row `resolveUser` already reads. They are
+// deliberately not access-token claims — a claim is a cache that can be
+// fifteen minutes stale, and fifteen stale minutes here means a parent
+// confirms and their child stays locked out.
+export type ContextUser = Pick<
+  User,
+  'id' | 'email' | 'role' | 'timezone' | 'locale' | 'isMinor' | 'guardianConsentAt'
+> & {
   coachProfileId: string | null;
   clientProfileId: string | null;
   // Always `null` — a soft-deleted user resolves to a `null` user, never a
@@ -86,6 +96,8 @@ async function resolveUser(claims: { userId: string }): Promise<ContextUser | nu
       role: schema.users.role,
       timezone: schema.users.timezone,
       locale: schema.users.locale,
+      isMinor: schema.users.isMinor,
+      guardianConsentAt: schema.users.guardianConsentAt,
       deletedAt: schema.users.deletedAt,
       coachProfileId: schema.coachProfiles.id,
       clientProfileId: schema.clientProfiles.id,
@@ -115,6 +127,8 @@ async function resolveUser(claims: { userId: string }): Promise<ContextUser | nu
     role: row.role,
     timezone: row.timezone,
     locale: row.locale,
+    isMinor: row.isMinor,
+    guardianConsentAt: row.guardianConsentAt,
     coachProfileId: row.coachProfileId,
     clientProfileId: row.clientProfileId,
     deletedAt: null,

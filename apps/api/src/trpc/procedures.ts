@@ -2,6 +2,7 @@
 import { databaseErrorBoundary } from '../db/error-boundary.ts';
 
 import { publicProcedure as basePublicProcedure } from './init.ts';
+import { guardianConsentGate } from './middleware/guardian-consent.ts';
 import { coachOrClientRole, hasRole } from './middleware/has-role.ts';
 import { isAuthed } from './middleware/is-authed.ts';
 import { isOperatorMiddleware } from './middleware/is-operator.ts';
@@ -59,9 +60,38 @@ export const protectedProcedure = publicProcedure.use(isAuthed);
 // themselves. None of the three ever admits `role: 'assistant'`
 // (`phase-25-white-label-and-teams/team-seats-and-roles/` is what teaches
 // them to).
+//
+// `guardian-consent/03`: `clientProcedure` and `coachOrClientProcedure` —
+// everything that constitutes *coaching* — additionally pass through
+// `guardianConsentGate`, after `hasRole`, never before. A caller whose role
+// is wrong must get `ROLE_REQUIRED`, not a consent error naming a guardian:
+// the second leaks a fact about someone else's account to whoever's session
+// is making the call.
+//
+// The three builders deliberately left ungated, each for a reason that is
+// load-bearing rather than an oversight:
+//
+// - `publicProcedure` / `authProcedure` — CLAUDE.md §21.5 requires that a
+//   minor without consent can still sign in and be told why, so
+//   `auth.signIn`, `auth.refresh` and `auth.signOut` must keep working.
+// - `protectedProcedure` — this is what keeps `me.get` reachable, and
+//   `me.get` is what `06`'s pending screen renders from. It also keeps
+//   `me.requestDeletion` / `me.cancelDeletion` reachable: §21.4's three-tap
+//   deletion is a store requirement and must not depend on a parent
+//   clicking a link. **`04`'s `invites.resendGuardianConsent` must
+//   therefore be built on `protectedProcedure`, not `clientProcedure`** — a
+//   resend the blocked account cannot call is the exact bug that turns a
+//   stalled consent into a dead account.
+// - `coachProcedure` — a minor coach is structurally impossible
+//   (`users_minor_is_client`), and `requireProfileId` rejects the role
+//   mismatch first regardless. Gating it would be a redundant check, and a
+//   redundant check invites the next reader to think the constraint is
+//   advisory.
 export const coachProcedure = protectedProcedure.use(hasRole('coach'));
-export const clientProcedure = protectedProcedure.use(hasRole('client'));
-export const coachOrClientProcedure = protectedProcedure.use(coachOrClientRole);
+export const clientProcedure = protectedProcedure.use(hasRole('client')).use(guardianConsentGate);
+export const coachOrClientProcedure = protectedProcedure
+  .use(coachOrClientRole)
+  .use(guardianConsentGate);
 
 // `account-lifecycle/12` — SUPPORT.md SU§2's admin gate: `users.internal_
 // operator`, direct-DB-access only, never set by any application surface.

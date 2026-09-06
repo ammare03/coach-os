@@ -6,6 +6,7 @@
 // starts. `@coachos/db` itself doesn't gate on env, so it's imported
 // normally.
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { schema, type DbClient } from '@coachos/db';
@@ -165,6 +166,77 @@ describe('createContext', () => {
       clientProfileId: null,
       timezone: 'Asia/Kolkata',
     });
+  });
+
+  // `guardian-consent/03`: the gate reads both of these off `ctx.user`, so
+  // they have to resolve correctly for every account shape the product can
+  // actually produce.
+  it.each([
+    {
+      label: 'an adult client',
+      overrides: { isMinor: false, guardianEmail: null, guardianConsentAt: null },
+      expectsConsent: false,
+    },
+    {
+      label: 'a minor whose guardian has not confirmed',
+      overrides: {
+        isMinor: true,
+        guardianEmail: 'guardian@ctx-test.com',
+        guardianConsentAt: null,
+      },
+      expectsConsent: false,
+    },
+    {
+      label: 'a minor whose guardian has confirmed',
+      overrides: {
+        isMinor: true,
+        guardianEmail: 'guardian@ctx-test.com',
+        guardianConsentAt: new Date('2026-03-01T00:00:00Z'),
+      },
+      expectsConsent: true,
+    },
+  ])('resolves isMinor and guardianConsentAt for $label', async ({ overrides, expectsConsent }) => {
+    const [user] = await db
+      .insert(schema.users)
+      .values({
+        email: `minor-${overrides.isMinor}-${expectsConsent}@ctx-minor-test.com`,
+        passwordHash: 'x',
+        name: 'Client',
+        role: 'client',
+        ...overrides,
+      })
+      .returning({ id: schema.users.id });
+    if (!user) throw new Error('seed insert into users did not return a row');
+
+    const ctxFactory = createContextFactory(() => ({
+      userId: user.id,
+      deviceId: uuidv7(),
+      expiresAt: new Date(Date.now() + 60_000),
+    }));
+    const ctx = await ctxFactory(makeRequest({ authorization: 'Bearer whatever' }));
+
+    expect(ctx.user?.isMinor).toBe(overrides.isMinor);
+    expect(ctx.user?.guardianConsentAt?.toISOString() ?? null).toBe(
+      overrides.guardianConsentAt?.toISOString() ?? null,
+    );
+    expect(ctx.user?.guardianConsentAt !== null).toBe(expectsConsent);
+  });
+
+  // The "no additional round trip" acceptance criterion, asserted rather
+  // than left to inspection: `resolveUser` must still issue exactly one
+  // `select`. A structural check, because the round-trip count is a
+  // property of the function's shape — a behavioural assertion on
+  // `ctx.user` cannot tell one query from two that happen to agree.
+  it('resolves the two consent fields from the one query resolveUser already ran', () => {
+    const source = readFileSync(path.join(__dirname, '..', 'trpc', 'context.ts'), 'utf8');
+    const body = source.slice(
+      source.indexOf('async function resolveUser'),
+      source.indexOf('function readRequestMeta'),
+    );
+
+    expect(body).toContain('isMinor: schema.users.isMinor');
+    expect(body).toContain('guardianConsentAt: schema.users.guardianConsentAt');
+    expect(body.match(/\.select\(/g)).toHaveLength(1);
   });
 
   it('adopts a well-formed inbound x-request-id and generates one otherwise', async () => {

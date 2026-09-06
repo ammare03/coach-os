@@ -92,6 +92,8 @@ function callerFor(user: typeof schema.users.$inferSelect) {
     role: user.role,
     timezone: user.timezone,
     locale: user.locale,
+    isMinor: user.isMinor,
+    guardianConsentAt: user.guardianConsentAt,
     coachProfileId: null,
     clientProfileId: null,
     deletedAt: null,
