@@ -17,6 +17,12 @@ import { isDevGalleryEnabled } from './dev-gallery.js';
 // association file at all, which is today's state).
 const UNIVERSAL_LINK_HOST = 'app.coachos.com';
 
+// `configuration` skill §2 — one id per platform, varying by APP_VARIANT so a
+// dev and a production build coexist on one device. The production id is
+// what `apps/api`'s APPLE_SIGN_IN_CLIENT_ID audience-checks against; the dev
+// id is what S6's Google OAuth clients are registered under.
+const APP_ID = process.env.APP_VARIANT === 'production' ? 'com.coachos.app' : 'com.coachos.app.dev';
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'coach-os',
@@ -32,6 +38,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // appearance setting in v1 (CLAUDE.md §7.1).
   userInterfaceStyle: 'dark',
   ios: {
+    bundleIdentifier: APP_ID,
     // `social-sign-in/01` — the `com.apple.developer.applesignin`
     // entitlement. `expo-apple-authentication` ships no config plugin of
     // its own (checked: no `app.plugin.js` in the package); `usesAppleSignIn`
@@ -50,12 +57,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // ⚠️ This half alone does nothing. iOS fetches
     // `https://app.coachos.com/.well-known/apple-app-site-association` at
     // install time and matches its `appIDs` against `TEAMID.BUNDLEID`; the
-    // file is domain-side and unbuilt, and so is `ios.bundleIdentifier`.
-    // Tracked in `docs/UNFORGET.md` for `phase-22-release-engineering` —
+    // file is domain-side and unbuilt. Tracked in `docs/UNFORGET.md` (S14) —
     // until it exists, `coachos://` is the only link form that works.
     associatedDomains: [`applinks:${UNIVERSAL_LINK_HOST}`],
   },
   android: {
+    package: APP_ID,
     // `ui-primitives-core/03` — `CLAUDE.md` §25.9: keyboard + a scrolling
     // form on Android needs `adjustResize`, or the focused field ends up
     // behind the keyboard instead of the window shrinking to fit it. A
