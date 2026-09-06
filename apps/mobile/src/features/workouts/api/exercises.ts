@@ -1,4 +1,5 @@
 import type { exercises as exercisesSchemas } from '@coachos/schemas';
+import { keepPreviousData } from '@tanstack/react-query';
 
 import { api } from '../../../lib/trpc.ts';
 
@@ -22,6 +23,46 @@ export function useExerciseLibrary(filters: exercisesSchemas.ListExercisesFilter
 export function useExerciseSearch(query: string, enabled: boolean) {
   return api.exercises.search.useQuery({ query }, { enabled });
 }
+
+export interface ExercisePickerSearchInput {
+  query: string;
+  movementPattern?: exercisesSchemas.MovementPatternValue | undefined;
+}
+
+/**
+ * The picker's search (`exercise-library/05`). Separate from
+ * `useExerciseSearch` above for two behavioural reasons, not for tidiness:
+ * it narrows by movement pattern, and it keeps the previous answer on
+ * screen while the next one is in flight. A skeleton on every keystroke
+ * reads as the library flickering, and §19 budgets 400ms from keystroke to
+ * results for the WHOLE path — the debounce and the render are ours, not
+ * just the round trip.
+ *
+ * An empty query is deliberate and valid: `exercises.search` answers it
+ * with the head of the library, which is how the picker opens with
+ * something already on screen (`packages/schemas` `searchExercisesInput`).
+ */
+export function useExercisePickerSearch(input: ExercisePickerSearchInput, enabled: boolean) {
+  return api.exercises.search.useQuery(
+    {
+      query: input.query,
+      // `exactOptionalPropertyTypes` — an absent filter is an omitted key,
+      // never an explicit `undefined`.
+      ...(input.movementPattern ? { movementPattern: input.movementPattern } : {}),
+    },
+    { enabled, placeholderData: keepPreviousData },
+  );
+}
+
+/**
+ * One row of the picker, inferred from the procedure rather than declared
+ * (`code-conventions` §3). Consumers — `program-builder/02` today,
+ * `phase-09-workout-logger/session-modifications/02` next — receive this
+ * from `onSelect` and should name this type rather than restate its fields.
+ */
+export type PickerExercise = NonNullable<
+  ReturnType<typeof useExercisePickerSearch>['data']
+>[number];
 
 export function useExercise(exerciseId: string, enabled = true) {
   return api.exercises.get.useQuery({ exerciseId }, { enabled });

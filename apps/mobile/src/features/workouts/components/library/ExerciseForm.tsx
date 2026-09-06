@@ -13,7 +13,6 @@ import {
 } from '@coachos/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Archive, ChevronLeft, TriangleAlert } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
   KeyboardAvoidingView,
@@ -25,6 +24,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useDebounced } from '../../../../hooks/useDebounced.ts';
 import { useExerciseNameCheck } from '../../api/exercises.ts';
 
 import { CueListEditor } from './CueListEditor.tsx';
@@ -473,20 +473,6 @@ function ToggleRow({ label, hint, value, onChange, testID }: ToggleRowProps) {
       </View>
     </Pressable>
   );
-}
-
-/** Trailing-edge debounce. Kept local — the only consumer is the name check above. */
-function useDebounced(value: string, delayMs: number): string {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebounced(value);
-    }, delayMs);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [value, delayMs]);
-  return debounced;
 }
 
 const TRACK_WIDTH = 46;
