@@ -68,16 +68,25 @@ describe('useResourceState', () => {
       });
     });
 
-    // NOT_YOUR_CLIENT is FORBIDDEN in APP_ERROR_TRPC_CODE and thrown that
-    // way by ownsResource, which is what this asserts. ERRORS.md ER§2.1
-    // says it should be NOT_FOUND — an open discrepancy owned by the
-    // catalogue, not by this hook (see useResourceState.README.md §3).
+    // NOT_YOUR_CLIENT travels as NOT_FOUND (ERRORS.md ER§2.1) — another
+    // coach's client and a nonexistent id must be indistinguishable, so
+    // ownsResource failures land in notFound, never forbidden.
+    it('is notFound for NOT_YOUR_CLIENT — an ownsResource failure is not a 403', () => {
+      const error = appError({ code: 'NOT_FOUND', httpStatus: 404, appCode: 'NOT_YOUR_CLIENT' });
+
+      expect(useResourceState(query({ error }))).toEqual({
+        state: 'notFound',
+        code: 'NOT_YOUR_CLIENT',
+        error,
+      });
+    });
+
     it('is forbidden for a FORBIDDEN-mapped app code', () => {
-      const error = appError({ code: 'FORBIDDEN', httpStatus: 403, appCode: 'NOT_YOUR_CLIENT' });
+      const error = appError({ code: 'FORBIDDEN', httpStatus: 403, appCode: 'ROLE_REQUIRED' });
 
       expect(useResourceState(query({ error }))).toEqual({
         state: 'forbidden',
-        code: 'NOT_YOUR_CLIENT',
+        code: 'ROLE_REQUIRED',
         error,
       });
     });
@@ -191,7 +200,15 @@ describe('useResourceState', () => {
     });
 
     it('drops the cache the moment access is revoked', () => {
-      const error = appError({ code: 'FORBIDDEN', httpStatus: 403, appCode: 'NOT_YOUR_CLIENT' });
+      // A client who left this coach now answers exactly like a row that
+      // never existed (ER§2.1) — so the cached copy goes with it.
+      const error = appError({ code: 'NOT_FOUND', httpStatus: 404, appCode: 'NOT_YOUR_CLIENT' });
+
+      expect(useResourceState(query({ data: FETCHED, error })).state).toBe('notFound');
+    });
+
+    it('drops the cache the moment the role no longer qualifies', () => {
+      const error = appError({ code: 'FORBIDDEN', httpStatus: 403, appCode: 'ROLE_REQUIRED' });
 
       expect(useResourceState(query({ data: FETCHED, error })).state).toBe('forbidden');
     });

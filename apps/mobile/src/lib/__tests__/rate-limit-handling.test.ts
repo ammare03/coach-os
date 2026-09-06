@@ -25,8 +25,8 @@ function otherError(): TRPCClientError<never> {
   return TRPCClientError.from({
     error: {
       code: -32001,
-      message: "You don't have access to that.",
-      data: { code: 'FORBIDDEN', httpStatus: 403, appCode: 'NOT_YOUR_CLIENT', details: {} },
+      message: "We couldn't find that.",
+      data: { code: 'NOT_FOUND', httpStatus: 404, appCode: 'NOT_YOUR_CLIENT', details: {} },
     },
   });
 }

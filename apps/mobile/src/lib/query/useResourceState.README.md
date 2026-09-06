@@ -61,8 +61,8 @@ added, with no change here and no change in your feature.
 
 | tRPC transport code | State       | Catalogued codes that reach it today                                                                                         |
 | ------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `NOT_FOUND`         | `notFound`  | `INVITE_NOT_FOUND`, `EXPORT_NOT_FOUND`, `DEPENDENT_NOT_FOUND`                                                                |
-| `FORBIDDEN`         | `forbidden` | `NOT_YOUR_CLIENT`, `FEATURE_NOT_IN_TIER`, `ROLE_REQUIRED`, `RECORDING_CONSENT_REQUIRED`, the four age/guardian codes         |
+| `NOT_FOUND`         | `notFound`  | `NOT_YOUR_CLIENT`, `INVITE_NOT_FOUND`, `EXPORT_NOT_FOUND`, `DEPENDENT_NOT_FOUND`                                             |
+| `FORBIDDEN`         | `forbidden` | `FEATURE_NOT_IN_TIER`, `ROLE_REQUIRED`, `RECORDING_CONSENT_REQUIRED`, the four age/guardian codes                            |
 | anything else       | `error`     | `RATE_LIMITED`, `INTERNAL_ERROR`, `VALIDATION_FAILED`, `SYNC_CONFLICT`, `AUTH_REQUIRED`, every `BAD_REQUEST`/`CONFLICT` code |
 
 Resolution order, both covered by tests:
@@ -96,19 +96,13 @@ the two a foreign resource gets is
 the API's decision, not the screen's — a client that softens a 403 into a 404, or hardens a
 404 into a 403, makes the two surfaces disagree about what the user is being told.
 
-> ### ⚠️ Open discrepancy: `NOT_YOUR_CLIENT`
+> ### `NOT_YOUR_CLIENT` is `notFound`, on purpose
 >
-> `ERRORS.md` ER§2.1 requires `NOT_YOUR_CLIENT` to be **`NOT_FOUND`** on the wire, so that a
-> 403 never confirms another coach's resource exists — and `NotFoundState`/`ForbiddenState`
-> are both documented against that rule. But `APP_ERROR_TRPC_CODE` in `@coachos/schemas`
-> currently maps it to `FORBIDDEN` (matching the `api-conventions` §5 table), and
-> `apps/api/src/trpc/middleware/owns-resource.ts` throws it that way, so the 403 is already
-> on the wire today. This hook reports what the server actually sent: `forbidden`.
->
-> **The fix belongs in the catalogue and the middleware, not here.** Change
-> `APP_ERROR_TRPC_CODE.NOT_YOUR_CLIENT` to `'NOT_FOUND'` and this hook starts returning
-> `notFound` with no edit to this file and none to your feature. A special case here would
-> hide a live enumeration oracle behind a correct-looking screen.
+> An `ownsResource` failure — another coach's client, or an id that never existed — travels as
+> `NOT_FOUND` with `ERRORS.md`'s genuine-404 copy (ER§2.1), so a 403 never confirms a foreign
+> row exists. This hook therefore returns `notFound` for it, and a screen must render
+> `NotFoundState`, not `ForbiddenState`. The catalogue carried `FORBIDDEN` until 6 Sep 2026;
+> the decision that settled it is recorded in `docs/UNFORGET.md` (S16).
 
 ---
 
