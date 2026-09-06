@@ -106,6 +106,8 @@ async function insertCoach(): Promise<Coach> {
     role: 'coach',
     timezone: user.timezone,
     locale: user.locale,
+    isMinor: user.isMinor,
+    guardianConsentAt: user.guardianConsentAt,
     coachProfileId: profile.id,
     clientProfileId: null,
     deletedAt: null,
