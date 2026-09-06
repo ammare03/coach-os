@@ -22,6 +22,10 @@ const mockStackScreenNames: string[] = [];
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
 let mockParams: Record<string, string> = {};
+// `client-onboarding/01` — `(auth)/_layout` reads the active route to
+// supply `AuthGate`'s one exemption. Default to a non-exempt route, so the
+// layout's own composition assertions below are unchanged by it.
+let mockSegments: string[] = ['(auth)', 'welcome'];
 
 jest.mock('expo-router', () => {
   const react = jest.requireActual('react');
@@ -41,6 +45,7 @@ jest.mock('expo-router', () => {
     Stack,
     useRouter: () => ({ back: mockBack, replace: mockReplace }),
     useLocalSearchParams: () => mockParams,
+    useSegments: () => mockSegments,
   };
 });
 
@@ -64,14 +69,19 @@ jest.mock('../features/auth/screens/ForgotPasswordScreen.tsx', () => ({
   ForgotPasswordScreen: (props: { onBack: () => void }) => mockForgotPasswordScreen(props),
 }));
 
-const mockInviteScreen = jest.fn((_props: { code: string; onSignIn: () => void }) => null);
-jest.mock('../features/auth/screens/InviteScreen.tsx', () => ({
-  InviteScreen: (props: { code: string; onSignIn: () => void }) => mockInviteScreen(props),
+// `client-onboarding/01` replaced the placeholder `InviteScreen` with
+// `InviteArrival`, which owns the four-way branch across the arrival cases.
+// The route file's job is unchanged and so is this assertion: extract the
+// param, compose, nothing else.
+const mockInviteArrival = jest.fn((_props: { code: string }) => null);
+jest.mock('../features/auth/screens/InviteArrival.tsx', () => ({
+  InviteArrival: (props: { code: string }) => mockInviteArrival(props),
 }));
 
 beforeEach(() => {
   mockStackScreenNames.length = 0;
   mockParams = {};
+  mockSegments = ['(auth)', 'welcome'];
   // `(auth)`'s layout is wrapped in `AuthGate` (`providers-and-gates/03`),
   // which renders nothing at all while the session is still resolving — the
   // store's default. These are composition tests, so put the session in the
@@ -130,12 +140,12 @@ describe('(auth) routes', () => {
 
     render(<InviteRoute />);
 
-    expect(mockInviteScreen).toHaveBeenCalledWith(expect.objectContaining({ code: 'inv_abc123' }));
+    expect(mockInviteArrival).toHaveBeenCalledWith(expect.objectContaining({ code: 'inv_abc123' }));
   });
 
   it('invite/[code] renders rather than crashing when the param is missing', () => {
     render(<InviteRoute />);
 
-    expect(mockInviteScreen).toHaveBeenCalledWith(expect.objectContaining({ code: '' }));
+    expect(mockInviteArrival).toHaveBeenCalledWith(expect.objectContaining({ code: '' }));
   });
 });

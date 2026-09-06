@@ -67,8 +67,13 @@ const COACH_HOME = 'coach home';
 const CLIENT_HOME = 'client home';
 const COACH_ONBOARDING = 'coach onboarding';
 const CLIENT_ONBOARDING = 'client onboarding';
-
-const empty = () => null;
+// `client-onboarding/01` — the exempt route, and the six that are not.
+const AUTH_INVITE = 'auth invite';
+const AUTH_SIGN_IN = 'auth sign-in';
+const AUTH_SIGN_UP = 'auth sign-up';
+const AUTH_SOCIAL = 'auth complete-social-signup';
+const AUTH_FORGOT = 'auth forgot-password';
+const AUTH_RESET = 'auth reset-password';
 
 function renderApp(initialUrl: string) {
   renderRouter(
@@ -80,12 +85,12 @@ function renderApp(initialUrl: string) {
       '(auth)/welcome': screenRecording(AUTH_WELCOME),
       // The real `(auth)` layout enumerates all seven of its screens; each
       // needs a route to name or the navigator throws.
-      '(auth)/sign-in': empty,
-      '(auth)/sign-up': empty,
-      '(auth)/complete-social-signup': empty,
-      '(auth)/forgot-password': empty,
-      '(auth)/reset-password/[token]': empty,
-      '(auth)/invite/[code]': empty,
+      '(auth)/sign-in': screenRecording(AUTH_SIGN_IN),
+      '(auth)/sign-up': screenRecording(AUTH_SIGN_UP),
+      '(auth)/complete-social-signup': screenRecording(AUTH_SOCIAL),
+      '(auth)/forgot-password': screenRecording(AUTH_FORGOT),
+      '(auth)/reset-password/[token]': screenRecording(AUTH_RESET),
+      '(auth)/invite/[code]': screenRecording(AUTH_INVITE),
 
       '(coach)/_layout': CoachLayout,
       '(coach)/(tabs)/_layout': TabsLayout,
@@ -278,6 +283,75 @@ describe('the auth gate', () => {
     expect(await screen.findByText(COACH_HOME)).toBeTruthy();
   });
 
+  // `client-onboarding/01` — the one exemption. An authenticated caller
+  // tapping an invite link must SEE the invite screen; before this, the
+  // gate bounced them to their own group root and the link did nothing.
+  it('lets an authenticated client stay on (auth)/invite/[code]', async () => {
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'u2',
+      role: 'client',
+      isOnboarded: true,
+    });
+
+    renderApp('/(auth)/invite/K4R7M8PQ');
+
+    expect(await screen.findByText(AUTH_INVITE)).toBeTruthy();
+    expect(rendered).not.toContain(CLIENT_HOME);
+  });
+
+  it('lets an authenticated coach stay on (auth)/invite/[code] too — the refusal is a screen, not a bounce', async () => {
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'u1',
+      role: 'coach',
+      isOnboarded: true,
+    });
+
+    renderApp('/(auth)/invite/K4R7M8PQ');
+
+    expect(await screen.findByText(AUTH_INVITE)).toBeTruthy();
+    expect(rendered).not.toContain(COACH_HOME);
+  });
+
+  it('lets a client who has not finished onboarding stay on the invite route', async () => {
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'u2',
+      role: 'client',
+      isOnboarded: false,
+    });
+
+    renderApp('/(auth)/invite/K4R7M8PQ');
+
+    expect(await screen.findByText(AUTH_INVITE)).toBeTruthy();
+    expect(rendered).not.toContain(CLIENT_ONBOARDING);
+  });
+
+  // The other direction, per route: the exemption widens NOTHING else in
+  // `(auth)`. `reset-password/[token]` is the one that matters most — it
+  // has the same "an `(auth)` route with a param" shape as the exempt one.
+  it.each([
+    ['/(auth)/welcome', AUTH_WELCOME],
+    ['/(auth)/sign-in', AUTH_SIGN_IN],
+    ['/(auth)/sign-up', AUTH_SIGN_UP],
+    ['/(auth)/complete-social-signup', AUTH_SOCIAL],
+    ['/(auth)/forgot-password', AUTH_FORGOT],
+    ['/(auth)/reset-password/tok_123', AUTH_RESET],
+  ])('still redirects an authenticated client away from %s', async (url, label) => {
+    useAuthStore.setState({
+      status: 'authenticated',
+      userId: 'u2',
+      role: 'client',
+      isOnboarded: true,
+    });
+
+    renderApp(url);
+
+    expect(await screen.findByText(CLIENT_HOME)).toBeTruthy();
+    expect(rendered).not.toContain(label);
+  });
+
   it('sends a client back to (auth) when the session ends under them', async () => {
     useAuthStore.setState({
       status: 'authenticated',
@@ -382,6 +456,46 @@ describe('resolveAuthGate', () => {
       action: 'redirect',
       group: '(coach-onboarding)',
     });
+  });
+
+  // `client-onboarding/01`'s exemption, as a pure function. It is an
+  // argument rather than a route read inside the resolver, so it is
+  // assertable without a navigator — and it only ever widens `(auth)`.
+  it('renders an exempt (auth) route for a session that would otherwise be redirected', () => {
+    expect(resolveAuthGate(onboarded('client'), '(auth)', true)).toEqual({ action: 'render' });
+    expect(resolveAuthGate(midOnboarding('coach'), '(auth)', true)).toEqual({ action: 'render' });
+  });
+
+  it('redirects the same session off (auth) when the route is not exempt', () => {
+    expect(resolveAuthGate(onboarded('client'), '(auth)', false)).toEqual({
+      action: 'redirect',
+      group: '(client)',
+    });
+    expect(resolveAuthGate(onboarded('client'), '(auth)')).toEqual({
+      action: 'redirect',
+      group: '(client)',
+    });
+  });
+
+  it('cannot open a hole in any group but (auth)', () => {
+    expect(resolveAuthGate(onboarded('client'), '(coach)', true)).toEqual({
+      action: 'redirect',
+      group: '(client)',
+    });
+    expect(resolveAuthGate(onboarded('client'), '(coach-onboarding)', true)).toEqual({
+      action: 'redirect',
+      group: '(client)',
+    });
+    expect(resolveAuthGate(onboarded('coach'), undefined, true)).toEqual({
+      action: 'redirect',
+      group: '(coach)',
+    });
+  });
+
+  it('still waits on a loading session, exempt route or not', () => {
+    expect(
+      resolveAuthGate({ status: 'loading', role: 'client', isOnboarded: true }, '(auth)', true),
+    ).toEqual({ action: 'wait' });
   });
 
   // Signing out mid-flow is still a sign-out: `isOnboarded` never overrides
