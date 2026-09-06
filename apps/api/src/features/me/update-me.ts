@@ -1,7 +1,7 @@
 import { schema, type DbClient } from '@coachos/db';
 import { eq } from 'drizzle-orm';
 
-import { ME_PROFILE_COLUMNS, type MeProfile } from './get-me.ts';
+import { ME_PROFILE_COLUMNS, toMeProfile, type MeProfile } from './get-me.ts';
 
 /**
  * Mirrors `packages/schemas/src/me.ts`'s `updateMeInput` exactly — that
@@ -34,5 +34,8 @@ export async function updateMe(
   if (!row) {
     throw new Error(`me.update: authenticated user ${userId} row not found`);
   }
-  return row;
+  // Through `toMeProfile` rather than returned directly: `ME_PROFILE_COLUMNS`
+  // selects `guardian_email` so `me.get` can mask it, and that column must not
+  // reach a response from here either (`guardian-consent/06`).
+  return toMeProfile(row);
 }

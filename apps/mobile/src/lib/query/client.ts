@@ -1,8 +1,9 @@
 import { persistQueryClient } from '@tanstack/query-persist-client-core';
-import { QueryClient } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 import { TRPCClientError } from '@trpc/client';
 
-import { rateLimitCaches } from '../rate-limit-handling.ts';
+import { handleGuardianConsentError } from '../guardian-consent-handling.ts';
+import { handleRateLimitError } from '../rate-limit-handling.ts';
 
 import {
   createSQLitePersister,
@@ -17,12 +18,18 @@ import {
 // didn't update", and it survives review because both caches are
 // individually correct.
 export const queryClient = new QueryClient({
-  // `rate-limit-handling.ts`'s `onError` hooks — every query and mutation
-  // passes through these caches, so a `RATE_LIMITED` rejection surfaces
-  // centrally (`03-per-route-config-and-429-handling.md`) rather than
-  // requiring each feature to check `getErrorCode` itself.
-  queryCache: rateLimitCaches.queryCache,
-  mutationCache: rateLimitCaches.mutationCache,
+  // The central `onError` hooks — every query and mutation passes through
+  // these caches, so a code that has one right answer everywhere is handled
+  // once here instead of by each feature calling `getErrorCode` itself.
+  //
+  // Two handlers behind one function rather than two caches, because a
+  // cache takes exactly one `onError`: `RATE_LIMITED` surfaces a toast
+  // (`03-per-route-config-and-429-handling.md`) and
+  // `GUARDIAN_CONSENT_PENDING` routes to the pending screen
+  // (`guardian-consent/06`). Neither claims an error the other wants, and
+  // every other code falls through to the screen's own error state.
+  queryCache: new QueryCache({ onError: handleCentralError }),
+  mutationCache: new MutationCache({ onError: handleCentralError }),
   defaultOptions: {
     queries: {
       staleTime: 60 * 1000, // CLAUDE.md §19 — a cached dashboard paints in < 200ms and revalidates behind it
@@ -36,6 +43,15 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+// Declared as a function so it can be referenced above its own definition —
+// the alternative is a `const` that has to be declared before `queryClient`,
+// which puts two error handlers between this file's opening comment and the
+// client it is about.
+function handleCentralError(error: unknown): void {
+  handleRateLimitError(error);
+  handleGuardianConsentError(error);
+}
 
 // Retry a network-level failure or a genuine server error; never a 4xx — a
 // `FORBIDDEN` or `TOO_MANY_REQUESTS` retried three times is three times the

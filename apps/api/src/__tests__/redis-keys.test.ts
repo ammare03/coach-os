@@ -34,6 +34,43 @@ describe('keys', () => {
     expect(keys.rateLimitAuth('203.0.113.5').ttlSeconds).toBe(15 * 60);
   });
 
+  // `guardian-consent/01` — 7 days, two orders of magnitude above `pwreset`:
+  // the person who opens this link is a parent reading their email that
+  // evening, the next day, or after the weekend.
+  it('guardianConsent', () => {
+    expectValidKey(keys.guardianConsent('abc123hash'), 'guardianconsent:abc123hash');
+    expect(keys.guardianConsent('abc123hash').ttlSeconds).toBe(7 * 24 * 60 * 60);
+  });
+
+  // `guardian-consent/04` — the reverse pointer that makes a mistyped
+  // address correctable: same 7-day TTL as the token it names.
+  it('guardianConsentOutstanding', () => {
+    expectValidKey(keys.guardianConsentOutstanding('user-1'), 'guardianconsent:user:user-1');
+    expect(keys.guardianConsentOutstanding('user-1').ttlSeconds).toBe(7 * 24 * 60 * 60);
+  });
+
+  // Deliberately not `rl:invites.resendGuardianConsent:{userId}` — that key
+  // already belongs to the structural 600/min default tier, and two limits
+  // sharing one counter would fight over its TTL.
+  it('rateLimitGuardianConsentResend', () => {
+    expectValidKey(
+      keys.rateLimitGuardianConsentResend('user-1'),
+      'rl:guardianConsentResend:user-1',
+    );
+    expect(keys.rateLimitGuardianConsentResend('user-1').ttlSeconds).toBe(15 * 60);
+  });
+
+  // The destination axis. The argument is a hash, and the assertion below
+  // is what stops it silently becoming an address.
+  it('rateLimitGuardianConsentEmail', () => {
+    expectValidKey(
+      keys.rateLimitGuardianConsentEmail('abc123hash'),
+      'rl:guardianConsentResend.email:abc123hash',
+    );
+    expect(keys.rateLimitGuardianConsentEmail('abc123hash').ttlSeconds).toBe(15 * 60);
+    expect(keys.rateLimitGuardianConsentEmail('abc123hash').key).not.toContain('@');
+  });
+
   it('presence', () => {
     expectValidKey(keys.presence('conversation-1'), 'presence:conversation-1');
     expect(keys.presence('conversation-1').ttlSeconds).toBe(60);
@@ -74,6 +111,10 @@ describe('keys', () => {
       keys.typing('a', 'b'),
       keys.dashboard('a'),
       keys.foodQuery('a'),
+      keys.guardianConsent('a'),
+      keys.guardianConsentOutstanding('a'),
+      keys.rateLimitGuardianConsentResend('a'),
+      keys.rateLimitGuardianConsentEmail('a'),
       keys.signedUrl('a', 'b'),
       keys.summaryLock('a', 'b'),
     ];

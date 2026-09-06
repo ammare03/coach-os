@@ -153,6 +153,8 @@ describe('auth.signOutAllDevices', () => {
           role: 'coach',
           timezone: 'UTC',
           locale: 'en',
+          isMinor: false,
+          guardianConsentAt: null,
           coachProfileId: null,
           clientProfileId: null,
           deletedAt: null,
