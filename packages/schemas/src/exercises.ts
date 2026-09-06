@@ -85,5 +85,15 @@ export type GetExerciseInput = z.infer<typeof getExerciseInput>;
  */
 export const searchExercisesInput = strictObject({
   query: z.string().trim().max(MAX_QUERY),
+  // The same three filters `list` takes, deliberately not redefined:
+  // `exercise-library/01` owns what a filter means, and `search` narrows
+  // by them rather than inventing its own vocabulary.
+  primaryMuscle: z.string().trim().min(1).max(MAX_FILTER_VALUE).optional(),
+  equipment: z.string().trim().min(1).max(MAX_FILTER_VALUE).optional(),
+  movementPattern: movementPatternValue.optional(),
+  // No cursor: search is a ranked head, not a paginated list. A coach who
+  // scrolls past 30 ranked results should refine the query, and the picker
+  // (`exercise-library/05`) is built on that assumption.
+  limit: z.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
 });
 export type SearchExercisesInput = z.infer<typeof searchExercisesInput>;

@@ -21,6 +21,15 @@ export function visibleToCoach(coachProfileId: string): SQL | undefined {
 }
 
 /**
+ * The tie-breaker every `exercises.*` ordering puts first: a coach's own
+ * custom exercise ranks above a global one at equal relevance. `false`
+ * sorts before `true` in Postgres, so ascending on "is this global" puts
+ * custom first. Lives here rather than in `search.ts` for the same reason
+ * the predicate does — it is the other expression that reads `coach_id`.
+ */
+export const customFirst = sql`(${schema.exercises.coachId} IS NULL)`;
+
+/**
  * The client-facing projection. Explicit columns, never `select()` and
  * never a spread (`routers/README.md`): a column added to the table later
  * must not reach the wire because nobody edited this list.

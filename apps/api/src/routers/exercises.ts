@@ -2,7 +2,6 @@ import { schema } from '@coachos/db';
 import { exercises as exercisesSchemas } from '@coachos/schemas';
 import { and, eq, isNull } from 'drizzle-orm';
 
-import { searchExercises } from '../features/exercises/search-exercises.ts';
 import { appError } from '../lib/app-error.ts';
 import {
   afterCursor,
@@ -10,9 +9,10 @@ import {
   encodeExerciseCursor,
   exerciseListOrder,
 } from '../services/exercises/cursor.ts';
+import { searchExercises } from '../services/exercises/search.ts';
 import { exerciseColumns, toExercise, visibleToCoach } from '../services/exercises/visibility.ts';
 import { router } from '../trpc/init.ts';
-import { coachProcedure } from '../trpc/procedures.ts';
+import { coachProcedure, RATE_LIMIT_TIERS, rateLimit } from '../trpc/procedures.ts';
 
 // `create`/`update`/`archive` are filled by `exercise-library/03`.
 //
@@ -78,10 +78,23 @@ export const exercisesRouter = router({
     return toExercise(row);
   }),
 
-  // `coachProcedure`: the result is the global library plus the caller's
-  // OWN custom exercises, and `search-exercises.ts` resolves that from
-  // `ctx.user.coachProfileId` rather than from anything the caller sends.
+  // The three-tier ladder (`services/exercises/search.ts`): exact, then
+  // full-text, then trigram as a top-up. `coachProcedure`, and the
+  // visibility predicate is resolved from `ctx.user.coachProfileId` inside
+  // each tier rather than from anything the caller sends.
+  //
+  // CLAUDE.md §6.5 / `api-conventions` §7: 120/min/user, chained after
+  // `.input()`. The 600/min default every procedure inherits from
+  // `publicProcedure` still applies underneath; this is the tighter bucket
+  // that actually governs a debounced keystroke path.
   search: coachProcedure
     .input(exercisesSchemas.searchExercisesInput)
-    .query(({ ctx, input }) => searchExercises(ctx.db, ctx.user.coachProfileId, input.query)),
+    .use(rateLimit(RATE_LIMIT_TIERS.exercisesSearch))
+    .query(({ ctx, input }) =>
+      searchExercises(ctx.db, ctx.user.coachProfileId, input.query, input.limit, {
+        primaryMuscle: input.primaryMuscle,
+        equipment: input.equipment,
+        movementPattern: input.movementPattern,
+      }),
+    ),
 });
