@@ -13,6 +13,18 @@ import { z } from 'zod';
 // so a router schema never reaches into an arbitrary set of sibling files.
 export { strictObject } from './strict.ts';
 
+// The shared caps, re-exported for the same reason and under the same rule.
+// `limits.ts` exists so a bound is edited in one line rather than in a dozen
+// inlined numbers, which only holds if a feature module can actually reach
+// it — and `layout.test.ts` says it may only reach `./primitives.ts`.
+export {
+  MAX_BODY_TEXT,
+  MAX_ID_ARRAY,
+  MAX_NOTE_TEXT,
+  MAX_SHORT_TEXT,
+  MAX_TAG_ARRAY,
+} from './limits.ts';
+
 // ---------------------------------------------------------------------------
 // Identity
 // ---------------------------------------------------------------------------

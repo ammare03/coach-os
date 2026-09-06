@@ -175,7 +175,9 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   ['(client)/live/[sessionId]', '/(client)/live/l2'],
   ['(client)/settings/index', '/(client)/settings'],
 
-  ['(coach-onboarding)/index', '/(coach-onboarding)'],
+  // `(coach-onboarding)/index` was here until `coach-onboarding/01`
+  // composed the real flow shell; it moved to SUBSTITUTED for the same
+  // reason `(auth)/welcome` did.
   ['(client-onboarding)/index', '/(client-onboarding)'],
 
   // `+not-found` was here until `navigation-primitives/02` made it a real
@@ -214,6 +216,9 @@ const SUBSTITUTED = new Set([
   '_dev/gallery',
   'medical-disclaimer',
   'your-data',
+  // Real screen as of `phase-06-onboarding/coach-onboarding/01`. What it
+  // renders is covered by `src/features/onboarding/__tests__/`.
+  '(coach-onboarding)/index',
 ]);
 
 /**
