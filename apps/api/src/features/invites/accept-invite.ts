@@ -12,7 +12,12 @@ import { eq } from 'drizzle-orm';
 import { unwrapDatabaseError } from '../../db/is-database-error.ts';
 import { appError } from '../../lib/app-error.ts';
 import { writeAuditLog } from '../../lib/audit-log.ts';
+import {
+  issueGuardianConsentToken,
+  storeGuardianConsentToken,
+} from '../../lib/auth/guardian-consent-token.ts';
 import { hashPassword } from '../../lib/auth/password.ts';
+import { logger } from '../../lib/logger.ts';
 import type { Context } from '../../trpc/context.ts';
 import { computeAgeYears, isMinorAge, MINIMUM_AGE_YEARS } from '../auth/age.ts';
 import { openSession, type OpenedSession } from '../auth/open-session.ts';
@@ -20,6 +25,8 @@ import type { SocialSignInDevice } from '../auth/social-sign-in.ts';
 
 import { createClientAccount } from './create-client-account.ts';
 import { assertSeatAvailable } from './seat-check.ts';
+import { sendClientIsMinorEmail } from './send-client-is-minor-email.ts';
+import { sendGuardianConsentEmail } from './send-guardian-consent-email.ts';
 
 const CLIENT_ONE_ACTIVE_COACH_CONSTRAINT = 'client_profiles_one_active_coach';
 
@@ -72,6 +79,50 @@ export async function loadAndValidateInvite(db: DbClient, code: string) {
     );
   }
   return invite;
+}
+
+interface GuardianConsentRequest {
+  userId: string;
+  guardianEmail: string;
+  clientName: string;
+  coachName: string;
+}
+
+/**
+ * Mint, store, audit, send — in that order, and the order is the point
+ * (`guardian-consent/01`'s Risks). An emailed link whose token was never
+ * persisted is worse than no email: the guardian clicks, is told it is
+ * invalid, and has no idea what to do next. `storeGuardianConsentToken`
+ * therefore has no `safeRedis` fallback, and a Redis failure rejects here,
+ * before anything is sent, for the caller's `.catch()` to absorb.
+ *
+ * The audit row opens its own small transaction — the same off-response-path
+ * shape `../auth/password-reset.ts`'s `sendResetEmail` uses, and for the
+ * same reason: the acceptance it follows has already committed.
+ */
+async function requestGuardianConsent(
+  db: DbClient,
+  ctx: Pick<Context, 'user' | 'request'>,
+  request: GuardianConsentRequest,
+): Promise<void> {
+  const { token, tokenHash } = issueGuardianConsentToken();
+  await storeGuardianConsentToken(tokenHash, request.userId);
+
+  await db.transaction((tx) =>
+    writeAuditLog(tx, ctx, {
+      action: 'guardian_consent.requested',
+      targetType: 'user',
+      targetId: request.userId,
+      actorUserId: request.userId,
+    }),
+  );
+
+  await sendGuardianConsentEmail({
+    guardianEmail: request.guardianEmail,
+    clientName: request.clientName,
+    coachName: request.coachName,
+    token,
+  });
 }
 
 export async function acceptInvite(
@@ -153,14 +204,50 @@ export async function acceptInvite(
     throw error;
   }
 
-  // The guardian-consent *notification* — sending the confirmation email
-  // and building the link it points to — is a real, tracked gap
-  // (`docs/UNFORGET.md`), not something this task silently skips. The
-  // product-safety property this task itself owns is already satisfied
-  // without it: `createClientAccount` above left the row `status:
-  // 'invited'`, `activatedAt: null` for a minor, so nothing here has let
-  // coaching begin unconsented — only the "tell the guardian" half is
-  // outstanding.
+  const guardianEmail = created.user.guardianEmail;
+  if (created.isMinor && guardianEmail) {
+    // The same two-step lookup `./create-invite.ts` makes, including its
+    // `'Your coach'` fallback — resolved outside the transaction, before
+    // either send.
+    const [coach] = await db
+      .select({ userId: schema.coachProfiles.userId })
+      .from(schema.coachProfiles)
+      .where(eq(schema.coachProfiles.id, invite.coachId))
+      .limit(1);
+    const [coachUser] = coach
+      ? await db
+          .select({ name: schema.users.name, email: schema.users.email })
+          .from(schema.users)
+          .where(eq(schema.users.id, coach.userId))
+          .limit(1)
+      : [];
+
+    // Both fired after the transaction commits, never inside it, and never
+    // awaited on the response path (`./create-invite.ts`'s pattern): a
+    // Resend or Redis failure must not fail or roll back an acceptance that
+    // already happened. `sendEmail` never throws
+    // (`../../lib/email/client.ts`), so these `.catch()`es exist for the
+    // Redis write above and to silence an unhandled rejection.
+    void requestGuardianConsent(db, ctx, {
+      userId: created.user.id,
+      guardianEmail,
+      clientName: created.user.name,
+      coachName: coachUser?.name ?? 'Your coach',
+    }).catch(() => {
+      // The one failure in here that logs nothing of its own is the token
+      // store, and it leaves a minor held pending with no other signal —
+      // what reaches support is "the link doesn't work", indistinguishable
+      // from a typo. The id only, never the address.
+      logger.error('guardian_consent.request_failed', { userId: created.user.id });
+    });
+
+    if (coachUser?.email) {
+      void sendClientIsMinorEmail({
+        coachEmail: coachUser.email,
+        clientName: created.user.name,
+      }).catch(() => {});
+    }
+  }
 
   return openSession(db, ctx, {
     userId: created.user.id,

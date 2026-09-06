@@ -86,6 +86,15 @@ export const keys = {
     return { key: prefixed(`socialsignup:${tokenHash}`), ttlSeconds: 10 * MINUTE };
   },
 
+  // `guardian-consent/01` — guardian-consent token → the minor's user id.
+  // Consumption is a `GETDEL`, same as `pwreset` above. 7 days, not
+  // `pwreset`'s hour: the person who opens this link is a parent reading
+  // their email that evening, the next day, or after the weekend — not
+  // someone sitting at the screen they requested it from.
+  guardianConsent(tokenHash: string): RedisKey {
+    return { key: prefixed(`guardianconsent:${tokenHash}`), ttlSeconds: 7 * 24 * HOUR };
+  },
+
   presence(conversationId: string): RedisKey {
     return { key: prefixed(`presence:${conversationId}`), ttlSeconds: 60 * SECOND };
   },

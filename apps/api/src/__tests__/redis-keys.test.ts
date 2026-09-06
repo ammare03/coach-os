@@ -34,6 +34,14 @@ describe('keys', () => {
     expect(keys.rateLimitAuth('203.0.113.5').ttlSeconds).toBe(15 * 60);
   });
 
+  // `guardian-consent/01` — 7 days, two orders of magnitude above `pwreset`:
+  // the person who opens this link is a parent reading their email that
+  // evening, the next day, or after the weekend.
+  it('guardianConsent', () => {
+    expectValidKey(keys.guardianConsent('abc123hash'), 'guardianconsent:abc123hash');
+    expect(keys.guardianConsent('abc123hash').ttlSeconds).toBe(7 * 24 * 60 * 60);
+  });
+
   it('presence', () => {
     expectValidKey(keys.presence('conversation-1'), 'presence:conversation-1');
     expect(keys.presence('conversation-1').ttlSeconds).toBe(60);
@@ -74,6 +82,7 @@ describe('keys', () => {
       keys.typing('a', 'b'),
       keys.dashboard('a'),
       keys.foodQuery('a'),
+      keys.guardianConsent('a'),
       keys.signedUrl('a', 'b'),
       keys.summaryLock('a', 'b'),
     ];
