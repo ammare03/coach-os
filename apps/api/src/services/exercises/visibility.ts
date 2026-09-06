@@ -21,6 +21,22 @@ export function visibleToCoach(coachProfileId: string): SQL | undefined {
 }
 
 /**
+ * "Exercises this coach *owns*" — their custom rows only, excluding the
+ * global library. Narrower than {@link visibleToCoach}, and needed by
+ * exactly one caller: `reconcile.ts`'s pass 4, which looks for duplicates
+ * "within one coach's custom library" (`exercise-library/06`) and would
+ * otherwise have to write `eq(exercises.coachId, …)` itself.
+ *
+ * It lives here rather than there for the reason at the top of this file:
+ * this module is the only place in the API that reads
+ * `training.exercises.coach_id`, and that stops being a mechanism the
+ * moment a second file writes the predicate.
+ */
+export function ownedByCoach(coachProfileId: string): SQL {
+  return eq(schema.exercises.coachId, coachProfileId);
+}
+
+/**
  * The tie-breaker every `exercises.*` ordering puts first: a coach's own
  * custom exercise ranks above a global one at equal relevance. `false`
  * sorts before `true` in Postgres, so ascending on "is this global" puts
