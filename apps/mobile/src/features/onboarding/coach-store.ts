@@ -34,6 +34,14 @@ export type CoachOnboardingFields = {
   /** The program created or imported at step 3, once it exists server-side. */
   programId: string | null;
   inviteEmail: string;
+  /**
+   * Epoch milliseconds, stamped on the first step transition and read once
+   * at completion for `onboarding_completed.duration_s` (§20). A number,
+   * not a `Date` — this store round-trips through JSON, and the value is a
+   * stopwatch reading rather than a calendar day (`code-conventions` §6
+   * governs the latter, not this).
+   */
+  startedAt: number | null;
 };
 
 /**
@@ -53,6 +61,7 @@ const initialCoachFields: CoachOnboardingFields = {
   ],
   programId: null,
   inviteEmail: '',
+  startedAt: null,
 };
 
 export const useCoachOnboardingStore = createOnboardingDraftStore<CoachOnboardingFields>(

@@ -1,14 +1,15 @@
-import { coach as coachSchemas } from '@coachos/schemas';
-import { Text } from '@coachos/ui';
+import { coach as coachSchemas, invites as invitesSchemas } from '@coachos/schemas';
 import { useState } from 'react';
 
 import { COACH_ONBOARDING_STEP_COUNT, stepAt, stepNumber } from '../coach-steps.ts';
 import { useCoachOnboardingStore } from '../coach-store.ts';
 import { CoachOnboardingShell } from '../components/CoachOnboardingShell.tsx';
 import { useCreateProgram } from '../hooks/useCreateProgram.ts';
+import { useFinishCoachOnboarding } from '../hooks/useFinishCoachOnboarding.ts';
 import { useUpdateCoachProfile } from '../hooks/useUpdateCoachProfile.ts';
 import { CoachProfileStep } from '../steps/CoachProfileStep.tsx';
 import { DisclaimerStep } from '../steps/DisclaimerStep.tsx';
+import { InviteFirstClientStep } from '../steps/InviteFirstClientStep.tsx';
 import { ProgramStep } from '../steps/ProgramStep.tsx';
 
 // `phase-06-onboarding/coach-onboarding/01` — the whole flow is ONE route
@@ -70,16 +71,24 @@ export function CoachOnboardingFlow() {
   const specialties = useCoachOnboardingStore((state) => state.fields.specialties);
   const programName = useCoachOnboardingStore((state) => state.fields.programName);
   const programDays = useCoachOnboardingStore((state) => state.fields.programDays);
+  const inviteEmail = useCoachOnboardingStore((state) => state.fields.inviteEmail);
+  const startedAt = useCoachOnboardingStore((state) => state.fields.startedAt);
 
   const [stepError, setStepError] = useState<string | null>(null);
   const updateProfile = useUpdateCoachProfile();
   const createProgram = useCreateProgram();
+  const finish = useFinishCoachOnboarding();
 
   const step = stepAt(currentStep);
   const content = STEP_CONTENT[step];
 
   const goNext = () => {
     setStepError(null);
+    // The stopwatch for `onboarding_completed.duration_s` (§20). Stamped on
+    // the first transition rather than on mount: an effect writing to the
+    // store on every render of this screen would restart the clock every
+    // time the flow was reopened.
+    if (startedAt === null) updateField('startedAt', Date.now());
     setStep(currentStep + 1);
   };
   const goBack =
@@ -151,6 +160,7 @@ export function CoachOnboardingFlow() {
       subtitle={content.subtitle}
       onBack={goBack}
       primaryAction={primaryActionFor(step)}
+      secondaryAction={secondaryActionFor(step)}
     >
       {renderStep(step)}
     </CoachOnboardingShell>
@@ -174,13 +184,36 @@ export function CoachOnboardingFlow() {
         disabled: programName.trim().length === 0,
       };
     }
-    return { label: 'Continue', onPress: goNext, disabled: true };
+    // The last step is the one place in this flow that genuinely waits on
+    // the server: `me.completeOnboarding` is what moves the coach into the
+    // main shell, and advancing optimistically would mean claiming they
+    // are onboarded before the row says so (`useCompleteOnboarding`).
+    return {
+      label: 'Send invite',
+      onPress: () => void finish.finishWithInvite(inviteEmail.trim()),
+      disabled: !isSendableEmail(inviteEmail),
+      loading: finish.isFinishing,
+    };
+  }
+
+  function secondaryActionFor(current: Step) {
+    if (current !== 'invite') return undefined;
+    return {
+      label: 'I’ll invite someone later',
+      onPress: () => void finish.finishWithoutInvite(),
+      disabled: finish.isFinishing,
+    };
   }
 
   function renderStep(current: Step) {
     if (current === 'disclaimer') return <DisclaimerStep onAcknowledged={goNext} />;
     if (current === 'profile') return <CoachProfileStep error={stepError ?? undefined} />;
     if (current === 'program') return <ProgramStep error={stepError ?? undefined} />;
-    return <Text tone="muted">This step is built in coach-onboarding/04.</Text>;
+    return <InviteFirstClientStep error={finish.error ?? undefined} />;
   }
+}
+
+/** The same rule `invites.create` will apply, checked before the request rather than after it. */
+function isSendableEmail(value: string): boolean {
+  return invitesSchemas.createInviteInput.safeParse({ email: value.trim() }).success;
 }

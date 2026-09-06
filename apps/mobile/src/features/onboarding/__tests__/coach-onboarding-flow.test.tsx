@@ -27,6 +27,17 @@ jest.mock('../hooks/useCreateProgram.ts', () => ({
   useCreateProgram: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 
+// The flow builds this on every render regardless of the step on screen;
+// step 4 is `invite-and-complete.test.tsx`'s subject, not this file's.
+jest.mock('../hooks/useFinishCoachOnboarding.ts', () => ({
+  useFinishCoachOnboarding: () => ({
+    finishWithInvite: jest.fn(),
+    finishWithoutInvite: jest.fn(),
+    isFinishing: false,
+    error: null,
+  }),
+}));
+
 jest.mock('../../settings/hooks/useMedicalDisclaimer.ts', () => ({
   useMedicalDisclaimer: () => ({
     status: { data: undefined },
