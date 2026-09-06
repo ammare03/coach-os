@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start -p 3001",
     "lint": "eslint .",
+    "test": "jest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
