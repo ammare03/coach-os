@@ -46,7 +46,7 @@ jest.mock('../../settings/hooks/useMedicalDisclaimer.ts', () => ({
   }),
 }));
 
-// `CoachOnboardingShell` reads `useSafeAreaInsets`, which throws without a
+// `OnboardingShell` reads `useSafeAreaInsets`, which throws without a
 // provider ancestor, and `initialWindowMetrics` resolves to `null` under
 // Jest — the same reasoning `WelcomeScreen.test.tsx` records.
 const TEST_METRICS = {

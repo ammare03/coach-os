@@ -14,24 +14,31 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StepProgress } from './StepProgress.tsx';
 
 // `phase-06-onboarding/coach-onboarding/01` — the container every step in
-// the flow renders inside.
+// either onboarding flow renders inside.
 //
-// **Density is `client`, not `coach`, and that is deliberate.** This is a
-// coach surface, so `DESIGN.md` §1.3 would ordinarily give it the 16px
-// gutter and the 46px button. But the flow's first step is
-// `MedicalDisclaimer`, which shipped in `onboarding-infrastructure/03` at
-// client density (52px acknowledgment row, 20px gutter, 16pt body), and a
-// four-step flow whose chrome resizes between step 1 and step 2 reads as a
-// bug. Density in §1.3 is a working-surface decision — dense where a coach
-// scans thirty rows — and this is a flow walked once, so the looser setting
-// is also the right one on its own merits.
+// It was `CoachOnboardingShell` until `client-onboarding/02`, which is the
+// second consumer and so the moment it is promoted rather than copied
+// (`code-conventions` §1 — the same rule `StepProgress` was already built
+// against). Nothing about it was coach-specific: it takes a step number, a
+// title, a subtitle, and up to two actions.
+//
+// **Density is `client`, not `coach`, and that is deliberate.** For the
+// client flow that is simply correct. For the coach flow it was a decision:
+// `DESIGN.md` §1.3 would ordinarily give a coach surface the 16px gutter
+// and the 46px button, but the flow's first step is `MedicalDisclaimer`,
+// which shipped in `onboarding-infrastructure/03` at client density (52px
+// acknowledgment row, 20px gutter, 16pt body), and a flow whose chrome
+// resizes between step 1 and step 2 reads as a bug. Density in §1.3 is a
+// working-surface decision — dense where a coach scans thirty rows — and
+// this is a flow walked once, so the looser setting is also the right one
+// on its own merits.
 //
 // No ambient layer (`DESIGN.md` §3). Nothing in the app renders one yet —
 // `MedicalDisclaimerScreen`, which this flow must sit flush against, is a
 // plain canvas — and inventing one here would make this flow the only
 // screen in the product with a backdrop.
 
-export interface CoachOnboardingShellAction {
+export interface OnboardingShellAction {
   label: string;
   onPress: () => void;
   /** Inert until the step's required fields are valid. Never hidden — see the header comment. */
@@ -39,7 +46,7 @@ export interface CoachOnboardingShellAction {
   loading?: boolean;
 }
 
-export interface CoachOnboardingShellProps {
+export interface OnboardingShellProps {
   /** 1-based, including the disclaimer gate at step 1. */
   step: number;
   totalSteps: number;
@@ -52,15 +59,15 @@ export interface CoachOnboardingShellProps {
    * disclaimer, whose Continue is inside `MedicalDisclaimer` because the
    * acknowledgment state that enables it is (`packages/ui`'s own contract).
    */
-  primaryAction?: CoachOnboardingShellAction | undefined;
-  secondaryAction?: CoachOnboardingShellAction | undefined;
+  primaryAction?: OnboardingShellAction | undefined;
+  secondaryAction?: OnboardingShellAction | undefined;
   children: ReactNode;
 }
 
 const GUTTER = density.client.gutter;
 const BACK_TARGET = 48;
 
-export function CoachOnboardingShell({
+export function OnboardingShell({
   step,
   totalSteps,
   title,
@@ -69,7 +76,7 @@ export function CoachOnboardingShell({
   primaryAction,
   secondaryAction,
   children,
-}: CoachOnboardingShellProps) {
+}: OnboardingShellProps) {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const themed = useThemedStyles();
