@@ -5,9 +5,11 @@ import { useState } from 'react';
 import { COACH_ONBOARDING_STEP_COUNT, stepAt, stepNumber } from '../coach-steps.ts';
 import { useCoachOnboardingStore } from '../coach-store.ts';
 import { CoachOnboardingShell } from '../components/CoachOnboardingShell.tsx';
+import { useCreateProgram } from '../hooks/useCreateProgram.ts';
 import { useUpdateCoachProfile } from '../hooks/useUpdateCoachProfile.ts';
 import { CoachProfileStep } from '../steps/CoachProfileStep.tsx';
 import { DisclaimerStep } from '../steps/DisclaimerStep.tsx';
+import { ProgramStep } from '../steps/ProgramStep.tsx';
 
 // `phase-06-onboarding/coach-onboarding/01` — the whole flow is ONE route
 // (`(coach-onboarding)/index`), not four.
@@ -63,11 +65,15 @@ function knownSpecialties(values: readonly string[]): coachSchemas.CoachSpecialt
 export function CoachOnboardingFlow() {
   const currentStep = useCoachOnboardingStore((state) => state.currentStep);
   const setStep = useCoachOnboardingStore((state) => state.setStep);
+  const updateField = useCoachOnboardingStore((state) => state.updateField);
   const businessName = useCoachOnboardingStore((state) => state.fields.businessName);
   const specialties = useCoachOnboardingStore((state) => state.fields.specialties);
+  const programName = useCoachOnboardingStore((state) => state.fields.programName);
+  const programDays = useCoachOnboardingStore((state) => state.fields.programDays);
 
   const [stepError, setStepError] = useState<string | null>(null);
   const updateProfile = useUpdateCoachProfile();
+  const createProgram = useCreateProgram();
 
   const step = stepAt(currentStep);
   const content = STEP_CONTENT[step];
@@ -104,6 +110,39 @@ export function CoachOnboardingFlow() {
     );
   }
 
+  /**
+   * Step 3's write. Same optimistic shape as step 2's, with one addition:
+   * the created program's id lands in the draft store, so a coach who
+   * comes back to this step does not create a second program by pressing
+   * Continue again — `programId` is what a later edit path would update
+   * rather than re-insert.
+   */
+  function submitProgram() {
+    const from = currentStep;
+    goNext();
+    createProgram.mutate(
+      {
+        name: programName.trim(),
+        days: programDays.map((day, index) => ({
+          name: day.name.trim().length > 0 ? day.name.trim() : `Day ${index + 1}`,
+          exercises: day.exercises.map((exercise) => ({
+            exerciseId: exercise.exerciseId,
+            targetSets: exercise.targetSets,
+            targetRepsMin: exercise.targetRepsMin,
+            targetRepsMax: exercise.targetRepsMax,
+          })),
+        })),
+      },
+      {
+        onSuccess: (program) => updateField('programId', program.id),
+        onError: () => {
+          setStep(from);
+          setStepError(WRITE_FAILED);
+        },
+      },
+    );
+  }
+
   return (
     <CoachOnboardingShell
       step={stepNumber(currentStep)}
@@ -128,19 +167,20 @@ export function CoachOnboardingFlow() {
         disabled: businessName.trim().length === 0,
       };
     }
+    if (current === 'program') {
+      return {
+        label: 'Continue',
+        onPress: submitProgram,
+        disabled: programName.trim().length === 0,
+      };
+    }
     return { label: 'Continue', onPress: goNext, disabled: true };
   }
 
   function renderStep(current: Step) {
     if (current === 'disclaimer') return <DisclaimerStep onAcknowledged={goNext} />;
     if (current === 'profile') return <CoachProfileStep error={stepError ?? undefined} />;
-    return (
-      <Text tone="muted">This step is built in coach-onboarding/{stepTaskNumber(current)}.</Text>
-    );
+    if (current === 'program') return <ProgramStep error={stepError ?? undefined} />;
+    return <Text tone="muted">This step is built in coach-onboarding/04.</Text>;
   }
-}
-
-/** Which task fills each placeholder — visible on screen while it is still one. */
-function stepTaskNumber(step: Step): string {
-  return step === 'program' ? '03' : '04';
 }

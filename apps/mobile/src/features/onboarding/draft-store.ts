@@ -12,12 +12,26 @@ import { draftStateStorage } from './draft-storage.ts';
 // exists to prevent.
 
 /**
- * What a draft field may hold. Deliberately narrow: every member JSON
- * round-trips by construction, which is the `persist` middleware's only
- * real requirement and cheaper to enforce here than to remember at each
- * call site.
+ * What a draft field may hold: any JSON value. The rule is unchanged from
+ * the version this started as — every member JSON round-trips by
+ * construction, which is the `persist` middleware's only real requirement
+ * and cheaper to enforce here than to remember at each call site.
+ *
+ * It was `string | number | boolean | null | readonly string[]` until
+ * `coach-onboarding/03`, whose step drafts a program: a list of days, each
+ * with a list of exercises. Widening to the JSON type keeps the round-trip
+ * guarantee (a `Date`, a `Map`, a function are all still rejected) while
+ * letting a step persist the shape it actually has, rather than a
+ * JSON-encoded string that would have to be parsed back at every read and
+ * carries no type at all.
  */
-export type OnboardingDraftValue = string | number | boolean | null | readonly string[];
+export type OnboardingDraftValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly OnboardingDraftValue[]
+  | { readonly [key: string]: OnboardingDraftValue };
 
 export type OnboardingDraftFields = Record<string, OnboardingDraftValue>;
 

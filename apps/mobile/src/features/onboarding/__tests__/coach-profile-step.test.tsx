@@ -18,6 +18,10 @@ jest.mock('../hooks/useUpdateCoachProfile.ts', () => ({
   useUpdateCoachProfile: () => ({ mutate: mockMutate, isPending: false }),
 }));
 
+jest.mock('../hooks/useCreateProgram.ts', () => ({
+  useCreateProgram: () => ({ mutate: jest.fn(), isPending: false }),
+}));
+
 jest.mock('../../settings/hooks/useMedicalDisclaimer.ts', () => ({
   useMedicalDisclaimer: () => ({
     status: { data: undefined },
