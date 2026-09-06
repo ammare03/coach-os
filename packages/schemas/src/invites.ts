@@ -76,3 +76,20 @@ export const revokeInviteInput = strictObject({
   inviteId: id,
 });
 export type RevokeInviteInput = z.infer<typeof revokeInviteInput>;
+
+/**
+ * `invites.preview` (`client-onboarding/01`) — what a signed-in, coachless
+ * client is shown before they decide what to share with the coach who
+ * invited them. Read-only, and deliberately narrow: the code the caller
+ * already holds goes in, the inviting coach's display name comes back and
+ * nothing else.
+ *
+ * It is a `clientProcedure` and it repeats
+ * `accept-invite-as-existing-client.ts`'s email check, both for the same
+ * reason: a preview that answered for any code would hand any signed-in
+ * user an oracle for whose invite a code is (`security-and-privacy` §1).
+ */
+export const previewInviteInput = strictObject({
+  code: inviteCode,
+});
+export type PreviewInviteInput = z.infer<typeof previewInviteInput>;

@@ -3,7 +3,7 @@ import { useState } from 'react';
 
 import { COACH_ONBOARDING_STEP_COUNT, stepAt, stepNumber } from '../coach-steps.ts';
 import { useCoachOnboardingStore } from '../coach-store.ts';
-import { CoachOnboardingShell } from '../components/CoachOnboardingShell.tsx';
+import { OnboardingShell } from '../components/OnboardingShell.tsx';
 import { useCreateProgram } from '../hooks/useCreateProgram.ts';
 import { useFinishCoachOnboarding } from '../hooks/useFinishCoachOnboarding.ts';
 import { useUpdateCoachProfile } from '../hooks/useUpdateCoachProfile.ts';
@@ -22,7 +22,7 @@ import { ProgramStep } from '../steps/ProgramStep.tsx';
 // `currentStep` is the position, and this screen renders it.
 //
 // The step's chrome — progress, back, title, primary action — is
-// `CoachOnboardingShell`'s; the step supplies its fields. Advancing, and
+// `OnboardingShell`'s; the step supplies its fields. Advancing, and
 // rolling back a failed advance, is this screen's: which step is on screen
 // is flow state, and a step that could move itself would be a second place
 // the flow's position lives (`code-conventions` §5).
@@ -153,7 +153,7 @@ export function CoachOnboardingFlow() {
   }
 
   return (
-    <CoachOnboardingShell
+    <OnboardingShell
       step={stepNumber(currentStep)}
       totalSteps={COACH_ONBOARDING_STEP_COUNT}
       title={content.title}
@@ -163,7 +163,7 @@ export function CoachOnboardingFlow() {
       secondaryAction={secondaryActionFor(step)}
     >
       {renderStep(step)}
-    </CoachOnboardingShell>
+    </OnboardingShell>
   );
 
   function primaryActionFor(current: Step) {

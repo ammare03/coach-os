@@ -69,8 +69,8 @@ const EXPECTED_ROUTE_FILES = [
   // the group as a deliberate, documented extension, and
   // `onboarding-infrastructure/02` builds it because the auth gate needs
   // somewhere real to send a coach or client who has not finished setup.
-  // The screens themselves are placeholders until `coach-onboarding/01`
-  // and `client-onboarding/01` compose them.
+  // Both screens are real as of `coach-onboarding/01` and
+  // `client-onboarding/02`.
   '(client-onboarding)/_layout.tsx',
   '(client-onboarding)/index.tsx',
   '(client)/(tabs)/_layout.tsx',
@@ -175,10 +175,10 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   ['(client)/live/[sessionId]', '/(client)/live/l2'],
   ['(client)/settings/index', '/(client)/settings'],
 
-  // `(coach-onboarding)/index` was here until `coach-onboarding/01`
-  // composed the real flow shell; it moved to SUBSTITUTED for the same
-  // reason `(auth)/welcome` did.
-  ['(client-onboarding)/index', '/(client-onboarding)'],
+  // `(coach-onboarding)/index` and `(client-onboarding)/index` were both
+  // here until `coach-onboarding/01` and `client-onboarding/02` composed
+  // their real flow shells; both moved to SUBSTITUTED for the same reason
+  // `(auth)/welcome` did.
 
   // `+not-found` was here until `navigation-primitives/02` made it a real
   // screen. It no longer renders its own route key, so it gets its own
@@ -216,9 +216,11 @@ const SUBSTITUTED = new Set([
   '_dev/gallery',
   'medical-disclaimer',
   'your-data',
-  // Real screen as of `phase-06-onboarding/coach-onboarding/01`. What it
-  // renders is covered by `src/features/onboarding/__tests__/`.
+  // Real screens as of `phase-06-onboarding/coach-onboarding/01` and
+  // `client-onboarding/02`. What each renders is covered by
+  // `src/features/onboarding/__tests__/`.
   '(coach-onboarding)/index',
+  '(client-onboarding)/index',
 ]);
 
 /**

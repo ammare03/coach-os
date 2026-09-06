@@ -1,6 +1,13 @@
-import { Stack } from 'expo-router';
+import { Stack, useSegments } from 'expo-router';
 
 import { AuthGate } from '../../features/auth/AuthGate.tsx';
+
+// `client-onboarding/01` — the one route in this group an authenticated
+// session may stay on. Matched on the segment, not on a prefix and not on
+// "any `(auth)` route with a param": `reset-password/[token]` has exactly
+// that shape and must keep redirecting.
+const AUTH_SEGMENT = '(auth)';
+const INVITE_SEGMENT = 'invite';
 
 // The `(auth)` group: a Stack, never tabs — nothing in here is a peer
 // destination you switch between, it is one linear flow plus two deep-link
@@ -17,8 +24,21 @@ import { AuthGate } from '../../features/auth/AuthGate.tsx';
 // own `Stack`; see `(coach)/_layout.tsx` for why it is here rather than once
 // at the root.
 export default function AuthLayout() {
+  // The gate is a pure function of its arguments (`AuthGate.tsx`), so the
+  // route read happens here, where a hook is legal, rather than inside it.
+  //
+  // Widened to `readonly string[]` on purpose. With `typedRoutes` on,
+  // `useSegments()` returns a UNION OF TUPLES generated from the route tree
+  // (`.expo/types/router.d.ts`), so indexing position 1 is a compile error
+  // on every member that happens to be one segment long — `['(auth)']`
+  // among them. The widening is a safe upcast, not a cast away from a real
+  // type: reading a segment by position is exactly what this needs, and
+  // `noUncheckedIndexedAccess` still makes each element `string | undefined`.
+  const segments: readonly string[] = useSegments();
+  const onInviteRoute = segments[0] === AUTH_SEGMENT && segments[1] === INVITE_SEGMENT;
+
   return (
-    <AuthGate group="(auth)">
+    <AuthGate group="(auth)" exempt={onInviteRoute}>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="welcome" />
         <Stack.Screen name="sign-in" />

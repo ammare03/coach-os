@@ -115,6 +115,7 @@ function groupForSession(role: AccessTokenRole | null, isOnboarded: boolean): Ro
 export function resolveAuthGate(
   session: AuthGateSession,
   group: RouteGroup | undefined,
+  exempt: boolean = false,
 ): AuthGateDecision {
   if (session.status === 'loading') {
     return { action: 'wait' };
@@ -124,6 +125,21 @@ export function resolveAuthGate(
     session.status === 'authenticated'
       ? groupForSession(session.role, session.isOnboarded)
       : AUTH_GROUP;
+
+  // `client-onboarding/01` — the one exemption, and the only one. An
+  // authenticated caller on `(auth)/invite/[code]` renders it instead of
+  // being bounced to their own group root, because that redirect is what
+  // made an invite link silently do nothing for anyone already signed in.
+  //
+  // It is an ARGUMENT, not a route read inside this function: the caller
+  // knows which route is active, this function stays pure, and every
+  // existing assertion keeps holding unchanged. It also only ever widens
+  // `(auth)` — a caller passing `exempt` alongside `(coach)` cannot open a
+  // hole in the group gate, because the exemption is scoped to the group
+  // the exempt route lives in.
+  if (exempt && group === AUTH_GROUP) {
+    return { action: 'render' };
+  }
 
   if (group === undefined || group !== permitted) {
     return { action: 'redirect', group: permitted };
@@ -150,8 +166,21 @@ export function resolveAuthGate(
  * not assumed. Guarding each group instead leaves the root `<Stack>` mounted
  * throughout, and only the group's own inner stack comes and goes.
  */
-export function AuthGate({ group, children }: { group: RouteGroup; children: ReactNode }) {
-  const decision = resolveAuthGate(useGateSession(), group);
+export function AuthGate({
+  group,
+  exempt = false,
+  children,
+}: {
+  group: RouteGroup;
+  /**
+   * The active route is one this group's gate does not apply to
+   * (`client-onboarding/01`). Supplied by the layout, which can read the
+   * route; never derived in here — see `resolveAuthGate`.
+   */
+  exempt?: boolean;
+  children: ReactNode;
+}) {
+  const decision = resolveAuthGate(useGateSession(), group, exempt);
 
   if (decision.action === 'wait') return null;
   if (decision.action === 'redirect') return <Redirect href={GROUP_ROOT[decision.group]} />;

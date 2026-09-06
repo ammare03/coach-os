@@ -4,6 +4,7 @@ import { acceptInviteAsExistingClient } from '../features/invites/accept-invite-
 import { acceptInvite } from '../features/invites/accept-invite.ts';
 import { createInvite } from '../features/invites/create-invite.ts';
 import { listPendingInvites } from '../features/invites/list-pending-invites.ts';
+import { previewInvite } from '../features/invites/preview-invite.ts';
 import { revokeInvite } from '../features/invites/revoke-invite.ts';
 import { router } from '../trpc/init.ts';
 import {
@@ -51,6 +52,15 @@ export const invitesRouter = router({
   acceptAsExistingClient: clientProcedure
     .input(invitesSchemas.acceptInviteAsExistingClientInput)
     .mutation(({ ctx, input }) => acceptInviteAsExistingClient(ctx.db, ctx, input)),
+
+  // `client-onboarding/01` — the read the returning-client acceptance
+  // screen needs before it can ask anything. A `clientProcedure` and an
+  // email check, for the reason `preview-invite.ts` states; no
+  // `ownsResource`, because the only ids involved are the caller's own and
+  // the invite's, and the invite is addressed by the code the caller holds.
+  preview: clientProcedure
+    .input(invitesSchemas.previewInviteInput)
+    .query(({ ctx, input }) => previewInvite(ctx.db, ctx, input.code)),
 
   // `05` — `ownsResource` guards the id (`security-and-privacy` skill §1:
   // every procedure taking an id resolving to a coach's own resource passes

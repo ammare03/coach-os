@@ -19,6 +19,13 @@ export type ClientOnboardingFields = {
   dietaryRestrictions: readonly string[];
   /** Whether the rationale screen has already asked, so a resumed flow doesn't ask twice. */
   notificationPermissionAsked: boolean;
+  /**
+   * `Date.now()` at the flow's first step transition — the stopwatch for
+   * `onboarding_completed.duration_s` (§20). Null until then, so a draft
+   * written before this field existed reports 0 rather than a duration
+   * derived from `Date.now() - 0` (`coach-store.ts` carries the twin).
+   */
+  startedAt: number | null;
 };
 
 const initialClientFields: ClientOnboardingFields = {
@@ -31,6 +38,7 @@ const initialClientFields: ClientOnboardingFields = {
   equipmentAccess: [],
   dietaryRestrictions: [],
   notificationPermissionAsked: false,
+  startedAt: null,
 };
 
 export const useClientOnboardingStore = createOnboardingDraftStore<ClientOnboardingFields>(

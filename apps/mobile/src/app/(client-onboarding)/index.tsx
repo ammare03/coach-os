@@ -1,11 +1,7 @@
-import { Text, View } from 'react-native';
+import { ClientOnboardingFlow } from '../../features/onboarding/screens/ClientOnboardingFlow.tsx';
 
-// Placeholder route — see `(coach-onboarding)/index.tsx` for why it exists
-// and what replaces it (`phase-06-onboarding/client-onboarding/`).
+// Composition, and nothing else (`CLAUDE.md` §9.2). The whole five-step
+// flow is this one route — `ClientOnboardingFlow`'s own header says why.
 export default function ClientOnboardingScreen() {
-  return (
-    <View>
-      <Text>(client-onboarding)/index</Text>
-    </View>
-  );
+  return <ClientOnboardingFlow />;
 }
