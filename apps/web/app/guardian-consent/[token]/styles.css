@@ -8,11 +8,15 @@
  * owns the real web design system; standing one up for a single public
  * page is the scope creep `05`'s Risks name.
  *
- * Two departures from DESIGN.md, both forced by "this URL carries a live
+ * The palette, the text ramp and the two font families now live in
+ * `app/design.css`, shared with `/privacy`; the `--gc-*` names below alias
+ * them so every rule in this file is unchanged.
+ *
+ * One departure from DESIGN.md remains, forced by "this URL carries a live
  * credential, so it loads no third-party resource" (`05` Approach step 5):
- *   1. No webfont. Space Grotesk and Instrument Sans are named first and
- *      fall back to the device's system font.
- *   2. No §3.3 film grain — it needs an inline feTurbulence filter.
+ * no §3.3 film grain — it needs an inline feTurbulence filter. The webfont
+ * departure is gone: `next/font` self-hosts both families at build time, so
+ * §1.2's two roles are real here and nothing is fetched at runtime.
  *
  * The dimmest colour used is `#97A1B5` (5.6:1). §1.1 permits `#6B7689`
  * (3.1:1) at >=14px elsewhere; this page's acceptance criterion is a hard
@@ -20,40 +24,25 @@
  */
 
 .gc-page {
-  --gc-base: #161e2f;
-  --gc-border-soft: #2c374c;
-  --gc-border-strong: #3f4b62;
-  --gc-brand: #ffa586;
-  --gc-urgent-text: #ff8a9b;
-  --gc-text: #edeff5;
-  --gc-text-bright: #ffffff;
-  --gc-text-warm: #f0c7b4;
-  --gc-text-mut: #97a1b5;
+  --gc-base: var(--co-base);
+  --gc-border-soft: var(--co-border-soft);
+  --gc-border-strong: var(--co-border-strong);
+  --gc-brand: var(--co-brand);
+  --gc-urgent-text: var(--co-urgent-text);
+  --gc-text: var(--co-text);
+  --gc-text-bright: var(--co-text-bright);
+  --gc-text-warm: var(--co-text-warm);
+  --gc-text-mut: var(--co-text-mut);
 
   position: relative;
   overflow: hidden;
   min-height: 100vh;
   background: var(--gc-base);
   color: var(--gc-text);
-  font-family:
-    'Space Grotesk',
-    'Instrument Sans',
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    'Helvetica Neue',
-    Arial,
-    sans-serif;
+  /* §1.2 — Instrument Sans speaks. The headings below take the display
+     family; everything else inherits this one. */
+  font-family: var(--co-font-body);
   -webkit-font-smoothing: antialiased;
-}
-
-/* The page is the whole document here, so the UA's 8px body margin has to
-   go somewhere. `apps/web` has no global stylesheet yet and this route is
-   the only thing it serves. */
-body {
-  margin: 0;
 }
 
 /* §3 ambient layer — two blurred radial blooms on 22-30s drifts. */
@@ -161,6 +150,7 @@ body {
 }
 
 .gc-mark-name {
+  font-family: var(--co-font-display);
   font-weight: 600;
   font-size: 14px;
   line-height: 1;
@@ -252,6 +242,7 @@ body {
 
 /* §1.2 h1-client — 700 26/30, -.02em. */
 .gc-h1 {
+  font-family: var(--co-font-display);
   margin: 0 0 12px;
   font-weight: 700;
   font-size: 26px;
@@ -273,6 +264,7 @@ body {
 
 /* §1.2 title — 600 20/26. */
 .gc-h2 {
+  font-family: var(--co-font-display);
   margin: 0 0 12px;
   font-weight: 600;
   font-size: 20px;
@@ -282,6 +274,7 @@ body {
 }
 
 .gc-h3 {
+  font-family: var(--co-font-display);
   margin: 0 0 8px;
   font-weight: 600;
   font-size: 17px;

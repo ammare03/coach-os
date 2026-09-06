@@ -22,11 +22,11 @@ import type { ReactNode } from 'react';
 // CLAUDE.md §3.2 makes it the marketing site too, so the policy is a
 // sibling page rather than a cross-origin link.
 //
-// ⚠️ `/privacy` does not exist yet — CLAUDE.md §21.3's "get a lawyer before
-// launch" is unresolved and no legal page has been written. Out of scope
-// here (`05` Scope: "record the general gap, fix this one route") but this
-// link 404s until it lands, and it is on a page whose whole purpose is
-// obtaining informed consent. Flagged in the PR.
+// ⚠️ `/privacy` is a placeholder, not a policy. CLAUDE.md §21.3's "get a
+// lawyer before launch" is still unresolved; the page says so in its own
+// first sentence rather than pretending otherwise. The link no longer 404s,
+// which is what matters on a page whose whole purpose is obtaining informed
+// consent.
 const PRIVACY_POLICY_HREF = '/privacy';
 
 export function Shell({ children }: { children: ReactNode }) {

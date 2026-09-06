@@ -1,6 +1,9 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
+import './design.css';
+import { instrumentSans, spaceGrotesk } from './fonts';
+
 // `noindex` for the whole app, not just the one route that needs it
 // (`guardian-consent/05` Approach step 5). Everything `apps/web` serves
 // today is either a placeholder or a URL carrying a live single-use
@@ -13,8 +16,10 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
+  // The two font variables are set on <html> so every route reaches them.
+  // Both files are served from our own origin — see `./fonts`.
   return (
-    <html lang="en">
+    <html lang="en" className={`${spaceGrotesk.variable} ${instrumentSans.variable}`}>
       <body>{children}</body>
     </html>
   );
