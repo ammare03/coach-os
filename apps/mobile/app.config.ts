@@ -30,7 +30,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
-  scheme: 'coachos',
+  // `coachos` is the product scheme (§9.3 deep links). The app id is the
+  // second one because Google Sign-In's redirect is
+  // `${applicationId}:/oauthredirect` (`useGoogleSignIn.ts`): iOS registers
+  // the bundle id as a scheme on its own, Android does not.
+  scheme: ['coachos', APP_ID],
   // Dark-first, forced (theme-tokens/04) — the OS chrome (status bar,
   // keyboard, autofill sheets) must follow the app's scheme, not the
   // device's, or a device in light mode gets black-on-black status text.
