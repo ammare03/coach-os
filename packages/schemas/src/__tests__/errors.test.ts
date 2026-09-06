@@ -64,6 +64,7 @@ function describeCode(code: AppErrorCode): string {
     case 'EXPORT_RATE_LIMITED':
     case 'EXPORT_NOT_FOUND':
     case 'DEPENDENT_NOT_FOUND':
+    case 'EXERCISE_NOT_FOUND':
       return code;
     default:
       return assertNever(code);
