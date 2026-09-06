@@ -4,6 +4,12 @@ import { and, eq, isNull } from 'drizzle-orm';
 
 import { appError } from '../lib/app-error.ts';
 import {
+  checkExerciseName,
+  createExercise,
+  setExerciseArchived,
+  updateExercise,
+} from '../services/exercises/authoring.ts';
+import {
   afterCursor,
   decodeExerciseCursor,
   encodeExerciseCursor,
@@ -14,8 +20,6 @@ import { exerciseColumns, toExercise, visibleToCoach } from '../services/exercis
 import { router } from '../trpc/init.ts';
 import { coachProcedure, RATE_LIMIT_TIERS, rateLimit } from '../trpc/procedures.ts';
 
-// `create`/`update`/`archive` are filled by `exercise-library/03`.
-//
 // Every procedure here is a `coachProcedure`, and every query composes
 // `visibleToCoach(ctx.user.coachProfileId)` — the global library plus the
 // caller's OWN custom exercises, resolved from the session rather than from
@@ -96,5 +100,36 @@ export const exercisesRouter = router({
         equipment: input.equipment,
         movementPattern: input.movementPattern,
       }),
+    ),
+
+  // The advisory lookup the create form runs while the coach types. Two of
+  // `exercise-library/03`'s three collisions are legal under DB§5.2 and
+  // still need surfacing; `search` cannot answer for the archived one
+  // because it excludes archived rows by design.
+  checkName: coachProcedure
+    .input(exercisesSchemas.checkExerciseNameInput)
+    .query(({ ctx, input }) => checkExerciseName(ctx.db, ctx.user.coachProfileId, input.name)),
+
+  create: coachProcedure
+    .input(exercisesSchemas.createExerciseInput)
+    .mutation(({ ctx, input }) => createExercise(ctx.db, ctx.user.coachProfileId, input)),
+
+  update: coachProcedure
+    .input(exercisesSchemas.updateExerciseInput)
+    .mutation(({ ctx, input }) => updateExercise(ctx.db, ctx.user.coachProfileId, input)),
+
+  // Archive, never delete. `ON DELETE RESTRICT` from `program_exercises`
+  // and `set_logs` means a hard delete is not merely discouraged — it is
+  // impossible for any exercise with history.
+  archive: coachProcedure
+    .input(exercisesSchemas.archiveExerciseInput)
+    .mutation(({ ctx, input }) =>
+      setExerciseArchived(ctx.db, ctx.user.coachProfileId, input.exerciseId, true),
+    ),
+
+  unarchive: coachProcedure
+    .input(exercisesSchemas.archiveExerciseInput)
+    .mutation(({ ctx, input }) =>
+      setExerciseArchived(ctx.db, ctx.user.coachProfileId, input.exerciseId, false),
     ),
 });

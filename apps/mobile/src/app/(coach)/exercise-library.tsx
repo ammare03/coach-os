@@ -1,13 +1,26 @@
-import { Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
-// Placeholder route (`phase-05-app-shell/router-skeleton/01`). Structure
-// only — it renders its own route path and nothing else, deliberately. The
-// phase that owns this screen designs and builds it; anything added here
-// first would have to be deleted then (P05 README, "Risks").
+import { ExerciseLibraryScreen } from '../../features/workouts/components/library/ExerciseLibraryScreen.tsx';
+
+// Composition only (`CLAUDE.md` §9.2) — the screen owns its own queries and
+// states; this file owns where a tap goes.
 export default function CoachExerciseLibraryScreen() {
+  const router = useRouter();
+
   return (
-    <View>
-      <Text>(coach)/exercise-library</Text>
-    </View>
+    <ExerciseLibraryScreen
+      onCreate={(prefilledName) => {
+        router.push({
+          pathname: '/(coach)/exercise/new',
+          params: prefilledName ? { name: prefilledName } : {},
+        });
+      }}
+      onOpen={(exerciseId) => {
+        // Global exercises route here too. The screen is read-only for them
+        // and says why — a row that simply does not respond to a tap reads
+        // as broken rather than as deliberate.
+        router.push({ pathname: '/(coach)/exercise/[exerciseId]', params: { exerciseId } });
+      }}
+    />
   );
 }
