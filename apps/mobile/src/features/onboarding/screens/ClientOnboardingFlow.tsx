@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import {
   CLIENT_ONBOARDING_STEP_COUNT,
   clientStepAt,
@@ -5,10 +7,13 @@ import {
 } from '../client-steps.ts';
 import { useClientOnboardingStore } from '../client-store.ts';
 import { OnboardingShell } from '../components/OnboardingShell.tsx';
+import { useFinishClientOnboarding } from '../hooks/useFinishClientOnboarding.ts';
+import { requestNotificationPermission } from '../notification-permission.ts';
 import { DisclaimerStep } from '../steps/DisclaimerStep.tsx';
 import { EquipmentAndDietStep } from '../steps/EquipmentAndDietStep.tsx';
 import { GoalsStep } from '../steps/GoalsStep.tsx';
 import { MeasurementsStep } from '../steps/MeasurementsStep.tsx';
+import { NotificationPermissionStep } from '../steps/NotificationPermissionStep.tsx';
 
 // `phase-06-onboarding/client-onboarding/` — the whole client flow is ONE
 // route (`(client-onboarding)/index`), not five, for exactly the reason
@@ -22,9 +27,10 @@ import { MeasurementsStep } from '../steps/MeasurementsStep.tsx';
 // flow state, and a step that could move itself would be a second place
 // the flow's position lives (`code-conventions` §5).
 //
-// Step 05 (notifications) adds its own branch to `renderStep` and its own
-// entry to `primaryActionFor` as that task lands. Until then the flow ends
-// after equipment and diet.
+// The last step is the one place this flow genuinely waits on the server:
+// `client.updateProfile` and then `me.completeOnboarding` are what move the
+// client into the main shell, and advancing optimistically would mean
+// claiming they are onboarded before the row says so.
 
 interface StepContent {
   title: string;
@@ -64,6 +70,8 @@ export function ClientOnboardingFlow() {
   const heightCm = useClientOnboardingStore((state) => state.fields.heightCm);
   const experienceLevel = useClientOnboardingStore((state) => state.fields.experienceLevel);
   const startedAt = useClientOnboardingStore((state) => state.fields.startedAt);
+  const [isRequesting, setIsRequesting] = useState(false);
+  const finishFlow = useFinishClientOnboarding();
 
   const step = clientStepAt(currentStep);
   const content = STEP_CONTENT[step];
@@ -87,6 +95,7 @@ export function ClientOnboardingFlow() {
       subtitle={content.subtitle}
       onBack={goBack}
       primaryAction={primaryActionFor(step)}
+      secondaryAction={secondaryActionFor(step)}
     >
       {renderStep(step)}
     </OnboardingShell>
@@ -120,7 +129,44 @@ export function ClientOnboardingFlow() {
       // (`client_profiles.equipment_access` defaults to `{}`).
       return { label: 'Continue', onPress: goNext };
     }
+    if (current === 'notifications') {
+      return {
+        label: 'Turn on notifications',
+        onPress: () => void finishWith(true),
+        loading: isRequesting || finishFlow.isFinishing,
+      };
+    }
     return undefined;
+  }
+
+  function secondaryActionFor(current: ClientOnboardingStep) {
+    if (current !== 'notifications') return undefined;
+    // Declining is a first-class answer, not a hidden link: it finishes
+    // onboarding on exactly the same path, minus the OS prompt.
+    return {
+      label: 'Not now',
+      onPress: () => void finishWith(false),
+      disabled: isRequesting || finishFlow.isFinishing,
+    };
+  }
+
+  /**
+   * Rationale first, OS prompt second, write third — and the write runs
+   * whichever way the prompt was answered. The permission's outcome is
+   * recorded in the draft only so a resumed flow does not ask twice; it is
+   * never an input to whether onboarding completes.
+   */
+  async function finishWith(askOs: boolean) {
+    if (askOs) {
+      setIsRequesting(true);
+      try {
+        await requestNotificationPermission();
+      } finally {
+        setIsRequesting(false);
+      }
+    }
+    updateField('notificationPermissionAsked', true);
+    await finishFlow.finish();
   }
 
   function renderStep(current: ClientOnboardingStep) {
@@ -128,6 +174,6 @@ export function ClientOnboardingFlow() {
     if (current === 'goals') return <GoalsStep />;
     if (current === 'measurements') return <MeasurementsStep />;
     if (current === 'equipment') return <EquipmentAndDietStep />;
-    return null;
+    return <NotificationPermissionStep error={finishFlow.error ?? undefined} />;
   }
 }

@@ -1,6 +1,7 @@
 import { client as clientSchemas } from '@coachos/schemas';
 
 import { getMyCoach } from '../features/clientApp/get-my-coach.ts';
+import { updateClientProfile } from '../features/clientApp/update-profile.ts';
 import {
   detachClient,
   notifyRelationshipEnded,
@@ -42,6 +43,20 @@ export const clientAppRouter = router({
     void notifyRelationshipEnded(result).catch(() => {});
     return { success: true } as const;
   }),
+
+  // `client-onboarding/05` — the client onboarding flow's single write,
+  // sent once with everything steps 02–04 accumulated. The allowlist is in
+  // `updateProfileInput`; this procedure never accepts a wider shape than
+  // that schema admits. No `ownsResource` for the same reason as
+  // `leaveCoach` — the row is addressed by `ctx.user.clientProfileId`.
+  updateProfile: clientProcedure
+    .input(clientSchemas.updateProfileInput)
+    .mutation(({ ctx, input }) => {
+      if (ctx.user.clientProfileId === null) {
+        throw new Error('clientApp.updateProfile: authenticated client has no clientProfileId');
+      }
+      return updateClientProfile(ctx.db, ctx.user.clientProfileId, input);
+    }),
 
   // `07` — "Settings → what {coach} can see". No `ownsResource` needed for
   // the same reason as `leaveCoach` above.

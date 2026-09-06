@@ -116,6 +116,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // (`configuration` skill §8, `CLAUDE.md` §25.1, §25.11). Its own
     // postinstall copies the prebuilt Skia binaries into place; that build
     // script is allowed explicitly in `pnpm-workspace.yaml`.
+    // `expo-notifications` (`client-onboarding/05`, `CLAUDE.md` §3.1) is
+    // the fourth: it DOES ship a config plugin, but every option it takes
+    // (notification icon, colour, custom sounds, `mode`) is optional and
+    // this app sets none of them yet — `client-onboarding/05` requests the
+    // OS permission and nothing more. `phase-15-notifications/` is where an
+    // entry with real options belongs, alongside the icon and the APNs
+    // configuration. Native either way: dev-client rebuild, never an OTA
+    // (`configuration` skill §8, `CLAUDE.md` §25.1, §25.11).
     'expo-router',
     // `providers-and-gates/05`. Unlike the three modules above, Sentry DOES
     // ship a config plugin, and it is the whole source-map story: it writes

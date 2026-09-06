@@ -20,6 +20,18 @@ jest.mock('../../settings/hooks/useMedicalDisclaimer.ts', () => ({
   }),
 }));
 
+// `client-onboarding/05`'s completion hook is built by the flow on every
+// render regardless of the step on screen, and it reaches tRPC. Standing it
+// down keeps this file about its own step — step 5 is
+// `client-onboarding-completion.test.tsx`'s subject.
+jest.mock('../hooks/useFinishClientOnboarding.ts', () => ({
+  useFinishClientOnboarding: () => ({
+    finish: jest.fn(),
+    isFinishing: false,
+    error: null,
+  }),
+}));
+
 const TEST_METRICS = {
   insets: { top: 0, left: 0, right: 0, bottom: 0 },
   frame: { x: 0, y: 0, width: 390, height: 844 },
