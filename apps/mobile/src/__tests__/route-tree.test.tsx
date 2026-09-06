@@ -72,6 +72,14 @@ const EXPECTED_ROUTE_FILES = [
   // Both screens are real as of `coach-onboarding/01` and
   // `client-onboarding/02`.
   '(client-onboarding)/_layout.tsx',
+  // Not in §9.1 either, and for the same reason its group is not:
+  // `phase-07-exercise-and-program-authoring/guardian-consent/06`. A
+  // 13–17 client who accepts an invite has an account and no way
+  // through onboarding until a guardian confirms; this is the one
+  // screen they can reach. It sits in this group rather than
+  // `(client)` because they are, by construction, not onboarded — see
+  // the route file's own comment.
+  '(client-onboarding)/guardian-consent-pending.tsx',
   '(client-onboarding)/index.tsx',
   '(client)/(tabs)/_layout.tsx',
   '(client)/(tabs)/coach.tsx',
@@ -221,6 +229,9 @@ const SUBSTITUTED = new Set([
   // `src/features/onboarding/__tests__/`.
   '(coach-onboarding)/index',
   '(client-onboarding)/index',
+  // Real as of `guardian-consent/06`; what it renders is covered by
+  // `src/features/onboarding/__tests__/GuardianConsentPendingScreen.test.tsx`.
+  '(client-onboarding)/guardian-consent-pending',
 ]);
 
 /**

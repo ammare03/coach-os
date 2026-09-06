@@ -4,26 +4,27 @@
   // (jsx, moduleResolution, the next plugin, next-env.d.ts).
   "compilerOptions": {
     "target": "ES2017",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "noEmit": true,
     "module": "esnext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "incremental": true,
+    // Same arrangement as apps/api and packages/schemas: this tsconfig is
+    // both the build config and the typecheck config, so the test globals
+    // have to be declared here or `*.test.tsx` fails `tsc --noEmit`
+    // (guardian-consent/05). React's own types are reached by module
+    // resolution and by next-env.d.ts's triple-slash reference, neither of
+    // which this list constrains.
+    "types": ["node", "jest"],
     "plugins": [
       {
         "name": "next"
       }
     ],
     "paths": {
-      "@/*": [
-        "./*"
-      ]
+      "@/*": ["./*"]
     }
   },
   "include": [
@@ -33,7 +34,5 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": [
-    "node_modules"
-  ]
+  "exclude": ["node_modules"]
 }

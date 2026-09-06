@@ -11,6 +11,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { bootstrap } from '../features/auth/bootstrap.ts';
 import { useAuthStore } from '../features/auth/store.ts';
 import { PendingDeepLinkReplay } from '../features/navigation/deep-links/PendingDeepLinkReplay.tsx';
+import { GuardianConsentRedirect } from '../features/onboarding/GuardianConsentRedirect.tsx';
 import { AnalyticsProvider } from '../lib/analytics/index.ts';
 import { queryClient, queryPersistence } from '../lib/query/client.ts';
 import { initSentry } from '../lib/sentry.ts';
@@ -183,6 +184,12 @@ export default function RootLayout() {
                     subtree, so the replay has to run last or be overwritten
                     by it. */}
                 <PendingDeepLinkReplay />
+                {/* `guardian-consent/06`. Also renders nothing: it installs
+                    the app-wide `GUARDIAN_CONSENT_PENDING` redirect, which
+                    `lib/query/client.ts` cannot install itself because it is
+                    constructed before any navigator exists. Same position as
+                    the replay above, and for the same reason. */}
+                <GuardianConsentRedirect />
               </BottomSheetModalProvider>
             </ThemeProvider>
           </TRPCProvider>

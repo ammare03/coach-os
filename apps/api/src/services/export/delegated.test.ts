@@ -100,6 +100,8 @@ function ctxFor(user: typeof schema.users.$inferSelect): ReturnType<typeof Creat
     role: user.role,
     timezone: user.timezone,
     locale: user.locale,
+    isMinor: user.isMinor,
+    guardianConsentAt: user.guardianConsentAt,
     coachProfileId: null,
     clientProfileId: null,
     deletedAt: null,

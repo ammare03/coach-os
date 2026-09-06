@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start -p 3001",
     "lint": "eslint .",
+    "test": "jest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -16,9 +17,12 @@
   },
   "devDependencies": {
     "@coachos/config": "workspace:*",
+    "@types/jest": "30.0.0",
     "@types/node": "22.20.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
+    "jest": "30.4.2",
+    "ts-jest": "29.4.12",
     "typescript": "~6.0.3"
   }
 }

@@ -2,6 +2,7 @@
 // on a string" — the rendered HTML and plaintext, not `sendEmail`, which
 // never touches Resend in a test.
 import { renderEmailHtml, toPlainText } from '../client.ts';
+import { ClientIsMinorEmail } from '../templates/client-is-minor.ts';
 import { DeletionRecoveryEmail } from '../templates/deletion-recovery.ts';
 import { GuardianAccessEndedEmail } from '../templates/guardian-access-ended.ts';
 import { GuardianConsentEmail } from '../templates/guardian-consent.ts';
@@ -74,6 +75,16 @@ describe('GuardianConsentEmail', () => {
     expect(html).toContain('Coach Sam');
     expect(html).toContain(CONSENT_URL);
     expect(html).not.toContain('coachos://');
+  });
+
+  it('renders the consent link once as a real href and once as visible text', () => {
+    const html = renderEmailHtml(
+      GuardianConsentEmail({ clientName: 'Alex', coachName: 'Coach Sam', consentUrl: CONSENT_URL }),
+    );
+    expect(html.split(`href="${CONSENT_URL}"`).length - 1).toBe(1);
+    // Printed again beneath the button, for clients that strip links.
+    expect(html.split(CONSENT_URL).length - 1).toBe(2);
+    expect(toPlainText(html)).toContain(CONSENT_URL);
   });
 });
 
@@ -193,5 +204,42 @@ describe('GuardianExportNoticeEmail', () => {
     expect(html).toMatch(/no action/i);
     expect(html).not.toMatch(/<img/i);
     expect(html).not.toMatch(/\{\{.*?\}\}|\$\{.*?\}/);
+  });
+});
+
+describe('ClientIsMinorEmail', () => {
+  const render = () => renderEmailHtml(ClientIsMinorEmail({ clientName: 'Alex' }));
+
+  it('names the client and states both facts the coach is entitled to', () => {
+    const html = render();
+    expect(html).toContain('Alex');
+    expect(html).toMatch(/under 18/i);
+    expect(html).toMatch(/photo/i);
+  });
+
+  it('carries no birthdate, no age in years, and no guardian address', () => {
+    const html = render();
+    // Any date shape — ISO, slashed, or a written month beside a day number.
+    expect(html).not.toMatch(/\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4}/);
+    expect(html).not.toMatch(
+      /\b(January|February|March|April|May|June|July|August|September|October|November|December)\b/i,
+    );
+    expect(html).not.toMatch(/\b\d{1,2}\s*(years|yrs|year|yr)\b/i);
+    // The one address-shaped value this email must never carry is the
+    // guardian's — and the props are `clientName` alone, so none can reach
+    // it. The layout's own boilerplate contains no `@` either.
+    expect(html).not.toContain('@');
+  });
+
+  it('renders a plaintext alternative, with no remotely-loaded image and no unrendered variable', () => {
+    const html = render();
+    expect(html).not.toMatch(/<img/i);
+    expect(html).not.toMatch(/\{\{.*?\}\}|\$\{.*?\}/);
+    expect(html).not.toContain('coachos://');
+    expect(html.toLowerCase().startsWith('<!doctype html>')).toBe(true);
+
+    const text = toPlainText(html);
+    expect(text).toContain('Alex');
+    expect(text).not.toContain('<');
   });
 });

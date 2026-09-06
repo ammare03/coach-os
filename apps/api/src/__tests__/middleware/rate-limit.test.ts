@@ -72,6 +72,8 @@ const coachA: ContextUser = {
   role: 'coach',
   timezone: 'UTC',
   locale: 'en',
+  isMinor: false,
+  guardianConsentAt: null,
   coachProfileId: uuidv7(),
   clientProfileId: null,
   deletedAt: null,

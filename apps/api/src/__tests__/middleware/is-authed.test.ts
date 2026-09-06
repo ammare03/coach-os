@@ -38,6 +38,8 @@ const coachA = {
   role: 'coach' as const,
   timezone: 'UTC',
   locale: 'en',
+  isMinor: false,
+  guardianConsentAt: null,
   coachProfileId: '00000000-0000-7000-8000-00000000c0a2',
   clientProfileId: null,
   deletedAt: null,
