@@ -6,6 +6,7 @@ import {
 import { useClientOnboardingStore } from '../client-store.ts';
 import { OnboardingShell } from '../components/OnboardingShell.tsx';
 import { DisclaimerStep } from '../steps/DisclaimerStep.tsx';
+import { EquipmentAndDietStep } from '../steps/EquipmentAndDietStep.tsx';
 import { GoalsStep } from '../steps/GoalsStep.tsx';
 import { MeasurementsStep } from '../steps/MeasurementsStep.tsx';
 
@@ -21,9 +22,9 @@ import { MeasurementsStep } from '../steps/MeasurementsStep.tsx';
 // flow state, and a step that could move itself would be a second place
 // the flow's position lives (`code-conventions` §5).
 //
-// Steps 04 and 05 (equipment and diet, notifications) add their own
-// branches to `renderStep` and their own entries to `primaryActionFor` as
-// those tasks land. Until then the flow ends after measurements.
+// Step 05 (notifications) adds its own branch to `renderStep` and its own
+// entry to `primaryActionFor` as that task lands. Until then the flow ends
+// after equipment and diet.
 
 interface StepContent {
   title: string;
@@ -112,6 +113,13 @@ export function ClientOnboardingFlow() {
           experienceLevel.length === 0,
       };
     }
+    if (current === 'equipment') {
+      // No `disabled`. Both fields are genuinely optional — a client with
+      // no dietary needs and only bodyweight has answered honestly by
+      // leaving one empty, and an empty array is how "none" is expressed
+      // (`client_profiles.equipment_access` defaults to `{}`).
+      return { label: 'Continue', onPress: goNext };
+    }
     return undefined;
   }
 
@@ -119,6 +127,7 @@ export function ClientOnboardingFlow() {
     if (current === 'disclaimer') return <DisclaimerStep onAcknowledged={goNext} />;
     if (current === 'goals') return <GoalsStep />;
     if (current === 'measurements') return <MeasurementsStep />;
+    if (current === 'equipment') return <EquipmentAndDietStep />;
     return null;
   }
 }
