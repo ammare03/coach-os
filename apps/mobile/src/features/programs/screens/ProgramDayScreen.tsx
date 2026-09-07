@@ -25,8 +25,9 @@ import {
   type PickerExercise,
 } from '../../workouts/components/library/ExercisePickerSheet.tsx';
 import type { ProgramDayExercise } from '../api/programs.ts';
-import { ExerciseBlock } from '../components/ExerciseBlock.tsx';
+import { DraggableExerciseList } from '../components/DraggableExerciseList.tsx';
 import { ExerciseTargetForm } from '../components/ExerciseTargetForm.tsx';
+import { ReorderHintBar } from '../components/ReorderHintBar.tsx';
 import { newTargetDraft, TARGET_BOUNDS, targetDraftFrom } from '../exercise-targets.ts';
 import { useProgramDayBuilder } from '../hooks/useProgramDayBuilder.ts';
 import { dayFullLabel, dayPillLabel } from '../program-days.ts';
@@ -64,11 +65,17 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
   const insets = useSafeAreaInsets();
   const showUndoToast = useUndoToast();
 
-  const { day, addExercise, updateExercise, removeExercise } = useProgramDayBuilder(programDayId);
+  const { day, addExercise, updateExercise, removeExercise, reorderExercises } =
+    useProgramDayBuilder(programDayId);
 
   const [isPickerOpen, setPickerOpen] = useState(false);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
+  // A drag takes over the screen: the scroll view stops (the gesture and a
+  // scroll cannot both own the finger) and the action bar becomes the
+  // instruction line (`program-builder/03`, frame 1d).
+  const [isReordering, setReordering] = useState(false);
+  const [reorderError, setReorderError] = useState<string | undefined>(undefined);
   // Blocks the coach has removed but whose delete has not been sent yet —
   // the undo window is local, so the row leaves the list immediately and
   // comes back if they take it back (`useUndoToast`'s deferred commit).
@@ -157,6 +164,7 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
           { paddingTop: insets.top + spacing(6), paddingBottom: insets.bottom + spacing(40) },
         ]}
         showsVerticalScrollIndicator={false}
+        scrollEnabled={!isReordering}
       >
         <View style={styles.topbar}>
           <IconButton
@@ -244,17 +252,32 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
           />
         ) : (
           <>
-            {blocks.map((block) => (
-              <ExerciseBlock
-                key={block.id}
-                block={block}
-                onPress={() => {
-                  setSaveError(undefined);
-                  setEditing({ kind: 'edit', block });
-                }}
-                testID={`exercise-block-${block.id}`}
-              />
-            ))}
+            <DraggableExerciseList
+              blocks={blocks}
+              onOpenBlock={(block) => {
+                setSaveError(undefined);
+                setEditing({ kind: 'edit', block });
+              }}
+              onReorder={(orderedExerciseIds) => {
+                setReorderError(undefined);
+                reorderExercises.mutate(
+                  { programDayId, orderedExerciseIds },
+                  {
+                    onError: (error) => {
+                      setReorderError(reorderErrorMessage(error));
+                    },
+                  },
+                );
+              }}
+              onDragActiveChange={setReordering}
+              testID="exercise-list"
+            />
+
+            {reorderError === undefined ? null : (
+              <Text size="caption" tone="warm" testID="reorder-error">
+                {reorderError}
+              </Text>
+            )}
 
             {isFull ? (
               // The affordance is replaced by the reason it is gone, rather
@@ -282,6 +305,8 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
           </>
         )}
       </ScrollView>
+
+      {isReordering ? <ReorderHintBar testID="reorder-hint" /> : null}
 
       {isPickerOpen ? (
         <ExercisePickerSheet
@@ -384,6 +409,23 @@ function addExerciseErrorMessage(error: unknown): string {
     return 'Some of these targets are outside what a program can hold. Check the numbers above.';
   }
   return "We couldn't save this. Check your connection and try again.";
+}
+
+/**
+ * The drop's own refusals, said next to the list rather than in a toast the
+ * coach then has to connect back to a card that has already moved back
+ * (`ERRORS.md` ER§0.2). The optimistic order is rolled back by the hook, so
+ * what this text explains is why the list is where it was.
+ */
+function reorderErrorMessage(error: unknown): string {
+  const code = getErrorCode(error);
+  if (code === 'PROGRAM_DAY_ORDER_STALE') {
+    return 'This day changed on another device, so the move was not saved. We have refreshed it — try again.';
+  }
+  if (code === 'VALIDATION_FAILED') {
+    return "We couldn't read that order. Pull to refresh and try the move again.";
+  }
+  return "We couldn't save the new order. Check your connection and try again.";
 }
 
 const styles = StyleSheet.create({

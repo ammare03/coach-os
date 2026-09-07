@@ -356,6 +356,40 @@ export type UpdateProgramExerciseInput = z.infer<typeof updateProgramExerciseInp
 export const deleteProgramExerciseInput = strictObject({ programExerciseId: id });
 export type DeleteProgramExerciseInput = z.infer<typeof deleteProgramExerciseInput>;
 
+/** The one sentence the product says about a list that names a block twice. */
+export const DUPLICATE_ORDER_MESSAGE = 'An exercise can only appear once in a day.';
+
+function hasDistinctIds(value: { orderedExerciseIds: string[] }): boolean {
+  return new Set(value.orderedExerciseIds).size === value.orderedExerciseIds.length;
+}
+
+/**
+ * `programs.exercises.reorder` — the drop at the end of a drag
+ * (`program-builder/03`, frame 1d).
+ *
+ * `orderedExerciseIds` is the day's **complete** new order, not a move
+ * instruction. A `{ from, to }` pair would be evaluated against whatever
+ * the server happens to hold, which is not necessarily what the coach was
+ * looking at when they let go; a full list lets the server refuse a stale
+ * picture outright (`PROGRAM_DAY_ORDER_STALE`) instead of silently
+ * reordering something else.
+ *
+ * The distinctness refinement sits on the OBJECT rather than on the array:
+ * the authorisation enumeration test synthesises an input for every
+ * procedure and refuses to guess a value for a custom check on an array
+ * (`apps/api/src/__tests__/authz/synthesise-input.ts`), so an
+ * `.refine()`d array would make this procedure unprobeable.
+ *
+ * Membership — every id actually belonging to THIS day, and no id missing —
+ * is not expressible here and is checked in the resolver against the day's
+ * real contents.
+ */
+export const reorderProgramExercisesInput = strictObject({
+  programDayId: id,
+  orderedExerciseIds: z.array(id).min(1).max(MAX_EXERCISES_PER_DAY),
+}).refine(hasDistinctIds, { message: DUPLICATE_ORDER_MESSAGE, path: ['orderedExerciseIds'] });
+export type ReorderProgramExercisesInput = z.infer<typeof reorderProgramExercisesInput>;
+
 /**
  * `programs.days.get` — one day, its exercises with their full target
  * block, and the seven-slot strip the day screen puts above them. One

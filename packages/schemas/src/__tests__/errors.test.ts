@@ -72,6 +72,7 @@ function describeCode(code: AppErrorCode): string {
     case 'PROGRAM_DURATION_TOO_SHORT':
     case 'PROGRAM_WEEK_LIMIT_REACHED':
     case 'PROGRAM_EXERCISE_LIMIT_REACHED':
+    case 'PROGRAM_DAY_ORDER_STALE':
       return code;
     default:
       return assertNever(code);

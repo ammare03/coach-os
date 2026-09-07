@@ -143,6 +143,14 @@ export const APP_ERROR_CODES = [
   // Exactly the shape `PROGRAM_WEEK_LIMIT_REACHED` above has, and for the
   // same reason.
   'PROGRAM_EXERCISE_LIMIT_REACHED',
+  // program-builder/03 — the drop. `reorder` takes the day's COMPLETE new
+  // order, so a list that no longer matches the day (a block added or
+  // deleted on another device between the read and the drop) is a stale
+  // picture, not a malformed request. Distinct from `SYNC_CONFLICT`, whose
+  // copy is written for a client whose coach changed something while they
+  // were offline, and whose recovery is "showing their version" rather than
+  // "refetch and make the move again".
+  'PROGRAM_DAY_ORDER_STALE',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -211,6 +219,7 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   PROGRAM_DURATION_TOO_SHORT: 'BAD_REQUEST',
   PROGRAM_WEEK_LIMIT_REACHED: 'BAD_REQUEST',
   PROGRAM_EXERCISE_LIMIT_REACHED: 'BAD_REQUEST',
+  PROGRAM_DAY_ORDER_STALE: 'CONFLICT',
 };
 
 /**
@@ -302,6 +311,10 @@ export interface AppErrorPayloads {
   PROGRAM_DURATION_TOO_SHORT: { weekCount: number };
   PROGRAM_WEEK_LIMIT_REACHED: { maxWeeks: number };
   PROGRAM_EXERCISE_LIMIT_REACHED: { maxExercises: number };
+  // How many blocks the day actually holds, so the client can decide
+  // whether its own list is short or long without a second round trip.
+  // Numbers only, never a name or an id (DB§18).
+  PROGRAM_DAY_ORDER_STALE: { exerciseCount: number };
 }
 
 /**

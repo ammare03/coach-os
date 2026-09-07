@@ -11,6 +11,7 @@ import {
   PROGRAM_BOUNDS,
   REP_RANGE_ORDER_MESSAGE,
   REP_RANGE_PAIR_MESSAGE,
+  reorderProgramExercisesInput,
   SINGLE_INTENSITY_MESSAGE,
   updateProgramExerciseInput,
 } from '../programs.ts';
@@ -213,5 +214,51 @@ describe('deleteProgramExerciseInput / getProgramDayInput', () => {
     );
     expect(getProgramDayInput.safeParse({ programDayId: VALID_ID }).success).toBe(true);
     expect(getProgramDayInput.safeParse({ programDayId: 'not-a-uuid' }).success).toBe(false);
+  });
+});
+
+describe('reorderProgramExercisesInput', () => {
+  const A = VALID_ID;
+  const B = OTHER_ID;
+
+  it('takes a day and its new order', () => {
+    expect(
+      reorderProgramExercisesInput.safeParse({ programDayId: A, orderedExerciseIds: [A, B] })
+        .success,
+    ).toBe(true);
+  });
+
+  // A duplicated id makes the list the right LENGTH while still not being a
+  // permutation, so the server's own membership check cannot lean on length
+  // alone — this is the first of the two places that is caught.
+  it('refuses a list that names the same block twice', () => {
+    const result = reorderProgramExercisesInput.safeParse({
+      programDayId: A,
+      orderedExerciseIds: [A, A],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(['orderedExerciseIds']);
+  });
+
+  it('refuses an empty list, a non-uuid member, and a list past the day ceiling', () => {
+    expect(
+      reorderProgramExercisesInput.safeParse({ programDayId: A, orderedExerciseIds: [] }).success,
+    ).toBe(false);
+    expect(
+      reorderProgramExercisesInput.safeParse({ programDayId: A, orderedExerciseIds: ['nope'] })
+        .success,
+    ).toBe(false);
+    expect(
+      reorderProgramExercisesInput.safeParse({
+        programDayId: A,
+        // Distinct ids so the length bound is what refuses this, not the
+        // distinctness rule above.
+        orderedExerciseIds: Array.from(
+          { length: PROGRAM_BOUNDS.maxExercisesPerDay + 1 },
+          (_, index) => `00000000-0000-7000-8000-${String(index).padStart(12, '0')}`,
+        ),
+      }).success,
+    ).toBe(false);
   });
 });

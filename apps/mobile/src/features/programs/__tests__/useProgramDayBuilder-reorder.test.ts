@@ -1,0 +1,180 @@
+import { renderHook } from '@testing-library/react-native';
+
+import { useProgramDayBuilder } from '../hooks/useProgramDayBuilder.ts';
+
+// The optimistic half of `program-builder/03`'s drop: the list has to move
+// the moment the coach lets go, reconcile against what the server actually
+// settled on, and go back exactly where it was if the write is refused
+// (`CLAUDE.md` §19 — the drop is a local, sub-100ms confirmation, never a
+// round trip).
+//
+// The mutation's own callbacks are what carry all three, so they are
+// captured and driven directly rather than through a live TanStack Query
+// client — the same seam `useCompleteOnboarding.test.ts` uses.
+
+const DAY_ID = 'day-1';
+
+// Only the two fields the reorder callbacks touch — the real cached day
+// carries the rest and none of it is read here.
+interface CachedDay {
+  programId: string;
+  exercises: { id: string; orderIndex: number }[];
+}
+
+type ReorderVariables = { programDayId: string; orderedExerciseIds: string[] };
+type ReorderResult = { exercises: { id: string; orderIndex: number }[] };
+interface ReorderOptions {
+  onMutate: (variables: ReorderVariables) => Promise<{ previous: CachedDay | undefined }>;
+  onSuccess: (result: ReorderResult, variables: ReorderVariables) => void;
+  onError: (
+    error: unknown,
+    variables: ReorderVariables,
+    context: { previous: CachedDay | undefined } | undefined,
+  ) => void;
+  onSettled: () => Promise<void>;
+}
+
+let mockReorderOptions: ReorderOptions;
+const mockCache = new Map<string, CachedDay>();
+const mockCancel = jest.fn().mockResolvedValue(undefined);
+const mockInvalidateDay = jest.fn().mockResolvedValue(undefined);
+const mockInvalidateProgram = jest.fn().mockResolvedValue(undefined);
+
+jest.mock('../../../lib/trpc.ts', () => ({
+  api: {
+    programs: {
+      get: { invalidate: jest.fn() },
+      days: { get: { useQuery: () => ({ data: undefined }) } },
+      exercises: {
+        create: { useMutation: () => ({}) },
+        update: { useMutation: () => ({}) },
+        delete: { useMutation: () => ({}) },
+        reorder: {
+          useMutation: (options: unknown) => {
+            mockReorderOptions = options as ReorderOptions;
+            return { mutate: jest.fn(), isPending: false };
+          },
+        },
+      },
+    },
+    useUtils: () => ({
+      programs: {
+        get: { invalidate: mockInvalidateProgram },
+        days: {
+          get: {
+            cancel: mockCancel,
+            invalidate: mockInvalidateDay,
+            getData: ({ programDayId }: { programDayId: string }) => mockCache.get(programDayId),
+            setData: ({ programDayId }: { programDayId: string }, value: CachedDay) => {
+              mockCache.set(programDayId, value);
+            },
+          },
+        },
+      },
+    }),
+  },
+}));
+
+function seedCache(): CachedDay {
+  const day: CachedDay = {
+    programId: 'program-1',
+    exercises: [
+      { id: 'a', orderIndex: 1 },
+      { id: 'b', orderIndex: 2 },
+      { id: 'c', orderIndex: 3 },
+    ],
+  };
+  mockCache.set(DAY_ID, day);
+  return day;
+}
+
+function cachedIds(): string[] {
+  return (mockCache.get(DAY_ID)?.exercises ?? []).map((exercise) => exercise.id);
+}
+
+beforeEach(() => {
+  mockCache.clear();
+  mockCancel.mockClear();
+  mockInvalidateDay.mockClear();
+  renderHook(() => useProgramDayBuilder(DAY_ID));
+});
+
+describe('useProgramDayBuilder — reorder', () => {
+  it('moves the list before the server answers, and stops the in-flight read racing it', async () => {
+    seedCache();
+
+    await mockReorderOptions.onMutate({
+      programDayId: DAY_ID,
+      orderedExerciseIds: ['c', 'a', 'b'],
+    });
+
+    expect(mockCancel).toHaveBeenCalledWith({ programDayId: DAY_ID });
+    expect(cachedIds()).toEqual(['c', 'a', 'b']);
+    // Renumbered to the gapless 1..N the server settles on, so the two
+    // cannot disagree once the response lands.
+    expect(mockCache.get(DAY_ID)?.exercises.map((exercise) => exercise.orderIndex)).toEqual([
+      1, 2, 3,
+    ]);
+  });
+
+  it('reconciles against the order the server actually settled on, not the guess', async () => {
+    seedCache();
+    await mockReorderOptions.onMutate({
+      programDayId: DAY_ID,
+      orderedExerciseIds: ['c', 'a', 'b'],
+    });
+
+    // The server disagrees — another device moved something too.
+    mockReorderOptions.onSuccess(
+      {
+        exercises: [
+          { id: 'b', orderIndex: 1 },
+          { id: 'c', orderIndex: 2 },
+          { id: 'a', orderIndex: 3 },
+        ],
+      },
+      { programDayId: DAY_ID, orderedExerciseIds: ['c', 'a', 'b'] },
+    );
+
+    expect(cachedIds()).toEqual(['b', 'c', 'a']);
+  });
+
+  it('puts the list back exactly as it was when the write is refused', async () => {
+    const before = seedCache();
+    const variables = { programDayId: DAY_ID, orderedExerciseIds: ['c', 'a', 'b'] };
+    const context = await mockReorderOptions.onMutate(variables);
+    expect(cachedIds()).toEqual(['c', 'a', 'b']);
+
+    mockReorderOptions.onError(new Error('PROGRAM_DAY_ORDER_STALE'), variables, context);
+
+    expect(mockCache.get(DAY_ID)).toBe(before);
+    expect(cachedIds()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('survives a drop against a cache that has already been evicted', async () => {
+    const context = await mockReorderOptions.onMutate({
+      programDayId: DAY_ID,
+      orderedExerciseIds: ['c', 'a', 'b'],
+    });
+
+    expect(context.previous).toBeUndefined();
+    expect(mockCache.has(DAY_ID)).toBe(false);
+    // Nothing to put back, and nothing thrown.
+    mockReorderOptions.onError(
+      new Error('offline'),
+      { programDayId: DAY_ID, orderedExerciseIds: ['c', 'a', 'b'] },
+      context,
+    );
+    expect(mockCache.has(DAY_ID)).toBe(false);
+  });
+
+  // A reorder changes no count, so `programs.get`'s "5 exercises" meta line
+  // on the screen behind is not stale — invalidating it would be a refetch
+  // nothing asked for.
+  it('refreshes this day only', async () => {
+    await mockReorderOptions.onSettled();
+
+    expect(mockInvalidateDay).toHaveBeenCalledWith({ programDayId: DAY_ID });
+    expect(mockInvalidateProgram).not.toHaveBeenCalled();
+  });
+});

@@ -9,6 +9,7 @@ import { deleteProgramExercise } from '../features/programs/delete-program-exerc
 import { deleteProgramWeek } from '../features/programs/delete-program-week.ts';
 import { getProgramDay } from '../features/programs/get-program-day.ts';
 import { getProgram } from '../features/programs/get-program.ts';
+import { reorderProgramExercises } from '../features/programs/reorder-program-exercises.ts';
 import { updateProgramDay } from '../features/programs/update-program-day.ts';
 import { updateProgramExercise } from '../features/programs/update-program-exercise.ts';
 import { updateProgram } from '../features/programs/update-program.ts';
@@ -111,6 +112,24 @@ const programExercisesRouter = router({
     .mutation(async ({ ctx, input }) => {
       await deleteProgramExercise(ctx.db, input.programExerciseId);
     }),
+
+  // `program-builder/03`'s drop. TWO guards, and both are load-bearing:
+  // owning the day says nothing about the ids in the array, and
+  // `ownsResource` is all-or-nothing over an array selector
+  // (`../trpc/middleware/owns-resource.ts`), so a single foreign id refuses
+  // the whole call. What neither guard can answer — that those ids are
+  // exactly THIS day's blocks, none missing and none extra — is checked in
+  // the resolver against the day's real contents.
+  reorder: coachProcedure
+    .input(programsSchemas.reorderProgramExercisesInput)
+    .use(ownsResource('programDay', (i: { programDayId: string }) => i.programDayId))
+    .use(
+      ownsResource(
+        'programExercise',
+        (i: { orderedExerciseIds: string[] }) => i.orderedExerciseIds,
+      ),
+    )
+    .mutation(({ ctx, input }) => reorderProgramExercises(ctx.db, input)),
 });
 
 export const programsRouter = router({

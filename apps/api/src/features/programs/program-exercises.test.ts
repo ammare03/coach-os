@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
 import { createDbClient, schema, type DbClient } from '@coachos/db';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 
 import { unwrapDatabaseError } from '../../db/is-database-error.ts';
@@ -17,6 +17,7 @@ import { isCatalogedError } from '../../lib/app-error.ts';
 import type { createProgramExercise as CreateProgramExercise } from './create-program-exercise.ts';
 import type { deleteProgramExercise as DeleteProgramExercise } from './delete-program-exercise.ts';
 import type { getProgramDay as GetProgramDay } from './get-program-day.ts';
+import type { reorderProgramExercises as ReorderProgramExercises } from './reorder-program-exercises.ts';
 import type { updateProgramExercise as UpdateProgramExercise } from './update-program-exercise.ts';
 
 let pgContainer: StartedTestContainer;
@@ -25,6 +26,7 @@ let createProgramExercise: typeof CreateProgramExercise;
 let updateProgramExercise: typeof UpdateProgramExercise;
 let deleteProgramExercise: typeof DeleteProgramExercise;
 let getProgramDay: typeof GetProgramDay;
+let reorderProgramExercises: typeof ReorderProgramExercises;
 
 beforeAll(async () => {
   pgContainer = await new GenericContainer('postgres:16')
@@ -61,6 +63,7 @@ beforeAll(async () => {
   ({ updateProgramExercise } = await import('./update-program-exercise.ts'));
   ({ deleteProgramExercise } = await import('./delete-program-exercise.ts'));
   ({ getProgramDay } = await import('./get-program-day.ts'));
+  ({ reorderProgramExercises } = await import('./reorder-program-exercises.ts'));
 }, 180_000);
 
 afterAll(async () => {
@@ -351,6 +354,230 @@ describe('deleteProgramExercise', () => {
       targetSets: 6,
     });
     expect((await rowsOfDay(scene.programDayId)).map((row) => row.orderIndex)).toEqual([1, 3, 4]);
+  });
+});
+
+describe('reorderProgramExercises', () => {
+  /** N blocks on one day, returned in the order they were created. */
+  async function seedBlocks(scene: Scene, count: number): Promise<string[]> {
+    const ids: string[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const { id } = await createProgramExercise(db, scene.coachProfileId, {
+        programDayId: scene.programDayId,
+        exerciseId: scene.exerciseId,
+        // A distinguishable value per block, so a test asserting on order is
+        // asserting on identity and not on position alone.
+        targetSets: index + 1,
+      });
+      ids.push(id);
+    }
+    return ids;
+  }
+
+  // The whole point of this task's Approach §2, and the case a
+  // non-overlapping reorder never reaches: PostgreSQL checks a plain unique
+  // index per row as each row is written, so any new order that reuses a
+  // position another row has not yet vacated trips
+  // `program_exercises_program_day_id_order_index_unique` unless the write
+  // parks the rows out of the way first.
+  it('moves the last block to first — every target position is still occupied when it is assigned', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 5);
+    const last = ids[4];
+    if (!last) throw new Error('expected five seeded blocks');
+    const newOrder = [last, ...ids.slice(0, 4)];
+
+    const result = await reorderProgramExercises(db, {
+      programDayId: scene.programDayId,
+      orderedExerciseIds: newOrder,
+    });
+
+    const rows = await rowsOfDay(scene.programDayId);
+    expect(rows.map((row) => row.orderIndex)).toEqual([1, 2, 3, 4, 5]);
+    expect(rows.map((row) => row.id)).toEqual(newOrder);
+    // The block's own payload travelled with it — this is a reorder, not a
+    // rewrite of five rows' contents.
+    expect(rows.map((row) => row.targetSets)).toEqual([5, 1, 2, 3, 4]);
+    expect(result.exercises).toEqual(
+      newOrder.map((id, position) => ({ id, orderIndex: position + 1 })),
+    );
+  });
+
+  // The premise the two-statement write exists for, proved rather than
+  // asserted: the obvious single `UPDATE ... SET order_index = CASE id ...`
+  // that assigns the finals directly DOES trip the unique index on an
+  // overlapping permutation. If PostgreSQL ever stops checking a plain
+  // unique index per row, this test fails and
+  // `reorder-program-exercises.ts` can be simplified to one statement.
+  it('confirms a direct single-statement renumber is refused by the unique index', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 3);
+    const [first, second, third] = ids;
+    if (!first || !second || !third) throw new Error('expected three seeded blocks');
+
+    const naive = db
+      .update(schema.programExercises)
+      .set({
+        orderIndex: sql`case ${schema.programExercises.id}
+          when ${third}::uuid then 1::smallint
+          when ${first}::uuid then 2::smallint
+          when ${second}::uuid then 3::smallint end`,
+      })
+      .where(eq(schema.programExercises.programDayId, scene.programDayId));
+
+    expect(await constraintViolatedBy(naive)).toBe(
+      'program_exercises_program_day_id_order_index_unique',
+    );
+
+    // …and the real path takes exactly the same reorder without complaint.
+    await reorderProgramExercises(db, {
+      programDayId: scene.programDayId,
+      orderedExerciseIds: [third, first, second],
+    });
+    expect((await rowsOfDay(scene.programDayId)).map((row) => row.id)).toEqual([
+      third,
+      first,
+      second,
+    ]);
+  });
+
+  it('reverses a day outright — every row lands on a position another row held', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 6);
+    const reversed = [...ids].reverse();
+
+    await reorderProgramExercises(db, {
+      programDayId: scene.programDayId,
+      orderedExerciseIds: reversed,
+    });
+
+    const rows = await rowsOfDay(scene.programDayId);
+    expect(rows.map((row) => row.orderIndex)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(rows.map((row) => row.id)).toEqual(reversed);
+  });
+
+  // A pair swap is the smallest overlapping permutation there is, and the
+  // one a naive sequential update fails on first.
+  it('swaps two adjacent blocks', async () => {
+    const scene = await seedScene();
+    const [first, second, third] = await seedBlocks(scene, 3);
+    if (!first || !second || !third) throw new Error('expected three seeded blocks');
+
+    await reorderProgramExercises(db, {
+      programDayId: scene.programDayId,
+      orderedExerciseIds: [second, first, third],
+    });
+
+    expect((await rowsOfDay(scene.programDayId)).map((row) => row.id)).toEqual([
+      second,
+      first,
+      third,
+    ]);
+  });
+
+  // `deleteProgramExercise` leaves gaps on purpose (its own docblock), so a
+  // real day's indices are not always 1..N going in.
+  it('closes the gaps a delete left', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 4);
+    const [first, second, third, fourth] = ids;
+    if (!first || !second || !third || !fourth) throw new Error('expected four seeded blocks');
+    await deleteProgramExercise(db, second);
+    expect((await rowsOfDay(scene.programDayId)).map((row) => row.orderIndex)).toEqual([1, 3, 4]);
+
+    const remaining = [fourth, first, third];
+    await reorderProgramExercises(db, {
+      programDayId: scene.programDayId,
+      orderedExerciseIds: remaining,
+    });
+
+    const rows = await rowsOfDay(scene.programDayId);
+    expect(rows.map((row) => row.orderIndex)).toEqual([1, 2, 3]);
+    expect(rows.map((row) => row.id)).toEqual(remaining);
+  });
+
+  it('is a no-op when the order has not changed', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 3);
+
+    await reorderProgramExercises(db, {
+      programDayId: scene.programDayId,
+      orderedExerciseIds: ids,
+    });
+
+    expect((await rowsOfDay(scene.programDayId)).map((row) => row.id)).toEqual(ids);
+  });
+
+  it('refuses a partial list rather than silently dropping the blocks it omits', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 4);
+
+    const error = await reorderProgramExercises(db, {
+      programDayId: scene.programDayId,
+      orderedExerciseIds: ids.slice(0, 3),
+    }).catch((caught: unknown) => caught);
+
+    expect(appCodeOf(error)).toBe('PROGRAM_DAY_ORDER_STALE');
+    expect((await rowsOfDay(scene.programDayId)).map((row) => row.orderIndex)).toEqual([
+      1, 2, 3, 4,
+    ]);
+  });
+
+  // `ownsResource('programExercise', …)` refuses another COACH's id before
+  // this function runs. This is the case ownership cannot see: a block this
+  // same coach owns, sitting on a different day of their own program.
+  it('refuses an id from one of the coach’s own other days', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 2);
+    const { id: otherDayBlock } = await createProgramExercise(db, scene.coachProfileId, {
+      programDayId: scene.restDayId,
+      exerciseId: scene.exerciseId,
+      targetSets: 3,
+    });
+
+    const error = await reorderProgramExercises(db, {
+      programDayId: scene.programDayId,
+      orderedExerciseIds: [otherDayBlock, ...ids],
+    }).catch((caught: unknown) => caught);
+
+    expect(appCodeOf(error)).toBe('PROGRAM_DAY_ORDER_STALE');
+    expect((await rowsOfDay(scene.programDayId)).map((row) => row.id)).toEqual(ids);
+    expect((await rowsOfDay(scene.restDayId)).map((row) => row.orderIndex)).toEqual([1]);
+  });
+
+  // Zod refuses this before it leaves the device; this is the floor under a
+  // patched client, and it matters because a duplicated id makes the list
+  // the right LENGTH while still not being a permutation.
+  it('refuses a list that names the same block twice', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 2);
+    const first = ids[0];
+    if (!first) throw new Error('expected two seeded blocks');
+
+    const error = await reorderProgramExercises(db, {
+      programDayId: scene.programDayId,
+      orderedExerciseIds: [first, first],
+    }).catch((caught: unknown) => caught);
+
+    expect(appCodeOf(error)).toBe('PROGRAM_DAY_ORDER_STALE');
+    expect((await rowsOfDay(scene.programDayId)).map((row) => row.id)).toEqual(ids);
+  });
+
+  it('leaves another day of the same program untouched', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 3);
+    const { id: otherDayBlock } = await createProgramExercise(db, scene.coachProfileId, {
+      programDayId: scene.restDayId,
+      exerciseId: scene.exerciseId,
+      targetSets: 3,
+    });
+
+    await reorderProgramExercises(db, {
+      programDayId: scene.programDayId,
+      orderedExerciseIds: [...ids].reverse(),
+    });
+
+    expect((await rowsOfDay(scene.restDayId)).map((row) => row.id)).toEqual([otherDayBlock]);
   });
 });
 
