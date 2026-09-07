@@ -3,6 +3,7 @@ import { assignments as assignmentsSchemas, paginationInput } from '@coachos/sch
 import { listAssignableClients } from '../features/assignments/assignable-clients.ts';
 import { completeAssignment } from '../features/assignments/complete-assignment.ts';
 import { createAssignment } from '../features/assignments/create-assignment.ts';
+import { getAssignment } from '../features/assignments/get-assignment.ts';
 import { pauseAssignment } from '../features/assignments/pause-assignment.ts';
 import { router } from '../trpc/init.ts';
 import { coachProcedure, ownsResource } from '../trpc/procedures.ts';
@@ -45,6 +46,15 @@ export const assignmentsRouter = router({
     .mutation(async ({ ctx, input }) => {
       await completeAssignment(ctx.db, input.assignmentId);
     }),
+
+  // `assignment/05`'s read path: `current_week`/`status`/`completed_at`
+  // are computed-on-read with a lazy write-back, never trusted stale off
+  // the stored column (`../features/assignments/advance-assignment.ts`,
+  // decision (a)) — this is the procedure that actually reads one.
+  get: coachProcedure
+    .input(assignmentsSchemas.getAssignmentInput)
+    .use(ownsResource('assignment', (i: { assignmentId: string }) => i.assignmentId))
+    .query(({ ctx, input }) => getAssignment(ctx.db, input.assignmentId)),
 
   // The assign sheet's client picker. `paginationInput` straight from the
   // barrel, the shape every list procedure takes (`programs.listTemplates`

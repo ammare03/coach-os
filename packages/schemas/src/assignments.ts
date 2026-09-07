@@ -7,6 +7,10 @@
 // `assignableClients` takes `paginationInput` straight from this package's
 // barrel, exactly as `programs.listTemplates` does (`api-conventions` §6) —
 // it has no input shape of its own to declare here.
+//
+// `assignment/05` adds `getAssignmentInput` — `assignments.get`'s shape,
+// the one procedure this task adds to read a single assignment's
+// lazily-corrected `current_week`/`status` (`apps/api/src/features/assignments/advance-assignment.ts`).
 import type { z } from 'zod';
 
 import { calendarDate, id, strictObject } from './primitives.ts';
@@ -28,3 +32,8 @@ export const completeAssignmentInput = strictObject({
   assignmentId: id,
 });
 export type CompleteAssignmentInput = z.infer<typeof completeAssignmentInput>;
+
+export const getAssignmentInput = strictObject({
+  assignmentId: id,
+});
+export type GetAssignmentInput = z.infer<typeof getAssignmentInput>;

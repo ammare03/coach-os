@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
 import { createDbClient, schema, type DbClient } from '@coachos/db';
+import { addCalendarDays, isoWeekdayOfCalendarDate, toLocalDate } from '@coachos/utils';
 import { TRPCError } from '@trpc/server';
 import { eq } from 'drizzle-orm';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
@@ -144,6 +145,30 @@ async function insertProgram(
   return { id: program.id };
 }
 
+// `assignment/05` — every client fixture below is `timezone: 'UTC'`
+// (`insertClient`), so "today" for the week-advance/completion tests is
+// `toLocalDate(new Date(), 'UTC')`. Computed once, at module load, from
+// the REAL current date rather than hardcoded — so these tests keep
+// passing no matter what day they actually run on, the same reasoning
+// `accept-invite.test.ts`'s `tenYearsAgo`/`fifteenYearsAgo` fixtures use.
+const today = toLocalDate(new Date(), 'UTC');
+const todayWeekday = isoWeekdayOfCalendarDate(today); // 1 (Mon) .. 7 (Sun)
+const mondayOfThisWeek = addCalendarDays(today, -(todayWeekday - 1));
+
+/**
+ * A `startDate` that is itself a Monday, `weeksAgo` full calendar weeks
+ * before the Monday of the week `today` falls in — so "today" always lands
+ * in week `weeksAgo + 1` of a program that started there, regardless of
+ * which weekday the test happens to run on. The Monday anchor is what
+ * makes that true: `daysSinceWeekOneMonday` is always in `[7*weeksAgo,
+ * 7*weeksAgo + 6]`, so `floor(daysSinceWeekOneMonday / 7) + 1` is always
+ * `weeksAgo + 1` (`../../features/assignments/advance-assignment.ts`'s
+ * `computeAssignmentWeekProgress`).
+ */
+function startDateWeeksAgo(weeksAgo: number): string {
+  return addCalendarDays(mondayOfThisWeek, -7 * weeksAgo);
+}
+
 function caller(coach: Coach) {
   return appRouter.createCaller(coach.ctx);
 }
@@ -193,17 +218,23 @@ describe('assignments.create', () => {
     const firstProgram = await insertProgram(coach.profileId, 'First program', 6);
     const secondProgram = await insertProgram(coach.profileId, 'Second program', 4);
 
+    // `today`, not a fixed calendar literal — `assignment/05`'s conflict
+    // check now runs the found row through `syncAssignmentProgress`
+    // (`../../features/assignments/advance-assignment.ts`), so a hardcoded
+    // past date would eventually — and, as of this suite, ALREADY does —
+    // read as an expired program and auto-complete before this test's own
+    // second `create` call ever gets to see it as a conflict.
     const first = await caller(coach).assignments.create({
       programId: firstProgram.id,
       clientId: client.profileId,
-      startDate: '2026-08-01',
+      startDate: today,
     });
 
     const cause = await causeOf(
       caller(coach).assignments.create({
         programId: secondProgram.id,
         clientId: client.profileId,
-        startDate: '2026-08-15',
+        startDate: today,
       }),
     );
 
@@ -239,13 +270,13 @@ describe('assignments.create', () => {
         programId: programA.id,
         clientId: client.profileId,
         coachId: coach.profileId,
-        startDate: '2026-08-01',
+        startDate: today, // see the note in the test above this one
       }),
       createAssignment(db, {
         programId: programB.id,
         clientId: client.profileId,
         coachId: coach.profileId,
-        startDate: '2026-08-01',
+        startDate: today,
       }),
     ]);
 
@@ -423,7 +454,7 @@ describe('assignments.assignableClients', () => {
     await caller(coach).assignments.create({
       programId: program.id,
       clientId: withProgram.profileId,
-      startDate: '2026-08-01',
+      startDate: today, // see the note on `today` vs. a fixed literal above
     });
 
     const page = await caller(coach).assignments.assignableClients({ limit: 20 });
@@ -538,5 +569,306 @@ describe('assignments.create — session materialisation wiring', () => {
       .from(schema.assignments)
       .where(eq(schema.assignments.clientId, client.profileId));
     expect(rows).toHaveLength(0);
+  });
+});
+
+// `assignment/05` — current_week advance and completion
+// (`../../features/assignments/advance-assignment.ts`, decision (a)):
+// computed-on-read with a lazy write-back, exercised here through
+// `assignments.get`, the one procedure this task adds to actually read a
+// single assignment.
+describe('assignments.get — current_week advance and completion', () => {
+  it('computes current_week from start_date and today, mid-program, and writes the correction back', async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const program = await insertProgram(coach.profileId, 'Long program', 8);
+
+    const assignment = await caller(coach).assignments.create({
+      programId: program.id,
+      clientId: client.profileId,
+      startDate: startDateWeeksAgo(2), // today falls in week 3 of 8
+    });
+
+    const result = await caller(coach).assignments.get({ assignmentId: assignment.id });
+    expect(result.currentWeek).toBe(3);
+    expect(result.status).toBe('active');
+    expect(result.completedAt).toBeNull();
+
+    // The lazy write-back: the STORED column is corrected too, not just
+    // the value handed back to this one caller.
+    const [row] = await db
+      .select({ currentWeek: schema.assignments.currentWeek })
+      .from(schema.assignments)
+      .where(eq(schema.assignments.id, assignment.id));
+    expect(row?.currentWeek).toBe(3);
+  });
+
+  it('caps current_week at duration_weeks while still inside the final week', async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const program = await insertProgram(coach.profileId, 'Three-week program', 3);
+
+    const assignment = await caller(coach).assignments.create({
+      programId: program.id,
+      clientId: client.profileId,
+      startDate: startDateWeeksAgo(2), // today falls in week 3, the program's last
+    });
+
+    const result = await caller(coach).assignments.get({ assignmentId: assignment.id });
+    expect(result.currentWeek).toBe(3);
+    expect(result.status).toBe('active');
+  });
+
+  it('auto-completes once today is past the final week, without manual coach action', async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const program = await insertProgram(coach.profileId, 'Two-week program', 2);
+
+    const assignment = await caller(coach).assignments.create({
+      programId: program.id,
+      clientId: client.profileId,
+      // today is in week 3 — one full week past this 2-week program's end.
+      startDate: startDateWeeksAgo(2),
+    });
+
+    const result = await caller(coach).assignments.get({ assignmentId: assignment.id });
+    expect(result.status).toBe('completed');
+    expect(result.completedAt).not.toBeNull();
+    // Capped at duration_weeks, not left at the raw overshoot value (3).
+    expect(result.currentWeek).toBe(2);
+
+    const [row] = await db
+      .select({ status: schema.assignments.status, completedAt: schema.assignments.completedAt })
+      .from(schema.assignments)
+      .where(eq(schema.assignments.id, assignment.id));
+    expect(row?.status).toBe('completed');
+    expect(row?.completedAt).not.toBeNull();
+  });
+
+  it('does not advance or auto-complete a paused assignment', async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const program = await insertProgram(coach.profileId, 'Paused program', 2);
+
+    const assignment = await caller(coach).assignments.create({
+      programId: program.id,
+      clientId: client.profileId,
+      startDate: startDateWeeksAgo(0),
+    });
+    await caller(coach).assignments.pause({ assignmentId: assignment.id });
+
+    // Force the row into a state that WOULD both advance the week and
+    // trip completion if this were still active — proving the paused
+    // branch short-circuits before any of that computation happens.
+    await db
+      .update(schema.assignments)
+      .set({ startDate: startDateWeeksAgo(5), currentWeek: 1 })
+      .where(eq(schema.assignments.id, assignment.id));
+
+    const result = await caller(coach).assignments.get({ assignmentId: assignment.id });
+    expect(result.status).toBe('paused');
+    expect(result.currentWeek).toBe(1);
+    expect(result.completedAt).toBeNull();
+  });
+
+  it("assigning a new program auto-completes a client's stale-active assignment instead of blocking on it", async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const finishedProgram = await insertProgram(coach.profileId, 'Already finished', 2);
+    const nextProgram = await insertProgram(coach.profileId, 'The next one', 4);
+
+    const first = await caller(coach).assignments.create({
+      programId: finishedProgram.id,
+      clientId: client.profileId,
+      startDate: startDateWeeksAgo(2), // one week past this 2-week program's end
+    });
+
+    // No `assignments.get`, no `assignments.complete` — the first thing to
+    // ever touch this stale-active assignment is the new create's own
+    // `CLIENT_ALREADY_HAS_ACTIVE_ASSIGNMENT` conflict check.
+    const second = await caller(coach).assignments.create({
+      programId: nextProgram.id,
+      clientId: client.profileId,
+      startDate: today,
+    });
+
+    const [firstRow] = await db
+      .select({ status: schema.assignments.status })
+      .from(schema.assignments)
+      .where(eq(schema.assignments.id, first.id));
+    expect(firstRow?.status).toBe('completed');
+
+    const [secondRow] = await db
+      .select({ status: schema.assignments.status })
+      .from(schema.assignments)
+      .where(eq(schema.assignments.id, second.id));
+    expect(secondRow?.status).toBe('active');
+  });
+});
+
+// `assignment/05`'s feature-level acceptance criterion: "week advance and
+// completion transitions ... don't orphan scheduled sessions" — decision
+// (c), `../../features/assignments/advance-assignment.ts`'s
+// `discardOrphanedScheduledSessions`. Soft-deleted (`deleted_at` set,
+// `status` left as `'scheduled'`), not flipped to `'skipped'` — that file's
+// header comment carries the three reasons; the third test below proves
+// the second of them concretely (freeing `sessions_client_day_unique`'s
+// slot for a re-assignment).
+describe('assignment completion discards orphaned scheduled sessions', () => {
+  async function insertProgramWithWeeklyDay(
+    coachProfileId: string,
+    durationWeeks: number,
+  ): Promise<{ id: string }> {
+    const program = await insertProgram(coachProfileId, 'Weekly-day program', durationWeeks);
+    for (let weekNumber = 1; weekNumber <= durationWeeks; weekNumber += 1) {
+      const [week] = await db
+        .insert(schema.programWeeks)
+        .values({ programId: program.id, weekNumber })
+        .returning({ id: schema.programWeeks.id });
+      if (!week) throw new Error('seed insert into program_weeks did not return a row');
+      await db.insert(schema.programDays).values({
+        programWeekId: week.id,
+        dayNumber: 1, // Monday
+        name: `Week ${weekNumber} day`,
+        isRestDay: false,
+      });
+    }
+    return program;
+  }
+
+  it('manual completion mid-program soft-deletes every still-scheduled session, past or future', async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const program = await insertProgramWithWeeklyDay(coach.profileId, 4);
+
+    // Week 1 starts this Monday; weeks 2-4 materialise into the future.
+    const assignment = await caller(coach).assignments.create({
+      programId: program.id,
+      clientId: client.profileId,
+      startDate: mondayOfThisWeek,
+    });
+
+    await caller(coach).assignments.complete({ assignmentId: assignment.id });
+
+    const sessions = await db
+      .select({
+        status: schema.workoutSessions.status,
+        deletedAt: schema.workoutSessions.deletedAt,
+      })
+      .from(schema.workoutSessions)
+      .where(eq(schema.workoutSessions.assignmentId, assignment.id));
+
+    expect(sessions).toHaveLength(4);
+    // `status` is untouched — still `'scheduled'` — only `deleted_at` marks
+    // these as discarded (decision (c), reason 1: a `'skipped'` status
+    // would be a false claim about the CLIENT's behaviour).
+    expect(sessions.every((s) => s.status === 'scheduled')).toBe(true);
+    expect(sessions.every((s) => s.deletedAt !== null)).toBe(true);
+  });
+
+  it('auto-completion on read soft-deletes every still-scheduled session left over from the finished program', async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const program = await insertProgramWithWeeklyDay(coach.profileId, 2);
+
+    const assignment = await caller(coach).assignments.create({
+      programId: program.id,
+      clientId: client.profileId,
+      // Both weeks are in the past; today is week 3 — nobody ever started
+      // either of these two sessions.
+      startDate: startDateWeeksAgo(2),
+    });
+
+    await caller(coach).assignments.get({ assignmentId: assignment.id });
+
+    const sessions = await db
+      .select({
+        status: schema.workoutSessions.status,
+        deletedAt: schema.workoutSessions.deletedAt,
+      })
+      .from(schema.workoutSessions)
+      .where(eq(schema.workoutSessions.assignmentId, assignment.id));
+
+    expect(sessions).toHaveLength(2);
+    expect(sessions.every((s) => s.status === 'scheduled')).toBe(true);
+    expect(sessions.every((s) => s.deletedAt !== null)).toBe(true);
+  });
+
+  it('reason 2: frees sessions_client_day_unique so re-assigning the same program over the same dates succeeds', async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const program = await insertProgramWithWeeklyDay(coach.profileId, 4);
+
+    // First assignment materialises 4 Monday sessions, weeks 1-4, all
+    // still `'scheduled'` — none ever started.
+    const first = await caller(coach).assignments.create({
+      programId: program.id,
+      clientId: client.profileId,
+      startDate: mondayOfThisWeek,
+    });
+
+    // Completing early, BEFORE any of those Mondays are reached, is
+    // exactly the case that would previously have left `'skipped'`,
+    // not-deleted rows sitting on `sessions_client_day_unique`'s slot.
+    await caller(coach).assignments.complete({ assignmentId: first.id });
+
+    // Re-assigning the SAME program to the SAME client over the SAME
+    // start date recomputes the IDENTICAL four `scheduled_date` values
+    // (`../../lib/materialise-sessions.ts`'s `calendarDateForProgramDay`
+    // is a pure function of `programId`/`startDate`) — under the old
+    // `'skipped'`-only behaviour this would abort with a raw 23505 on
+    // `sessions_client_day_unique` (that index is partial on
+    // `deleted_at IS NULL`, so a merely-`'skipped'` row still occupies it).
+    // Soft-deleting frees the slot, so this now succeeds.
+    const second = await caller(coach).assignments.create({
+      programId: program.id,
+      clientId: client.profileId,
+      startDate: mondayOfThisWeek,
+    });
+
+    const secondSessions = await db
+      .select({ scheduledDate: schema.workoutSessions.scheduledDate })
+      .from(schema.workoutSessions)
+      .where(eq(schema.workoutSessions.assignmentId, second.id));
+    expect(secondSessions).toHaveLength(4);
+
+    // The first assignment's own (now discarded) sessions are untouched by
+    // the second's materialisation — still 4, still soft-deleted.
+    const firstSessions = await db
+      .select({ deletedAt: schema.workoutSessions.deletedAt })
+      .from(schema.workoutSessions)
+      .where(eq(schema.workoutSessions.assignmentId, first.id));
+    expect(firstSessions).toHaveLength(4);
+    expect(firstSessions.every((s) => s.deletedAt !== null)).toBe(true);
+  });
+});
+
+// `assignment/05`: the coach's client picker (`../../features/assignments/assignable-clients.ts`)
+// shows a correct, live-computed current_week without needing a prior
+// `assignments.get` to have touched the row first.
+describe('assignments.assignableClients — displays the live-computed current_week', () => {
+  it("shows the corrected current_week for a client's active assignment with no prior touch", async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const program = await insertProgram(coach.profileId, 'Their program', 8);
+
+    await caller(coach).assignments.create({
+      programId: program.id,
+      clientId: client.profileId,
+      startDate: startDateWeeksAgo(2), // today falls in week 3
+    });
+
+    const page = await caller(coach).assignments.assignableClients({ limit: 20 });
+    const item = page.items.find((entry) => entry.id === client.profileId);
+    expect(item?.activeAssignment?.currentWeek).toBe(3);
+
+    // Display-only — the stored column is untouched until something else
+    // reads this specific assignment (`assignments.get`, or a future
+    // `assignments.create` conflict check).
+    const [row] = await db
+      .select({ currentWeek: schema.assignments.currentWeek })
+      .from(schema.assignments)
+      .where(eq(schema.assignments.clientId, client.profileId));
+    expect(row?.currentWeek).toBe(1);
   });
 });

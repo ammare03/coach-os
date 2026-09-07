@@ -5,7 +5,14 @@
 // timestamp — so every function here takes a timezone explicitly. None of
 // them reads an ambient device/server timezone; that ambient read is
 // exactly the bug this module exists to prevent.
-import { addDays, endOfWeek, formatDistanceToNow, getISODay, startOfWeek } from 'date-fns';
+import {
+  addDays,
+  differenceInCalendarDays,
+  endOfWeek,
+  formatDistanceToNow,
+  getISODay,
+  startOfWeek,
+} from 'date-fns';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 
 /**
@@ -126,6 +133,21 @@ export function addCalendarDays(date: CalendarDate, days: number): CalendarDate 
  */
 export function isoWeekdayOfCalendarDate(date: CalendarDate): number {
   return getISODay(toCalendarArithmeticDate(date));
+}
+
+/**
+ * Whole calendar days from `from` to `to` (negative if `to` precedes
+ * `from`). Pure calendar arithmetic, the inverse of {@link addCalendarDays}
+ * — added for `assignment/05-week-advance-and-completion.md`'s
+ * `current_week` computation, which needs "how many calendar weeks has the
+ * client been in this program" as a plain day-count divided by 7, aligned
+ * to the same Monday-of-week-one anchor `assignment/03`'s
+ * `calendarDateForProgramDay` uses. This was the one day-difference helper
+ * this file didn't already have; add future date math here, never
+ * reimplement it in `apps/api` (`CLAUDE.md` §25.5).
+ */
+export function diffCalendarDays(from: CalendarDate, to: CalendarDate): number {
+  return differenceInCalendarDays(toCalendarArithmeticDate(to), toCalendarArithmeticDate(from));
 }
 
 /**

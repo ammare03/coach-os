@@ -5,6 +5,7 @@
 // results.
 import {
   addCalendarDays,
+  diffCalendarDays,
   formatLocalDate,
   formatRelativeToNow,
   isoWeekdayOfCalendarDate,
@@ -200,4 +201,33 @@ describe('isoWeekdayOfCalendarDate', () => {
 
   // Same note as `addCalendarDays` above: no `process.env.TZ`-toggling test
   // here, for the same reason — the guarantee is definitional, not runtime.
+});
+
+describe('diffCalendarDays', () => {
+  it('counts whole days forward', () => {
+    expect(diffCalendarDays('2026-08-10', '2026-08-17')).toBe(7);
+  });
+
+  it('counts negative when `to` precedes `from`', () => {
+    expect(diffCalendarDays('2026-08-17', '2026-08-10')).toBe(-7);
+  });
+
+  it('is zero for the same date', () => {
+    expect(diffCalendarDays('2026-08-10', '2026-08-10')).toBe(0);
+  });
+
+  it('crosses a month boundary correctly', () => {
+    expect(diffCalendarDays('2026-08-30', '2026-09-02')).toBe(3);
+  });
+
+  it('is the exact inverse of addCalendarDays', () => {
+    const start = '2026-08-10';
+    const end = addCalendarDays(start, 41);
+    expect(diffCalendarDays(start, end)).toBe(41);
+  });
+
+  it('rejects a malformed calendar date', () => {
+    expect(() => diffCalendarDays('not-a-date', '2026-08-10')).toThrow(RangeError);
+    expect(() => diffCalendarDays('2026-08-10', 'not-a-date')).toThrow(RangeError);
+  });
 });

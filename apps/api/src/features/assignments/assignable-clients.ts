@@ -6,7 +6,10 @@ import {
   type Program,
 } from '@coachos/db';
 import type { PaginationInput } from '@coachos/schemas';
+import { toLocalDate } from '@coachos/utils';
 import { and, desc, eq, inArray, isNull, lt } from 'drizzle-orm';
+
+import { computeAssignmentWeekProgress } from './advance-assignment.ts';
 
 // `assignments.assignableClients` (`assignment/01`) — the picker's list.
 //
@@ -30,6 +33,20 @@ import { and, desc, eq, inArray, isNull, lt } from 'drizzle-orm';
 // accepted yet has never opened the app and has nothing to materialise a
 // session into (`assignment/03`). `archived` is excluded by name in the
 // task doc. This reading isn't settled with Ammar; flagged in the PR.
+//
+// `assignment/05`: `currentWeek` below is recomputed for DISPLAY via
+// `computeAssignmentWeekProgress` (`./advance-assignment.ts`), not read
+// raw off the stored column — this is a multi-row list, so it cannot call
+// `syncAssignmentProgress`'s per-row write-back without a query-per-row
+// loop (`code-conventions` §7). The number shown is always correct; the
+// STORED column for a row nobody has individually opened may lag until
+// `assignments.get` or `assignments.create`'s conflict check next touches
+// it — see that module's header comment for the full reasoning. An
+// assignment whose final week has already passed still displays here
+// (capped at `durationWeeks`) until one of those paths flips its `status`
+// to `'completed'`, at which point this LEFT JOIN's `status = 'active'`
+// condition stops matching it and the client shows "No active program"
+// automatically, with nothing to reconcile on this file's part.
 
 export const ASSIGNABLE_CLIENT_STATUSES = [
   'active',
@@ -79,7 +96,9 @@ export async function listAssignableClients(
       name: schema.users.name,
       status: schema.clientProfiles.status,
       createdAt: schema.clientProfiles.createdAt,
+      timezone: schema.users.timezone,
       assignmentId: schema.assignments.id,
+      assignmentStartDate: schema.assignments.startDate,
       currentWeek: schema.assignments.currentWeek,
       programName: schema.programs.name,
       durationWeeks: schema.programs.durationWeeks,
@@ -104,23 +123,37 @@ export async function listAssignableClients(
     ? (pageItems[pageItems.length - 1]?.createdAt.toISOString() ?? null)
     : null;
 
-  const items: AssignableClient[] = pageItems.map((row) => ({
-    id: row.id,
-    name: row.name,
-    status: row.status,
-    activeAssignment:
-      row.assignmentId !== null &&
-      row.currentWeek !== null &&
-      row.programName !== null &&
-      row.durationWeeks !== null
-        ? {
-            id: row.assignmentId,
-            currentWeek: row.currentWeek,
-            programName: row.programName,
-            durationWeeks: row.durationWeeks,
-          }
-        : null,
-  }));
+  const items: AssignableClient[] = pageItems.map((row) => {
+    if (
+      row.assignmentId === null ||
+      row.assignmentStartDate === null ||
+      row.currentWeek === null ||
+      row.programName === null ||
+      row.durationWeeks === null
+    ) {
+      return { id: row.id, name: row.name, status: row.status, activeAssignment: null };
+    }
+
+    // Display-only recomputation — see this file's header comment above.
+    const today = toLocalDate(new Date(), row.timezone);
+    const { currentWeek } = computeAssignmentWeekProgress(
+      row.assignmentStartDate,
+      today,
+      row.durationWeeks,
+    );
+
+    return {
+      id: row.id,
+      name: row.name,
+      status: row.status,
+      activeAssignment: {
+        id: row.assignmentId,
+        currentWeek,
+        programName: row.programName,
+        durationWeeks: row.durationWeeks,
+      },
+    };
+  });
 
   return { items, nextCursor };
 }

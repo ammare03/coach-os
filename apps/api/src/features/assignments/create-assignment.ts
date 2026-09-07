@@ -6,6 +6,8 @@ import { unwrapDatabaseError } from '../../db/is-database-error.ts';
 import { appError } from '../../lib/app-error.ts';
 import { materialiseSessions } from '../../lib/materialise-sessions.ts';
 
+import { syncAssignmentProgress } from './advance-assignment.ts';
+
 // `assignments.create` (`assignment/01`, extended by `assignment/03`) — the
 // first write to `training.assignments`, and the write that turns a
 // program's day/week structure into real `workout_sessions` rows
@@ -48,7 +50,19 @@ export type CreatedAssignment = Pick<Assignment, 'id'>;
 
 type ConflictPayload = AppErrorPayloads['CLIENT_ALREADY_HAS_ACTIVE_ASSIGNMENT'];
 
-/** The client's current active assignment, joined with its program's name and length — everything the conflict card needs, or `null` if there isn't one. */
+/**
+ * The client's current active assignment, joined with its program's name
+ * and length — everything the conflict card needs, or `null` if there
+ * isn't one.
+ *
+ * `assignment/05`: before reporting a conflict, this runs the candidate
+ * row through `syncAssignmentProgress` (`./advance-assignment.ts`,
+ * decision (a)) — a stored `'active'` row whose program's final week has
+ * actually already passed is corrected to `'completed'` right here, so a
+ * coach is never blocked from assigning a new program to a client whose
+ * previous one only *looks* active because nothing has read it recently.
+ * If the sync flips it to `'completed'`, there is no conflict to report.
+ */
 async function activeAssignmentConflict(
   db: DbClient,
   clientId: string,
@@ -56,7 +70,6 @@ async function activeAssignmentConflict(
   const [row] = await db
     .select({
       assignmentId: schema.assignments.id,
-      currentWeek: schema.assignments.currentWeek,
       programName: schema.programs.name,
       durationWeeks: schema.programs.durationWeeks,
     })
@@ -65,10 +78,14 @@ async function activeAssignmentConflict(
     .where(and(eq(schema.assignments.clientId, clientId), eq(schema.assignments.status, 'active')))
     .limit(1);
   if (!row) return null;
+
+  const synced = await syncAssignmentProgress(db, row.assignmentId);
+  if (!synced || synced.status !== 'active') return null;
+
   return {
     assignmentId: row.assignmentId,
     programName: row.programName,
-    currentWeek: row.currentWeek,
+    currentWeek: synced.currentWeek,
     durationWeeks: row.durationWeeks,
   };
 }
