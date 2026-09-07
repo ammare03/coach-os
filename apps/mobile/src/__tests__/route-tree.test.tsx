@@ -157,7 +157,9 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
 
   ['(coach)/(tabs)/index', '/(coach)/(tabs)'],
   ['(coach)/(tabs)/clients', '/(coach)/(tabs)/clients'],
-  ['(coach)/(tabs)/programs', '/(coach)/(tabs)/programs'],
+  // `(coach)/(tabs)/programs` was a placeholder here until
+  // `program-templates/01` composed the real templates list; it moved to
+  // SUBSTITUTED for the same reason `(coach)/exercise-library` did.
   ['(coach)/(tabs)/inbox', '/(coach)/(tabs)/inbox'],
   ['(coach)/(tabs)/more', '/(coach)/(tabs)/more'],
   ['(coach)/client/[id]/index', '/(coach)/client/c1'],
@@ -258,6 +260,11 @@ const SUBSTITUTED = new Set([
   // covered by `src/features/programs/`.
   '(coach)/program/[id]/index',
   '(coach)/program/[id]/day/[dayId]',
+  // Real as of `program-templates/01`, and the same reason again: the
+  // templates list reads `programs.listTemplates` through TanStack Query.
+  // What it renders is covered by
+  // `src/features/programs/screens/__tests__/ProgramTemplatesScreen.test.tsx`.
+  '(coach)/(tabs)/programs',
 ]);
 
 /**

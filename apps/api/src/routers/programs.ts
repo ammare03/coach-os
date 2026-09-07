@@ -1,5 +1,6 @@
-import { programs as programsSchemas } from '@coachos/schemas';
+import { paginationInput, programs as programsSchemas } from '@coachos/schemas';
 
+import { archiveProgram, unarchiveProgram } from '../features/programs/archive-program.ts';
 import { createProgramDay } from '../features/programs/create-program-day.ts';
 import { createProgramExercise } from '../features/programs/create-program-exercise.ts';
 import { createProgramWeek } from '../features/programs/create-program-week.ts';
@@ -9,8 +10,10 @@ import { deleteProgramExercise } from '../features/programs/delete-program-exerc
 import { deleteProgramWeek } from '../features/programs/delete-program-week.ts';
 import { duplicateProgramDay } from '../features/programs/duplicate-program-day.ts';
 import { duplicateProgramWeek } from '../features/programs/duplicate-program-week.ts';
+import { duplicateProgram } from '../features/programs/duplicate-program.ts';
 import { getProgramDay } from '../features/programs/get-program-day.ts';
 import { getProgram } from '../features/programs/get-program.ts';
+import { listProgramTemplates } from '../features/programs/list-program-templates.ts';
 import { reorderProgramExercises } from '../features/programs/reorder-program-exercises.ts';
 import { setAlternatives } from '../features/programs/set-alternatives.ts';
 import { setSupersetGroup } from '../features/programs/set-superset-group.ts';
@@ -223,6 +226,55 @@ export const programsRouter = router({
     .use(ownsResource('program', (i: { programId: string }) => i.programId))
     .mutation(async ({ ctx, input }) => {
       await updateProgram(ctx.db, input);
+    }),
+
+  // `program-templates/01` — the Programs tab's default view.
+  //
+  // `paginationInput` straight from the barrel, the shape every list
+  // procedure takes (`routers/me.ts` does the same). It is NOT re-exported
+  // through `programsSchemas`: that module may import only zod and
+  // `./primitives.ts` (`packages/schemas/src/__tests__/layout.test.ts`).
+  //
+  // No filter arguments. The two filters this view applies —
+  // `is_template = true` and `archived_at IS NULL` — are what the procedure
+  // IS, not parameters of it; making either optional would put an archived
+  // program one boolean away from a screen with no way to render it
+  // (`program-templates/03`).
+  //
+  // `coachProcedure` and no `ownsResource`, for the reason `create` has
+  // none: the only row this reads is the caller, and the owning coach is
+  // `ctx.user.coachProfileId` rather than anything the caller sent. A
+  // `coachId` in the input would be exactly the enumeration hole §6.2
+  // exists to close.
+  listTemplates: coachProcedure
+    .input(paginationInput)
+    .query(({ ctx, input }) => listProgramTemplates(ctx.db, ctx.user.coachProfileId, input)),
+
+  // `program-templates/02` — the whole-program copy, across programs, where
+  // `weeks.duplicate` could only ever copy within one. ONE guard: the
+  // destination is a new program this call creates and the caller owns, so
+  // `sourceProgramId` is the only row the input names.
+  duplicate: coachProcedure
+    .input(programsSchemas.duplicateProgramInput)
+    .use(ownsResource('program', (i: { sourceProgramId: string }) => i.sourceProgramId))
+    .mutation(({ ctx, input }) => duplicateProgram(ctx.db, ctx.user.coachProfileId, input)),
+
+  // `program-templates/03`. `archived_at` is DB§2's general soft-delete
+  // convention — archiving drops a program out of `listTemplates` without
+  // deleting it, and never disturbs a client already assigned to it
+  // (`assignment` owns that side of the contract).
+  archive: coachProcedure
+    .input(programsSchemas.archiveProgramInput)
+    .use(ownsResource('program', (i: { programId: string }) => i.programId))
+    .mutation(async ({ ctx, input }) => {
+      await archiveProgram(ctx.db, input.programId);
+    }),
+
+  unarchive: coachProcedure
+    .input(programsSchemas.unarchiveProgramInput)
+    .use(ownsResource('program', (i: { programId: string }) => i.programId))
+    .mutation(async ({ ctx, input }) => {
+      await unarchiveProgram(ctx.db, input.programId);
     }),
 
   weeks: programWeeksRouter,

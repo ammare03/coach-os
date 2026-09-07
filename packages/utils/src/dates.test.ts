@@ -3,7 +3,13 @@
 // case below names its timezone explicitly and never touches the local
 // clock, so `TZ=<anything> pnpm test` is expected to be a no-op on the
 // results.
-import { formatLocalDate, localDateRangeUtc, localWeekRangeUtc, toLocalDate } from './dates.ts';
+import {
+  formatLocalDate,
+  formatRelativeToNow,
+  localDateRangeUtc,
+  localWeekRangeUtc,
+  toLocalDate,
+} from './dates.ts';
 
 describe('toLocalDate', () => {
   it('assigns a 00:30 local workout to the next day in a positive-offset zone', () => {
@@ -88,5 +94,34 @@ describe('formatLocalDate', () => {
   it('formats with a caller-supplied format string', () => {
     const at = new Date('2026-08-14T18:30:00Z');
     expect(formatLocalDate(at, 'Asia/Kolkata', 'yyyy/MM/dd')).toBe('2026/08/15');
+  });
+});
+
+describe('formatRelativeToNow', () => {
+  const HOUR_MS = 60 * 60 * 1000;
+  const DAY_MS = 24 * HOUR_MS;
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-15T00:00:00Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('reads "ago" for a moment in the past', () => {
+    expect(formatRelativeToNow(new Date(Date.now() - 2 * DAY_MS))).toBe('2 days ago');
+  });
+
+  it('scales to weeks and months for older instants', () => {
+    expect(formatRelativeToNow(new Date(Date.now() - 14 * DAY_MS))).toBe('14 days ago');
+    expect(formatRelativeToNow(new Date(Date.now() - 35 * DAY_MS))).toBe('about 1 month ago');
+  });
+
+  it('does not depend on the device timezone', () => {
+    // Elapsed-time phrasing, unlike everything else in this file — the
+    // instant itself already carries the only clock that matters.
+    const at = new Date(Date.now() - HOUR_MS);
+    expect(formatRelativeToNow(at)).toBe('about 1 hour ago');
   });
 });

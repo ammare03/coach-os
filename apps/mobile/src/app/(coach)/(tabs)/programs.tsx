@@ -1,13 +1,17 @@
-import { CoachTabPlaceholder } from '../../../features/navigation/coach/CoachTabPlaceholder.tsx';
+import { useRouter } from 'expo-router';
 
-// Composition only (`CLAUDE.md` §9.2). A genuine placeholder — the phase
-// named below designs and builds this screen, and anything added here first
-// would have to be deleted then (`router-skeleton/03`, Risks).
+import { ProgramTemplatesScreen } from '../../../features/programs/screens/ProgramTemplatesScreen.tsx';
+
+// Composition only (`CLAUDE.md` §9.2) — the screen owns its query and
+// states; this file owns where a tap goes (`program-templates/01`).
 export default function CoachProgramsScreen() {
+  const router = useRouter();
+
   return (
-    <CoachTabPlaceholder
-      route="(coach)/(tabs)/programs"
-      ownedBy="phase-07-exercise-and-program-authoring/"
+    <ProgramTemplatesScreen
+      onOpenProgram={(programId) => {
+        router.push({ pathname: '/(coach)/program/[id]', params: { id: programId } });
+      }}
     />
   );
 }

@@ -10,7 +10,7 @@ import {
   Text,
 } from '@coachos/ui';
 import { useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 // Frame 1h — the same sheet creates a program and edits one.
 //
@@ -30,6 +30,14 @@ export interface ProgramDetailsValues {
   name: string;
   description: string;
   durationWeeks: number;
+  /**
+   * `program-templates/01`. Only shown, and only meaningful, once a program
+   * already exists (`mode === 'edit'`) — a freshly created program is
+   * already a template by DB§5.2's own default, and `programs.create` takes
+   * no `isTemplate` of its own (`program-templates/02`'s duplicate is the
+   * same: it inherits the source's).
+   */
+  isTemplate: boolean;
 }
 
 export interface ProgramDetailsSheetProps {
@@ -43,7 +51,12 @@ export interface ProgramDetailsSheetProps {
   onSave: (values: ProgramDetailsValues) => void;
 }
 
-const EMPTY: ProgramDetailsValues = { name: '', description: '', durationWeeks: 1 };
+const EMPTY: ProgramDetailsValues = {
+  name: '',
+  description: '',
+  durationWeeks: 1,
+  isTemplate: true,
+};
 
 export function ProgramDetailsSheet({
   isOpen,
@@ -140,6 +153,35 @@ export function ProgramDetailsSheet({
             {lengthError}
           </Text>
         ) : null}
+
+        {mode === 'edit' ? (
+          <>
+            <Divider />
+            <View style={styles.templateRow}>
+              <View style={styles.templateCopy}>
+                <Text size="label">Reusable template</Text>
+                {/* States the live-reference consequence as fact, never a
+                    warning (`program-templates/04`'s resolution) — a
+                    template edit reaches every client already assigned to
+                    it, it does not fork a copy. Turning this off is not
+                    destructive: nothing is lost, the program simply stops
+                    offering itself for assignment, so it gets no confirm. */}
+                <Text size="micro" tone="muted" style={styles.templateHint}>
+                  Shows in Programs, ready to assign to any client. Edits you make here reach
+                  everyone currently on it.
+                </Text>
+              </View>
+              <Switch
+                value={values.isTemplate}
+                onValueChange={(isTemplate) => {
+                  setValues((current) => ({ ...current, isTemplate }));
+                }}
+                accessibilityLabel="Reusable template"
+                testID="program-is-template"
+              />
+            </View>
+          </>
+        ) : null}
       </ScrollView>
       <SheetFooter
         actionLabel={mode === 'create' ? 'Create program' : 'Save'}
@@ -164,4 +206,11 @@ const styles = StyleSheet.create({
     gap: spacing(12),
   },
   lengthLabel: { gap: spacing(3) },
+  templateRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing(14),
+  },
+  templateCopy: { flex: 1, minWidth: 0, gap: spacing(4) },
+  templateHint: { flexShrink: 1 },
 });

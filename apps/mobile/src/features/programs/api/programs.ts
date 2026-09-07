@@ -27,3 +27,24 @@ export function useProgramDay(programDayId: string, enabled = true) {
 export type ProgramDayDetail = NonNullable<ReturnType<typeof useProgramDay>['data']>;
 export type ProgramDayExercise = ProgramDayDetail['exercises'][number];
 export type ProgramDaySlot = ProgramDayDetail['siblingDays'][number];
+
+/**
+ * The Programs tab's default view (`program-templates/01`). Keyset-paginated
+ * — `code-conventions` §5, `ui-conventions` §6 — most-recently-edited page
+ * first, exactly as `programs.listTemplates` orders it server-side.
+ */
+export function useProgramTemplates() {
+  return api.programs.listTemplates.useInfiniteQuery(
+    {},
+    { getNextPageParam: (page) => page.nextCursor ?? undefined },
+  );
+}
+
+export type ProgramTemplate = NonNullable<
+  ReturnType<typeof useProgramTemplates>['data']
+>['pages'][number]['items'][number];
+
+/** The "New program" sheet's write, whichever entry point opened it. */
+export function useCreateProgram() {
+  return api.programs.create.useMutation();
+}

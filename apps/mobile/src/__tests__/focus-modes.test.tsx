@@ -25,12 +25,25 @@ import CoachClientsScreen from '../app/(coach)/(tabs)/clients.tsx';
 import CoachInboxScreen from '../app/(coach)/(tabs)/inbox.tsx';
 import CoachHomeScreen from '../app/(coach)/(tabs)/index.tsx';
 import CoachMoreScreen from '../app/(coach)/(tabs)/more.tsx';
-import CoachProgramsScreen from '../app/(coach)/(tabs)/programs.tsx';
 import CoachLayout from '../app/(coach)/_layout.tsx';
 import CoachLiveScreen from '../app/(coach)/live/[sessionId].tsx';
 import CoachSessionScreen from '../app/(coach)/session/[id].tsx';
 import CoachVideoScreen from '../app/(coach)/video/[id].tsx';
 import { useAuthStore } from '../features/auth/store.ts';
+import { RouteStub } from '../test-support/route-stub.tsx';
+
+/**
+ * Real as of `program-templates/01`. This file is about focus-mode return
+ * behaviour, not a screen's content — and the real screen reads
+ * `programs.listTemplates` through TanStack Query, which needs the tRPC
+ * provider these bare-`Stack` trees deliberately don't mount. Standing in
+ * for it here is exactly what `route-tree.test.tsx`'s own `SUBSTITUTED` set
+ * does for the same reason; what it actually renders is
+ * `ProgramTemplatesScreen.test.tsx`'s job.
+ */
+function CoachProgramsScreen() {
+  return <RouteStub route="(coach)/(tabs)/programs" />;
+}
 
 // `phase-05-app-shell/navigation-primitives/01`, as a test rather than a
 // manual pass through the dev URL bar. Its Risks section is explicit that the

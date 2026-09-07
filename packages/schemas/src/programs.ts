@@ -292,6 +292,12 @@ export const updateProgramInput = strictObject({
   name: programName.optional(),
   description: programNotes.nullable().optional(),
   durationWeeks: durationWeeks.optional(),
+  /**
+   * `program-templates/01`. Absent means leave it alone, the same bargain
+   * every field above makes — the details sheet saves a rename without
+   * having to restate what kind of program this is.
+   */
+  isTemplate: z.boolean().optional(),
 });
 export type UpdateProgramInput = z.infer<typeof updateProgramInput>;
 
@@ -663,3 +669,41 @@ export const duplicateProgramWeekInput = strictObject({
   targetWeekNumber: weekNumber.optional(),
 });
 export type DuplicateProgramWeekInput = z.infer<typeof duplicateProgramWeekInput>;
+
+// ---------------------------------------------------------------------------
+// Whole-program duplication — `programs.duplicate` (`program-templates/02`)
+// ---------------------------------------------------------------------------
+
+/**
+ * `programs.duplicate` — the whole-program copy (`program-templates/02`).
+ *
+ * **One row, and the destination is not a row at all.** Unlike
+ * `duplicateProgramDayInput`, which names a source and a target week, the copy
+ * this makes is a NEW program owned by the caller, so there is nothing to
+ * guard but `sourceProgramId` and nothing for it to collide with.
+ *
+ * `newName` is required rather than defaulted to "X (copy)": a coach
+ * duplicating a template is on their way to making a different program out of
+ * it, and a server-invented name is one they would have to go and fix.
+ *
+ * There is no `isTemplate` here — the copy inherits the source's, and
+ * `programs.update`'s toggle is how a coach changes it afterwards
+ * (`program-templates/01`).
+ */
+export const duplicateProgramInput = strictObject({
+  sourceProgramId: id,
+  newName: programName,
+});
+export type DuplicateProgramInput = z.infer<typeof duplicateProgramInput>;
+
+/**
+ * `programs.archive` (`program-templates/03`) — sets `archived_at = now()`.
+ * Archiving stops a program from being assignable to a NEW client; it does
+ * not touch any client already on it (`assignment` owns that contract).
+ */
+export const archiveProgramInput = strictObject({ programId: id });
+export type ArchiveProgramInput = z.infer<typeof archiveProgramInput>;
+
+/** `programs.unarchive` — clears `archived_at`, the inverse of the above. */
+export const unarchiveProgramInput = strictObject({ programId: id });
+export type UnarchiveProgramInput = z.infer<typeof unarchiveProgramInput>;

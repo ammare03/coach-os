@@ -13,6 +13,14 @@ export interface UpdateProgramInput {
   /** `null` clears the notes; an absent key leaves them alone. */
   description?: string | null | undefined;
   durationWeeks?: number | undefined;
+  /**
+   * `program-templates/01`'s toggle. Turning it off is not destructive — the
+   * program just stops offering itself for assignment — so this is a plain
+   * field write, not a soft delete. Toggling it is not a structural edit and
+   * never touches `version`, which `program-templates/04` reserves for
+   * edits to the program's actual content (exercises, targets, structure).
+   */
+  isTemplate?: boolean | undefined;
 }
 
 /**
@@ -29,7 +37,8 @@ export async function updateProgram(db: DbClient, input: UpdateProgramInput): Pr
   const hasChange =
     changes.name !== undefined ||
     changes.description !== undefined ||
-    changes.durationWeeks !== undefined;
+    changes.durationWeeks !== undefined ||
+    changes.isTemplate !== undefined;
   // `updated_at` is maintained by DB§8.1's trigger, never set here — an
   // empty `.set()` would also be a Drizzle error, so this returns first.
   if (!hasChange) return;
@@ -58,6 +67,7 @@ export async function updateProgram(db: DbClient, input: UpdateProgramInput): Pr
         ...(changes.name !== undefined ? { name: changes.name } : {}),
         ...(changes.description !== undefined ? { description: changes.description } : {}),
         ...(changes.durationWeeks !== undefined ? { durationWeeks: changes.durationWeeks } : {}),
+        ...(changes.isTemplate !== undefined ? { isTemplate: changes.isTemplate } : {}),
       })
       .where(eq(schema.programs.id, programId));
   });
