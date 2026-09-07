@@ -117,6 +117,7 @@ export function ProgramBuilderScreen({
             name: data.name,
             description: data.description ?? '',
             durationWeeks: data.durationWeeks,
+            isTemplate: data.isTemplate,
           }
         : undefined,
     [data],
@@ -431,6 +432,7 @@ export function ProgramBuilderScreen({
                 name: values.name,
                 description: values.description.length > 0 ? values.description : null,
                 durationWeeks: values.durationWeeks,
+                isTemplate: values.isTemplate,
               },
               {
                 onSuccess: () => {

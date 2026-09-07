@@ -5,7 +5,7 @@
 // timestamp — so every function here takes a timezone explicitly. None of
 // them reads an ambient device/server timezone; that ambient read is
 // exactly the bug this module exists to prevent.
-import { addDays, endOfWeek, startOfWeek } from 'date-fns';
+import { addDays, endOfWeek, formatDistanceToNow, startOfWeek } from 'date-fns';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 
 /**
@@ -108,4 +108,14 @@ export function localWeekRangeUtc(
  */
 export function formatLocalDate(instant: Date, timeZone: string, formatStr = 'PPPP'): string {
   return formatInTimeZone(instant, timeZone, formatStr);
+}
+
+/**
+ * "2 days ago", "about 1 month ago" — a coach scanning a list of things
+ * they edited, not a day-boundary decision, so unlike everything else in
+ * this file it takes no timezone: elapsed time since `instant` reads the
+ * same everywhere (`program-templates/01`'s templates-list meta line).
+ */
+export function formatRelativeToNow(instant: Date): string {
+  return formatDistanceToNow(instant, { addSuffix: true });
 }

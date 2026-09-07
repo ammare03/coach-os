@@ -12,6 +12,7 @@ import { duplicateProgramWeek } from '../features/programs/duplicate-program-wee
 import { duplicateProgram } from '../features/programs/duplicate-program.ts';
 import { getProgramDay } from '../features/programs/get-program-day.ts';
 import { getProgram } from '../features/programs/get-program.ts';
+import { listProgramTemplates } from '../features/programs/list-program-templates.ts';
 import { reorderProgramExercises } from '../features/programs/reorder-program-exercises.ts';
 import { setAlternatives } from '../features/programs/set-alternatives.ts';
 import { setSupersetGroup } from '../features/programs/set-superset-group.ts';
@@ -225,6 +226,17 @@ export const programsRouter = router({
     .mutation(async ({ ctx, input }) => {
       await updateProgram(ctx.db, input);
     }),
+
+  // `program-templates/01` — the Programs tab's default view.
+  //
+  // `coachProcedure` and no `ownsResource`, for the reason `create` has
+  // none: the only row this reads is the caller, and the owning coach is
+  // `ctx.user.coachProfileId` rather than anything the caller sent. A
+  // `coachId` in the input would be exactly the enumeration hole §6.2
+  // exists to close.
+  listTemplates: coachProcedure
+    .input(programsSchemas.listTemplatesInput)
+    .query(({ ctx, input }) => listProgramTemplates(ctx.db, ctx.user.coachProfileId, input)),
 
   // `program-templates/02` — the whole-program copy, across programs, where
   // `weeks.duplicate` could only ever copy within one. ONE guard: the
