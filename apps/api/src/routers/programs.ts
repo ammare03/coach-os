@@ -1,5 +1,6 @@
 import { paginationInput, programs as programsSchemas } from '@coachos/schemas';
 
+import { archiveProgram, unarchiveProgram } from '../features/programs/archive-program.ts';
 import { createProgramDay } from '../features/programs/create-program-day.ts';
 import { createProgramExercise } from '../features/programs/create-program-exercise.ts';
 import { createProgramWeek } from '../features/programs/create-program-week.ts';
@@ -257,6 +258,24 @@ export const programsRouter = router({
     .input(programsSchemas.duplicateProgramInput)
     .use(ownsResource('program', (i: { sourceProgramId: string }) => i.sourceProgramId))
     .mutation(({ ctx, input }) => duplicateProgram(ctx.db, ctx.user.coachProfileId, input)),
+
+  // `program-templates/03`. `archived_at` is DB§2's general soft-delete
+  // convention — archiving drops a program out of `listTemplates` without
+  // deleting it, and never disturbs a client already assigned to it
+  // (`assignment` owns that side of the contract).
+  archive: coachProcedure
+    .input(programsSchemas.archiveProgramInput)
+    .use(ownsResource('program', (i: { programId: string }) => i.programId))
+    .mutation(async ({ ctx, input }) => {
+      await archiveProgram(ctx.db, input.programId);
+    }),
+
+  unarchive: coachProcedure
+    .input(programsSchemas.unarchiveProgramInput)
+    .use(ownsResource('program', (i: { programId: string }) => i.programId))
+    .mutation(async ({ ctx, input }) => {
+      await unarchiveProgram(ctx.db, input.programId);
+    }),
 
   weeks: programWeeksRouter,
   days: programDaysRouter,

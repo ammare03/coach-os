@@ -695,3 +695,15 @@ export const duplicateProgramInput = strictObject({
   newName: programName,
 });
 export type DuplicateProgramInput = z.infer<typeof duplicateProgramInput>;
+
+/**
+ * `programs.archive` (`program-templates/03`) — sets `archived_at = now()`.
+ * Archiving stops a program from being assignable to a NEW client; it does
+ * not touch any client already on it (`assignment` owns that contract).
+ */
+export const archiveProgramInput = strictObject({ programId: id });
+export type ArchiveProgramInput = z.infer<typeof archiveProgramInput>;
+
+/** `programs.unarchive` — clears `archived_at`, the inverse of the above. */
+export const unarchiveProgramInput = strictObject({ programId: id });
+export type UnarchiveProgramInput = z.infer<typeof unarchiveProgramInput>;
