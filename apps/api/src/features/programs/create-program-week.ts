@@ -3,6 +3,8 @@ import { and, desc, eq } from 'drizzle-orm';
 
 import { appError } from '../../lib/app-error.ts';
 
+import { bumpProgramVersion } from './program-version.ts';
+
 // `programs.weeks.create` — the "Add week" ghost button
 // (`program-builder/01`, frame 1a). Ownership is
 // `ownsResource('program', …)` in the router.
@@ -86,6 +88,11 @@ export async function createProgramWeek(
         .set({ durationWeeks: weekNumber })
         .where(eq(schema.programs.id, input.programId));
     }
+
+    // Adding a week is structural (`./versioning.md`) — one bump for the
+    // week that was actually added, whether or not it also raised the
+    // program's declared length above.
+    await bumpProgramVersion(tx, input.programId);
 
     return { id: week.id, weekNumber };
   });

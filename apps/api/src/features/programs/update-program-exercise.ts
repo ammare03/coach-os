@@ -2,6 +2,7 @@ import { schema, type DbClient } from '@coachos/db';
 import { eq } from 'drizzle-orm';
 
 import { targetColumns, type ProgramExerciseTargets } from './program-exercise-targets.ts';
+import { bumpProgramVersion, programIdForExercise } from './program-version.ts';
 
 // `programs.exercises.update` — the target sheet reopened on an existing
 // block. Ownership is `ownsResource('programExercise', …)` in the router.
@@ -21,9 +22,15 @@ export async function updateProgramExercise(
   db: DbClient,
   input: UpdateProgramExerciseInput,
 ): Promise<void> {
-  // `updated_at` is maintained by DB§8.1's trigger — nothing to set here.
-  await db
-    .update(schema.programExercises)
-    .set(targetColumns(input))
-    .where(eq(schema.programExercises.id, input.programExerciseId));
+  await db.transaction(async (tx) => {
+    // `updated_at` is maintained by DB§8.1's trigger — nothing to set here.
+    await tx
+      .update(schema.programExercises)
+      .set(targetColumns(input))
+      .where(eq(schema.programExercises.id, input.programExerciseId));
+
+    // Target fields are structural (`./versioning.md`).
+    const programId = await programIdForExercise(tx, input.programExerciseId);
+    if (programId) await bumpProgramVersion(tx, programId);
+  });
 }

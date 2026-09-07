@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import { appError } from '../../lib/app-error.ts';
 
 import { copyDaysInto } from './copy-program-days.ts';
+import { bumpProgramVersion } from './program-version.ts';
 
 // `programs.days.duplicate` — the copy-to sheet's commit
 // (`program-builder/06`, frame 1g). Ownership of BOTH the source day and
@@ -93,6 +94,10 @@ export async function duplicateProgramDay(
       },
     ]);
     if (!copy) throw new Error('copyDaysInto did not return the copied day');
+
+    // `source.programId` and `targetWeek.programId` were already confirmed
+    // equal above — this call refuses cross-program copies outright.
+    await bumpProgramVersion(tx, source.programId);
 
     return { id: copy.copiedDayId };
   });

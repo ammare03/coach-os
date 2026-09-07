@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, lt, sql } from 'drizzle-orm';
 
 import { appError } from '../../lib/app-error.ts';
 
+import { bumpProgramVersion, programIdForDay } from './program-version.ts';
 import { contiguousGroups } from './set-superset-group.ts';
 
 // `programs.exercises.reorder` — the drop at the end of a drag
@@ -160,6 +161,12 @@ export async function reorderProgramExercises(
       .from(schema.programExercises)
       .where(eq(schema.programExercises.programDayId, input.programDayId))
       .orderBy(asc(schema.programExercises.orderIndex));
+
+    // Reordering is structural (`./versioning.md`) even when the requested
+    // order happens to match the one already on the day — the write above
+    // still ran, and nothing here tries to detect a true no-op.
+    const programId = await programIdForDay(tx, input.programDayId);
+    if (programId) await bumpProgramVersion(tx, programId);
 
     return { exercises: settled };
   });

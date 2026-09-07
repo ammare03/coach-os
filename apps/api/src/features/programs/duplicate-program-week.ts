@@ -4,6 +4,7 @@ import { and, asc, desc, eq } from 'drizzle-orm';
 import { appError } from '../../lib/app-error.ts';
 
 import { copyDaysInto } from './copy-program-days.ts';
+import { bumpProgramVersion } from './program-version.ts';
 
 // `programs.weeks.duplicate` — "Duplicate whole week" in the week kebab
 // (`program-builder/06`, frame 1g). Ownership is
@@ -120,6 +121,9 @@ export async function duplicateProgramWeek(
         .set({ durationWeeks: weekNumber })
         .where(eq(schema.programs.id, source.programId));
     }
+
+    // One bump for the week that was duplicated in, same as `createProgramWeek`.
+    await bumpProgramVersion(tx, source.programId);
 
     return { id: week.id, weekNumber, dayCount: sourceDays.length };
   });

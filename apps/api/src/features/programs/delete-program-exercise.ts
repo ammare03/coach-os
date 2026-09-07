@@ -1,6 +1,8 @@
 import { schema, type DbClient } from '@coachos/db';
 import { eq } from 'drizzle-orm';
 
+import { bumpProgramVersion, programIdForExercise } from './program-version.ts';
+
 // `programs.exercises.delete`. Ownership is
 // `ownsResource('programExercise', …)` in the router.
 //
@@ -13,5 +15,15 @@ export async function deleteProgramExercise(
   db: DbClient,
   programExerciseId: string,
 ): Promise<void> {
-  await db.delete(schema.programExercises).where(eq(schema.programExercises.id, programExerciseId));
+  await db.transaction(async (tx) => {
+    // Read before the delete — same before-a-delete rule as
+    // `deleteProgramDay` (`./program-version.ts`).
+    const programId = await programIdForExercise(tx, programExerciseId);
+
+    await tx
+      .delete(schema.programExercises)
+      .where(eq(schema.programExercises.id, programExerciseId));
+
+    if (programId) await bumpProgramVersion(tx, programId);
+  });
 }
