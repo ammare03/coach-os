@@ -10,6 +10,14 @@ import { formatNumeric } from '@coachos/utils';
 export const INTENSITY_SCALE = 1;
 
 /**
+ * The `s` in `numeric(6, 2)` for `target_weight_kg` — two decimals, not
+ * one, so a pound value converted at the device's edge lands on a real
+ * kilogram figure rather than being rounded to the nearest 100g on the way
+ * in (225 lb is 102.06 kg, and 102.1 is not what the coach wrote).
+ */
+export const WEIGHT_SCALE = 2;
+
+/**
  * Every DB§5.2 target column a coach sets, as the API accepts them.
  * `undefined` is "the coach did not set this", which the writers below
  * turn into a real `null` — the sheet always sends the whole block, so an
@@ -23,6 +31,13 @@ export interface ProgramExerciseTargets {
   targetRpe?: number | undefined;
   targetRir?: number | undefined;
   targetPercent1rm?: number | undefined;
+  /**
+   * **Kilograms.** The only weight unit that exists on this side of the
+   * wire: `users.weight_unit` is display, converted once at the device's
+   * own edge (`packages/utils`' `parseWeight`), and no procedure here takes
+   * a unit that could disagree with the number beside it (DB§5.1.1).
+   */
+  targetWeightKg?: number | undefined;
   tempo?: string | undefined;
   targetRestSeconds?: number | undefined;
   coachNotes?: string | undefined;
@@ -41,6 +56,10 @@ export function targetColumns(targets: ProgramExerciseTargets) {
       targets.targetPercent1rm === undefined
         ? null
         : formatNumeric(targets.targetPercent1rm, INTENSITY_SCALE),
+    targetWeightKg:
+      targets.targetWeightKg === undefined
+        ? null
+        : formatNumeric(targets.targetWeightKg, WEIGHT_SCALE),
     tempo: targets.tempo ?? null,
     targetRestSeconds: targets.targetRestSeconds ?? null,
     // An emptied notes field is a cleared note, not an empty one — the

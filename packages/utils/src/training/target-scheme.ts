@@ -13,6 +13,8 @@
 // Pure, no React, no I/O. Every separator is the literal the design uses:
 // `×` (U+00D7), `·` (U+00B7), `–` (U+2013).
 
+import { formatWeight, type WeightUnit } from '../units/weight.ts';
+
 const MULTIPLY = '×';
 const SEPARATOR = ' · ';
 const EN_DASH = '–';
@@ -38,6 +40,14 @@ export interface ExerciseTarget {
   targetRpe: number | null;
   targetRir: number | null;
   targetPercent1rm: number | null;
+  /**
+   * Kilograms, always — the column is (DB§5.2), so this is. The unit a
+   * coach or client reads it in is the second argument to every function
+   * below, passed in by the screen that knows whose preference applies.
+   * **This module never looks one up**: it is pure, it runs on the device
+   * and on the API, and a helper that reached for a user would be neither.
+   */
+  targetWeightKg: number | null;
   tempo: string | null;
   targetRestSeconds: number | null;
 }
@@ -67,26 +77,42 @@ export function formatRepRange(min: number | null, max: number | null): string |
 }
 
 /**
- * `RPE 8` · `RIR 2` · `65% 1RM`. One of the three at most — the target
- * sheet's segmented control makes them mutually exclusive and the schema
- * enforces it, so the order below is a tiebreak that should never be
- * reached rather than a precedence rule.
+ * `100kg` · `225lb`. The stored kilograms rendered in the unit asked for,
+ * through `formatWeight` and nothing else — one rounding rule for every
+ * weight the product prints. The trailing `.0` `formatWeight` pads kg with
+ * is dropped for the same reason `formatTenths` drops it from RPE: `100.0kg`
+ * is not how a coach writes a load, and this line is read at 11px.
  */
-export function formatIntensity(target: ExerciseTarget): string | null {
+export function formatWeightTarget(kg: number, unit: WeightUnit): string {
+  return `${Number(formatWeight(kg, unit))}${unit}`;
+}
+
+/**
+ * `RPE 8` · `RIR 2` · `65% 1RM` · `100kg`. One of the four at most — the
+ * target sheet's segmented control makes them mutually exclusive and the
+ * schema enforces it, so the order below is a tiebreak that should never be
+ * reached rather than a precedence rule.
+ *
+ * `unit` is display only. It decides how the kilograms in the row are
+ * spelled and never what they are.
+ */
+export function formatIntensity(target: ExerciseTarget, unit: WeightUnit): string | null {
   if (target.targetRpe !== null) return `RPE ${formatTenths(target.targetRpe)}`;
   if (target.targetRir !== null) return `RIR ${formatTenths(target.targetRir)}`;
   if (target.targetPercent1rm !== null) return `${formatTenths(target.targetPercent1rm)}% 1RM`;
+  if (target.targetWeightKg !== null) return formatWeightTarget(target.targetWeightKg, unit);
   return null;
 }
 
 /**
  * The same value for a per-set chip, where the column is 46px wide and
- * `1RM` is the part a coach can infer (frame 1b). RPE and RIR already
- * carry their own name and are unchanged.
+ * `1RM` is the part a coach can infer (frame 1b). RPE, RIR and a weight
+ * already carry their own name — a bare numeral under a rep count would
+ * read as more reps.
  */
-export function formatIntensityShort(target: ExerciseTarget): string | null {
+export function formatIntensityShort(target: ExerciseTarget, unit: WeightUnit): string | null {
   if (target.targetPercent1rm !== null) return `${formatTenths(target.targetPercent1rm)}%`;
-  return formatIntensity(target);
+  return formatIntensity(target, unit);
 }
 
 /** `45s` · `90s` · `2m` · `2m 30s`. */
@@ -99,14 +125,20 @@ export function formatRestSeconds(seconds: number | null): string | null {
 }
 
 /**
- * The scheme line: `4 × 6–8 · RPE 8 · 3010 · 90s`.
+ * The scheme line: `4 × 6–8 · RPE 8 · 3010 · 90s`, or `3 × 5 · 100kg · 90s`
+ * when the coach prescribed the load outright.
  *
  * Every part after the volume is optional and an absent one leaves no
  * trace — no empty segment, no dangling separator. A block with nothing
  * but sets reads `4 sets`, which is a legitimate instruction, not a
  * degraded one.
+ *
+ * `unit` is required rather than defaulted to `'kg'`: a default would let a
+ * screen that never thought about the reader's preference show a coach on
+ * pounds a number in kilograms, and be right most of the time, which is the
+ * hardest kind of wrong to notice.
  */
-export function formatTargetScheme(target: ExerciseTarget): string {
+export function formatTargetScheme(target: ExerciseTarget, unit: WeightUnit): string {
   const reps = formatRepRange(target.targetRepsMin, target.targetRepsMax);
   const volume =
     reps === null
@@ -115,7 +147,7 @@ export function formatTargetScheme(target: ExerciseTarget): string {
 
   return [
     volume,
-    formatIntensity(target),
+    formatIntensity(target, unit),
     target.tempo,
     formatRestSeconds(target.targetRestSeconds),
   ]

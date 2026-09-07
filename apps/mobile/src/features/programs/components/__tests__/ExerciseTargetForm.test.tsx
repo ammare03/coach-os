@@ -1,10 +1,23 @@
 import { programs as programsSchemas } from '@coachos/schemas';
+import type { WeightUnit } from '@coachos/utils';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { TEMPO_INCOMPLETE_MESSAGE } from '../../exercise-targets.ts';
+import { INTENSITY_CLEAR_HINT, TEMPO_INCOMPLETE_MESSAGE } from '../../exercise-targets.ts';
 import { ExerciseTargetForm } from '../ExerciseTargetForm.tsx';
+
+// The sheet reads the coach's display unit from `me.get`. What it does with
+// it — which step, which numeral, which kilograms it commits — is the
+// subject of the last describe below; fetching it is not.
+let mockWeightUnit: WeightUnit = 'kg';
+jest.mock('../../../../hooks/useWeightUnit.ts', () => ({
+  useWeightUnit: () => mockWeightUnit,
+}));
+
+beforeEach(() => {
+  mockWeightUnit = 'kg';
+});
 
 // The two rules this sheet exists to hold (`program-builder/02`, frame 1c):
 //
@@ -174,14 +187,43 @@ describe('ExerciseTargetForm — intensity', () => {
     expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('targetRpe');
   });
 
-  it('drops the stepper entirely on None, and says what that means', () => {
+  // `None` is gone from the control — an absolute load is a real
+  // prescription and took the fourth segment. No intensity at all is still
+  // reachable, by pressing the segment that is already on.
+  it('clears the intensity when the highlighted segment is pressed again', () => {
     const { onSubmit } = renderForm();
 
-    fireEvent.press(screen.getByText('None'));
+    expect(screen.queryByText('None')).toBeNull();
+    expect(screen.getByText(INTENSITY_CLEAR_HINT)).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('RPE, tab 1 of 4'));
 
     expect(screen.getByText('The client trains this to the rep range alone.')).toBeTruthy();
+    expect(screen.queryByText(INTENSITY_CLEAR_HINT)).toBeNull();
     fireEvent.press(screen.getByText('Add exercise'));
     expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('targetRpe');
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('targetWeightKg');
+  });
+
+  it('leaves no segment claiming to be selected once the intensity is cleared', () => {
+    renderForm();
+
+    fireEvent.press(screen.getByLabelText('RPE, tab 1 of 4'));
+
+    const selected = screen
+      .getAllByRole('tab')
+      .filter((tab) => tab.props.accessibilityState?.selected === true);
+    expect(selected).toHaveLength(0);
+  });
+
+  it('takes the intensity back after it was cleared', () => {
+    const { onSubmit } = renderForm();
+
+    fireEvent.press(screen.getByLabelText('RPE, tab 1 of 4'));
+    fireEvent.press(screen.getByLabelText('RPE, tab 1 of 4'));
+
+    fireEvent.press(screen.getByText('Add exercise'));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ targetRpe: 8 }));
   });
 
   it('steps RPE in halves, within its DB§5.2 bound', () => {
@@ -193,6 +235,54 @@ describe('ExerciseTargetForm — intensity', () => {
     fireEvent.press(screen.getByText('Add exercise'));
     // 8 → 8.5 → 9, and the 10 ceiling is the stepper's own `max`.
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ targetRpe: 9 }));
+  });
+});
+
+// The amendment's whole point, at the surface a coach actually touches:
+// they type a load in their own unit and the product stores kilograms.
+describe('ExerciseTargetForm — an absolute target weight', () => {
+  it('prints the unit and the plate increment before either is needed', () => {
+    renderForm();
+
+    fireEvent.press(screen.getByText('Weight'));
+
+    expect(screen.getByText('2.5 kg steps')).toBeTruthy();
+    expect(screen.getByLabelText('Increase weight')).toBeTruthy();
+  });
+
+  it('commits kilograms for a coach who reads kilograms', () => {
+    const { onSubmit } = renderForm();
+
+    fireEvent.press(screen.getByText('Weight'));
+    fireEvent.press(screen.getByText('Add exercise'));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ targetWeightKg: 60 }));
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('targetRpe');
+  });
+
+  it('steps in the coach’s own unit and still commits kilograms', () => {
+    mockWeightUnit = 'lb';
+    const { onSubmit } = renderForm();
+
+    fireEvent.press(screen.getByText('Weight'));
+    // 60 kg reads as 132 lb; one press of a 5 lb plate step makes it 137.
+    expect(screen.getByText('5 lb steps')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Increase weight'));
+    fireEvent.press(screen.getByText('Add exercise'));
+
+    // 137 lb is 62.1421… kg, rounded once to numeric(6, 2)'s own scale.
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ targetWeightKg: 62.14 }));
+  });
+
+  it('never sends the unit itself — the wire is kilograms', () => {
+    mockWeightUnit = 'lb';
+    const { onSubmit } = renderForm();
+
+    fireEvent.press(screen.getByText('Weight'));
+    fireEvent.press(screen.getByText('Add exercise'));
+
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('weightUnit');
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('targetWeightLb');
   });
 });
 

@@ -10,7 +10,7 @@ import {
 import { parseNumeric } from '@coachos/utils';
 import { asc, eq } from 'drizzle-orm';
 
-import { INTENSITY_SCALE } from './program-exercise-targets.ts';
+import { INTENSITY_SCALE, WEIGHT_SCALE } from './program-exercise-targets.ts';
 
 // `programs.days.get` — everything the program day screen renders
 // (`program-builder/02`, frame 1b), in one round trip: the day itself, the
@@ -43,6 +43,8 @@ export type ProgramExerciseDetail = Pick<
 > & {
   targetRpe: number | null;
   targetPercent1rm: number | null;
+  /** Kilograms, as stored — the screen converts for display and never the other way (DB§5.1.1). */
+  targetWeightKg: number | null;
   /** Denormalised for display only — the block is named after the exercise it points at. */
   exerciseName: Exercise['name'];
   exercisePrimaryMuscle: Exercise['primaryMuscle'];
@@ -109,6 +111,7 @@ export async function getProgramDay(
       targetRpe: schema.programExercises.targetRpe,
       targetRir: schema.programExercises.targetRir,
       targetPercent1rm: schema.programExercises.targetPercent1rm,
+      targetWeightKg: schema.programExercises.targetWeightKg,
       targetRestSeconds: schema.programExercises.targetRestSeconds,
       tempo: schema.programExercises.tempo,
       supersetGroup: schema.programExercises.supersetGroup,
@@ -133,6 +136,8 @@ export async function getProgramDay(
       targetRpe: row.targetRpe === null ? null : parseNumeric(row.targetRpe, INTENSITY_SCALE),
       targetPercent1rm:
         row.targetPercent1rm === null ? null : parseNumeric(row.targetPercent1rm, INTENSITY_SCALE),
+      targetWeightKg:
+        row.targetWeightKg === null ? null : parseNumeric(row.targetWeightKg, WEIGHT_SCALE),
     })),
   };
 }

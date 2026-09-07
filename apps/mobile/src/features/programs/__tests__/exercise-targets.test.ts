@@ -1,4 +1,5 @@
 import { programs as programsSchemas } from '@coachos/schemas';
+import { parseWeight, type WeightUnit } from '@coachos/utils';
 
 import type { ProgramDayExercise } from '../api/programs.ts';
 import {
@@ -128,37 +129,120 @@ describe('sanitiseRepsInput / sanitiseTempoInput', () => {
 
 describe('intensity — one mode, one stepper, its own bound printed', () => {
   it('prints each mode’s DB§5.2 bound as the sub-label under it', () => {
-    expect(intensityControl('rpe')).toMatchObject({
+    expect(intensityControl('rpe', 'kg')).toMatchObject({
       min: 1,
       max: 10,
       step: 0.5,
       boundLabel: '1–10, half steps',
     });
-    expect(intensityControl('rir')).toMatchObject({ min: 0, max: 10, boundLabel: '0–10' });
-    expect(intensityControl('percent')).toMatchObject({ min: 1, max: 150, boundLabel: '1–150%' });
-    expect(intensityControl('none')).toBeNull();
+    expect(intensityControl('rir', 'kg')).toMatchObject({ min: 0, max: 10, boundLabel: '0–10' });
+    expect(intensityControl('percent', 'kg')).toMatchObject({
+      min: 1,
+      max: 150,
+      boundLabel: '1–150%',
+    });
+    expect(intensityControl('none', 'kg')).toBeNull();
+  });
+
+  // The stepper a coach touches runs in their own unit, with their own
+  // plate increment — never 2.5 kg converted into an unusable 5.51 lb.
+  it('gives weight the unit’s own step, and a ceiling numeric(6, 2) can hold', () => {
+    expect(intensityControl('weight', 'kg')).toMatchObject({
+      step: 2.5,
+      precision: 1,
+      min: 0.1,
+      max: 9999.9,
+      boundLabel: '2.5 kg steps',
+      unit: 'kg',
+      unitLabel: 'kilograms',
+    });
+    expect(intensityControl('weight', 'lb')).toMatchObject({
+      step: 5,
+      precision: 0,
+      min: 1,
+      boundLabel: '5 lb steps',
+      unit: 'lb',
+      unitLabel: 'pounds',
+    });
+
+    // Floored, never rounded: the pound ceiling has to convert back to
+    // something the column still holds.
+    const maxLb = intensityControl('weight', 'lb')?.max ?? 0;
+    expect(Number(parseWeight(maxLb, 'lb').toFixed(2))).toBeLessThanOrEqual(9999.99);
   });
 
   it('keeps a value per mode, so switching does not propose 8% of a one-rep max', () => {
     const rpe = newTargetDraft().intensity;
     const percent = { ...rpe, mode: 'percent' as const };
 
-    expect(intensityValueOf(rpe)).toBe(8);
-    expect(intensityValueOf(percent)).toBe(70);
-    expect(intensityValueOf(withIntensityValue(percent, 80))).toBe(80);
+    expect(intensityValueOf(rpe, 'kg')).toBe(8);
+    expect(intensityValueOf(percent, 'kg')).toBe(70);
+    expect(intensityValueOf(withIntensityValue(percent, 80, 'kg'), 'kg')).toBe(80);
     // The RPE the coach had is untouched by editing the percentage.
-    expect(withIntensityValue(percent, 80).rpe).toBe(8);
+    expect(withIntensityValue(percent, 80, 'kg').rpe).toBe(8);
   });
 
-  it('sends exactly one intensity, and none when the coach chose None', () => {
-    const rir = draft({ intensity: { mode: 'rir', rpe: 8, rir: 2, percent1rm: 70 } });
+  it('sends exactly one intensity, and none when the coach cleared it', () => {
+    const rir = draft({ intensity: { mode: 'rir', rpe: 8, rir: 2, percent1rm: 70, weightKg: 60 } });
     expect(targetDraftToInput(rir)).toMatchObject({ targetRir: 2 });
     expect(targetDraftToInput(rir)).not.toHaveProperty('targetRpe');
+    expect(targetDraftToInput(rir)).not.toHaveProperty('targetWeightKg');
 
-    const none = draft({ intensity: { mode: 'none', rpe: 8, rir: 2, percent1rm: 70 } });
+    const weight = draft({
+      intensity: { mode: 'weight', rpe: 8, rir: 2, percent1rm: 70, weightKg: 100 },
+    });
+    expect(targetDraftToInput(weight)).toMatchObject({ targetWeightKg: 100 });
+    expect(targetDraftToInput(weight)).not.toHaveProperty('targetRpe');
+    expect(targetDraftToInput(weight)).not.toHaveProperty('targetRir');
+    expect(targetDraftToInput(weight)).not.toHaveProperty('targetPercent1rm');
+
+    const none = draft({
+      intensity: { mode: 'none', rpe: 8, rir: 2, percent1rm: 70, weightKg: 60 },
+    });
     expect(targetDraftToInput(none)).not.toHaveProperty('targetRpe');
     expect(targetDraftToInput(none)).not.toHaveProperty('targetRir');
     expect(targetDraftToInput(none)).not.toHaveProperty('targetPercent1rm');
+    expect(targetDraftToInput(none)).not.toHaveProperty('targetWeightKg');
+  });
+});
+
+// CLAUDE.md's hard rule, as a test: the coach's unit decides what they type
+// and read, and nothing else. Two coaches setting the same physical load
+// leave the same number in `target_weight_kg`.
+describe('the write path is kilograms, whatever the coach reads in', () => {
+  const base = newTargetDraft().intensity;
+
+  function committedWeight(displayValue: number, unit: WeightUnit): number | undefined {
+    const intensity = withIntensityValue({ ...base, mode: 'weight' }, displayValue, unit);
+    return targetDraftToInput(draft({ intensity }))?.targetWeightKg;
+  }
+
+  it('stores the same kilograms for a coach on lb and a coach on kg', () => {
+    // 225 lb is 102.058… kg, which at the column's own scale is 102.06.
+    expect(committedWeight(225, 'lb')).toBe(102.06);
+    expect(committedWeight(102.06, 'kg')).toBe(102.06);
+    expect(committedWeight(225, 'lb')).toBe(committedWeight(102.06, 'kg'));
+  });
+
+  it('rounds a converted value to the column’s own scale, so the schema accepts it', () => {
+    const targetWeightKg = committedWeight(135, 'lb');
+
+    expect(targetWeightKg).toBe(61.23);
+    expect(
+      programsSchemas.createProgramExerciseInput.safeParse({
+        programDayId: '00000000-0000-7000-8000-000000000001',
+        exerciseId: '00000000-0000-7000-8000-000000000002',
+        targetSets: 3,
+        targetWeightKg,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('shows the stored kilograms back in the unit the coach reads', () => {
+    const stored = { ...base, mode: 'weight' as const, weightKg: 102.06 };
+
+    expect(intensityValueOf(stored, 'lb')).toBe(225);
+    expect(intensityValueOf(stored, 'kg')).toBe(102.1);
   });
 });
 
@@ -202,6 +286,7 @@ describe('targetDraftFrom', () => {
     targetRpe: null,
     targetRir: null,
     targetPercent1rm: 65,
+    targetWeightKg: null,
     targetRestSeconds: 60,
     tempo: '30X0',
     supersetGroup: null,
@@ -238,7 +323,18 @@ describe('targetDraftFrom', () => {
     });
   });
 
-  it('lands on None when the block carries no intensity at all', () => {
+  it('lands on no intensity at all when the block carries none', () => {
     expect(targetDraftFrom({ ...BLOCK, targetPercent1rm: null }).intensity.mode).toBe('none');
+  });
+
+  // Reopening must not re-round: the draft holds the stored kilograms and
+  // only a key press replaces them, so a coach on pounds who opens a block
+  // and saves it untouched saves the number that was already there.
+  it('reopens a weighted block on its own mode and commits it unchanged', () => {
+    const weighted = { ...BLOCK, targetPercent1rm: null, targetWeightKg: 102.06 };
+    const seeded = targetDraftFrom(weighted);
+
+    expect(seeded.intensity).toMatchObject({ mode: 'weight', weightKg: 102.06 });
+    expect(targetDraftToInput(seeded)?.targetWeightKg).toBe(102.06);
   });
 });

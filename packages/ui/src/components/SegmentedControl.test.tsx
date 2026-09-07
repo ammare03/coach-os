@@ -20,6 +20,27 @@ describe('SegmentedControl', () => {
     expect(selected[0]?.props.accessibilityLabel).toBe('Week, tab 2 of 3');
   });
 
+  // The target sheet's intensity control: four ways to prescribe an
+  // intensity, and no intensity at all is the absence of all four rather
+  // than a fifth segment claiming to be a choice.
+  it('marks nothing as selected when the value is null', () => {
+    render(<SegmentedControl options={options} value={null} onChange={jest.fn()} />);
+
+    const tabs = screen.getAllByRole('tab');
+
+    expect(tabs).toHaveLength(3);
+    expect(tabs.filter((tab) => tab.props.accessibilityState?.selected === true)).toHaveLength(0);
+  });
+
+  it('still reports the pressed option while nothing is selected', () => {
+    const onChange = jest.fn();
+    render(<SegmentedControl options={options} value={null} onChange={onChange} />);
+
+    fireEvent.press(screen.getByLabelText('Week, tab 2 of 3'));
+
+    expect(onChange).toHaveBeenCalledWith('week');
+  });
+
   it('fires onChange with the pressed option value', () => {
     const onChange = jest.fn();
     render(<SegmentedControl options={options} value="day" onChange={onChange} />);

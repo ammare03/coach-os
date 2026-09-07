@@ -4,6 +4,10 @@ import { AccessibilityInfo } from 'react-native';
 import type { ProgramDayExercise } from '../../api/programs.ts';
 import { DraggableExerciseList } from '../DraggableExerciseList.tsx';
 
+// The rows this list carries read the coach's display unit from `me.get`
+// (`ExerciseBlock`); this file is about the drag, not about tRPC.
+jest.mock('../../../../hooks/useWeightUnit.ts', () => ({ useWeightUnit: () => 'kg' }));
+
 // What this file holds: **a drag-and-drop list has to be operable without
 // dragging** (`accessibility` §7 — never a gesture with no button
 // equivalent). The pan itself runs on the UI thread through Reanimated
@@ -22,6 +26,7 @@ function block(id: string, name: string, orderIndex: number): ProgramDayExercise
     targetRpe: 7,
     targetRir: null,
     targetPercent1rm: null,
+    targetWeightKg: null,
     targetRestSeconds: 90,
     tempo: null,
     supersetGroup: null,

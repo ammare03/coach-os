@@ -13,6 +13,7 @@ import { formatIntensityShort, formatTargetScheme } from '@coachos/utils';
 import { ChevronRight } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 
+import { useWeightUnit } from '../../../hooks/useWeightUnit.ts';
 import type { ProgramDayExercise } from '../api/programs.ts';
 
 // One exercise block on a program day (`program-builder/02`, frame 1b).
@@ -24,7 +25,10 @@ import type { ProgramDayExercise } from '../api/programs.ts';
 //
 // Self-contained on purpose: `program-builder/03` wraps this row in a
 // draggable list and `04` groups it into supersets. Both take over the
-// container; neither should have to reopen the row.
+// container; neither should have to reopen the row. That is also why the
+// coach's weight unit is read here rather than threaded down as a prop:
+// every block on the day screen already sits inside that draggable list,
+// and one shared `me.get` cache entry serves the lot.
 
 /** Five 46px chips is the most that stays legible across a 361px content width. */
 const CHIPS_PER_ROW = 5;
@@ -40,10 +44,12 @@ export interface ExerciseBlockProps {
 export function ExerciseBlock({ block, onPress, testID }: ExerciseBlockProps) {
   const theme = useTheme();
   const themed = useThemedStyles();
+  // Display only — the block's `targetWeightKg` is and stays kilograms.
+  const unit = useWeightUnit();
 
-  const scheme = formatTargetScheme(block);
+  const scheme = formatTargetScheme(block, unit);
   const reps = repsLabel(block);
-  const intensity = formatIntensityShort(block);
+  const intensity = formatIntensityShort(block, unit);
   const setRows = chunk(block.targetSets, CHIPS_PER_ROW);
 
   return (

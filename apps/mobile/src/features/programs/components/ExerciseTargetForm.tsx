@@ -18,7 +18,9 @@ import {
 import { useState } from 'react';
 import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
+import { useWeightUnit } from '../../../hooks/useWeightUnit.ts';
 import {
+  INTENSITY_CLEAR_HINT,
   intensityControl,
   intensityValueOf,
   newTargetDraft,
@@ -30,7 +32,7 @@ import {
   targetDraftToInput,
   validateTargetDraft,
   withIntensityValue,
-  type IntensityMode,
+  type IntensitySegment,
   type TargetDraft,
 } from '../exercise-targets.ts';
 
@@ -52,7 +54,18 @@ import {
 //    (down / pause / up / pause), never one free-text box whose format the
 //    coach has to guess.
 // 5. **Intensity is a segmented control, then one stepper** — RPE, RIR,
-//    % 1RM or None. One of them, which is why the schema refuses two.
+//    % 1RM or an absolute Weight. One of them, which is why the schema
+//    refuses two: an absolute load and a relative one prescribe the same
+//    set twice and can disagree. Weight replaced the design's fourth
+//    segment, `None`, because a load a coach writes out is a real
+//    prescription rather than the absence of one — and no intensity at all
+//    is reached by tapping the highlighted segment again, which is what
+//    `INTENSITY_CLEAR_HINT` says out loud under the control.
+//
+//    The weight is entered in whatever `users.weight_unit` says and stored
+//    in kilograms, converted once, here, through `packages/utils`
+//    (`CLAUDE.md` §0). The step is the unit's own plate increment, never a
+//    converted one.
 // 6. **Defaults arrive pre-filled** (4 × 6–8 @ RPE 8, 90s), so the common
 //    case is a confirm rather than a form.
 //
@@ -63,12 +76,13 @@ import {
 // section below Rest without restructuring anything above it.
 
 // `SegmentedControl` types its options as a 2-4 tuple on purpose — four is
-// the ceiling, and this is exactly four.
-const INTENSITY_OPTIONS: SegmentedOptions<IntensityMode> = [
+// the ceiling, and this is exactly four. `'none'` is deliberately not among
+// them: it is this control with nothing selected.
+const INTENSITY_OPTIONS: SegmentedOptions<IntensitySegment> = [
   { value: 'rpe', label: 'RPE' },
   { value: 'rir', label: 'RIR' },
   { value: 'percent', label: '% 1RM' },
-  { value: 'none', label: 'None' },
+  { value: 'weight', label: 'Weight' },
 ];
 
 /** Stable keys for the four fixed tempo positions — "pause" appears twice. */
@@ -115,9 +129,12 @@ export function ExerciseTargetForm({
   // open, so "on mount" and "on open" are the same moment and no effect has
   // to race the first render (`ecc:react-patterns`).
   const [draft, setDraft] = useState<TargetDraft>(initialDraft ?? newTargetDraft());
+  // Display only. It decides what the stepper below shows and what one
+  // press moves by; the draft holds kilograms either way.
+  const unit = useWeightUnit();
 
   const issues = validateTargetDraft(draft);
-  const intensity = intensityControl(draft.intensity.mode);
+  const intensity = intensityControl(draft.intensity.mode, unit);
   const isCustomRest =
     draft.targetRestSeconds !== null &&
     !REST_PRESETS_SECONDS.some((preset) => preset === draft.targetRestSeconds);
@@ -207,11 +224,20 @@ export function ExerciseTargetForm({
           </Text>
           <SegmentedControl
             options={INTENSITY_OPTIONS}
-            value={draft.intensity.mode}
+            // Nothing selected is a real state here, not a missing one.
+            value={draft.intensity.mode === 'none' ? null : draft.intensity.mode}
             onChange={(mode) => {
               setDraft((current) => ({
                 ...current,
-                intensity: { ...current.intensity, mode },
+                // Pressing the segment that is already on clears it. A
+                // coach still has to be able to prescribe no intensity at
+                // all, and this is the gesture that says so without a
+                // fifth segment pretending "nothing" is a kind of
+                // instruction.
+                intensity: {
+                  ...current.intensity,
+                  mode: current.intensity.mode === mode ? 'none' : mode,
+                },
               }));
             }}
             density="coach"
@@ -222,27 +248,34 @@ export function ExerciseTargetForm({
               The client trains this to the rep range alone.
             </Text>
           ) : (
-            <View style={styles.splitRow}>
-              <Text size="caption" tone="subtle">
-                {intensity.boundLabel}
+            <>
+              <View style={styles.splitRow}>
+                <Text size="caption" tone="subtle">
+                  {intensity.boundLabel}
+                </Text>
+                <NumberStepper
+                  value={intensityValueOf(draft.intensity, unit)}
+                  onChange={(value) => {
+                    setDraft((current) => ({
+                      ...current,
+                      intensity: withIntensityValue(current.intensity, value, unit),
+                    }));
+                  }}
+                  step={intensity.step}
+                  min={intensity.min}
+                  max={intensity.max}
+                  precision={intensity.precision}
+                  {...(intensity.unit === undefined ? {} : { unit: intensity.unit })}
+                  {...(intensity.unitLabel === undefined ? {} : { unitLabel: intensity.unitLabel })}
+                  density="coach"
+                  accessibilityLabel={intensity.accessibilityLabel}
+                  testID="target-intensity"
+                />
+              </View>
+              <Text size="micro" tone="subtle">
+                {INTENSITY_CLEAR_HINT}
               </Text>
-              <NumberStepper
-                value={intensityValueOf(draft.intensity)}
-                onChange={(value) => {
-                  setDraft((current) => ({
-                    ...current,
-                    intensity: withIntensityValue(current.intensity, value),
-                  }));
-                }}
-                step={intensity.step}
-                min={intensity.min}
-                max={intensity.max}
-                precision={intensity.precision}
-                density="coach"
-                accessibilityLabel={intensity.accessibilityLabel}
-                testID="target-intensity"
-              />
-            </View>
+            </>
           )}
         </View>
 

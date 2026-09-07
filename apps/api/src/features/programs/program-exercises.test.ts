@@ -199,6 +199,35 @@ describe('createProgramExercise', () => {
     });
   });
 
+  // The whole point of the amendment that added the column to the UI: a
+  // coach writing a beginner's first block says "3 × 5 at 102.06 kg"
+  // outright. What is asserted is that the number the device converted
+  // once, at its own edge, is the number Postgres holds — no unit crossed
+  // the wire and nothing re-rounded it on this side (DB§5.1.1).
+  it('persists an absolute target weight at numeric(6, 2)’s own scale, in kilograms', async () => {
+    const scene = await seedScene();
+
+    await createProgramExercise(db, scene.coachProfileId, {
+      programDayId: scene.programDayId,
+      exerciseId: scene.exerciseId,
+      targetSets: 3,
+      targetRepsMin: 5,
+      targetRepsMax: 5,
+      // What a coach on pounds typing 225 sends, converted on the device.
+      targetWeightKg: 102.06,
+      targetRestSeconds: 90,
+    });
+
+    const [row] = await rowsOfDay(scene.programDayId);
+    expect(row).toMatchObject({
+      targetSets: 3,
+      targetWeightKg: '102.06',
+      targetRpe: null,
+      targetRir: null,
+      targetPercent1rm: null,
+    });
+  });
+
   it('appends past the day’s current last block rather than taking a position from the caller', async () => {
     const scene = await seedScene();
 
@@ -299,6 +328,33 @@ describe('updateProgramExercise', () => {
       targetRestSeconds: 60,
       coachNotes: null,
     });
+  });
+
+  // Switching the intensity is a replace, not an addition — the sheet's
+  // segmented control offers one of four and the row must end up holding
+  // one of four, or the logger's target line has two answers to read.
+  it('swaps an RPE for an absolute weight and back, never carrying both', async () => {
+    const scene = await seedScene();
+    const { id } = await createProgramExercise(db, scene.coachProfileId, {
+      programDayId: scene.programDayId,
+      exerciseId: scene.exerciseId,
+      targetSets: 3,
+      targetRpe: 8,
+    });
+
+    await updateProgramExercise(db, {
+      programExerciseId: id,
+      targetSets: 3,
+      targetWeightKg: 60,
+    });
+
+    const [weighted] = await rowsOfDay(scene.programDayId);
+    expect(weighted).toMatchObject({ targetRpe: null, targetWeightKg: '60.00' });
+
+    await updateProgramExercise(db, { programExerciseId: id, targetSets: 3, targetRpe: 8 });
+
+    const [rated] = await rowsOfDay(scene.programDayId);
+    expect(rated).toMatchObject({ targetRpe: '8.0', targetWeightKg: null });
   });
 
   it('leaves the fields tasks 03, 04 and 05 own alone', async () => {
@@ -600,15 +656,24 @@ describe('getProgramDay', () => {
       targetSets: 3,
       targetPercent1rm: 65,
     });
+    await createProgramExercise(db, scene.coachProfileId, {
+      programDayId: scene.programDayId,
+      exerciseId: scene.exerciseId,
+      targetSets: 3,
+      targetWeightKg: 102.06,
+    });
 
     const day = await getProgramDay(db, scene.programDayId);
 
     expect(day).toMatchObject({ dayNumber: 2, weekNumber: 1, name: 'Lower — squat focus' });
     expect(day?.siblingDays.map((slot) => slot.dayNumber)).toEqual([2, 3]);
-    // Parsed once, at this boundary — a screen never sees the string.
-    expect(day?.exercises.map((block) => block.targetRpe)).toEqual([7.5, null]);
-    expect(day?.exercises.map((block) => block.targetPercent1rm)).toEqual([null, 65]);
-    expect(day?.exercises.map((block) => block.orderIndex)).toEqual([1, 2]);
+    // Parsed once, at this boundary — a screen never sees the string. All
+    // three numeric columns, including the two-decimal weight: `102.06`
+    // read back as `102.06`, never `102.1`.
+    expect(day?.exercises.map((block) => block.targetRpe)).toEqual([7.5, null, null]);
+    expect(day?.exercises.map((block) => block.targetPercent1rm)).toEqual([null, 65, null]);
+    expect(day?.exercises.map((block) => block.targetWeightKg)).toEqual([null, null, 102.06]);
+    expect(day?.exercises.map((block) => block.orderIndex)).toEqual([1, 2, 3]);
     expect(day?.exercises[0]?.exerciseName).toContain('Barbell Back Squat');
   });
 
@@ -678,6 +743,30 @@ describe('DB§5.2 constraints — the backstop under the schema', () => {
         }),
       ),
     ).toBe('program_exercises_tempo_check');
+  });
+
+  // `target_weight_kg` carries no CHECK — `numeric(6, 2)` IS the floor,
+  // and 10000 does not fit in four digits. SQLSTATE 22003, numeric value
+  // out of range, rather than a named constraint: the type is the
+  // constraint here, which is exactly what the schema's ceiling mirrors.
+  it('refuses a target weight past numeric(6, 2)', async () => {
+    const scene = await seedScene();
+
+    const error = await db
+      .insert(schema.programExercises)
+      .values({
+        programDayId: scene.programDayId,
+        exerciseId: scene.exerciseId,
+        orderIndex: 1,
+        targetSets: 3,
+        targetWeightKg: '10000.00',
+      })
+      .then(
+        () => undefined,
+        (thrown: unknown) => unwrapDatabaseError(thrown),
+      );
+
+    expect(error?.code).toBe('22003');
   });
 
   it('refuses more than 20 sets', async () => {

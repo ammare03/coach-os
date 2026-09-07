@@ -48,6 +48,10 @@ describe('PROGRAM_BOUNDS', () => {
     expect(PROGRAM_BOUNDS.maxRir).toBe(10);
     expect(PROGRAM_BOUNDS.minPercent1rm).toBe(1);
     expect(PROGRAM_BOUNDS.maxPercent1rm).toBe(150);
+    // `numeric(6, 2)`'s own two ends, in kilograms — never a converted
+    // number, and never one the sheet restates in pounds.
+    expect(PROGRAM_BOUNDS.minWeightKg).toBe(0.01);
+    expect(PROGRAM_BOUNDS.maxWeightKg).toBe(9999.99);
     expect(PROGRAM_BOUNDS.tempoDigits).toBe(4);
   });
 });
@@ -105,7 +109,7 @@ describe('createProgramExerciseInput', () => {
     });
   });
 
-  describe('intensity — one of the three, and only within its own bound', () => {
+  describe('intensity — one of the four, and only within its own bound', () => {
     it('accepts RPE at both ends and on a half step', () => {
       expect(create({ targetRpe: 1 }).success).toBe(true);
       expect(create({ targetRpe: 10 }).success).toBe(true);
@@ -134,11 +138,51 @@ describe('createProgramExerciseInput', () => {
       expect(create({ targetRpe: undefined, targetPercent1rm: 151 }).success).toBe(false);
     });
 
+    it('accepts an absolute weight across numeric(6, 2)’s whole range', () => {
+      expect(create({ targetRpe: undefined, targetWeightKg: 0.01 }).success).toBe(true);
+      expect(create({ targetRpe: undefined, targetWeightKg: 40 }).success).toBe(true);
+      expect(create({ targetRpe: undefined, targetWeightKg: 102.06 }).success).toBe(true);
+      expect(create({ targetRpe: undefined, targetWeightKg: 9999.99 }).success).toBe(true);
+    });
+
+    // The column holds four digits before the point and two after it.
+    // 10000 overflows it; 100.005 would be silently stored as 100.01.
+    it('refuses a weight past the column’s own precision or scale', () => {
+      expect(create({ targetRpe: undefined, targetWeightKg: 10000 }).success).toBe(false);
+      expect(create({ targetRpe: undefined, targetWeightKg: 100.005 }).success).toBe(false);
+    });
+
+    // Zero is what clearing the intensity means, not what a light day is.
+    it('refuses a zero or negative weight', () => {
+      expect(create({ targetRpe: undefined, targetWeightKg: 0 }).success).toBe(false);
+      expect(create({ targetRpe: undefined, targetWeightKg: -40 }).success).toBe(false);
+    });
+
+    // The wire is kilograms and nothing else. A `weightUnit` travelling
+    // beside the number is the one way a stored weight could come to mean
+    // two things, so `strictObject` refuses it outright.
+    it('takes no unit — every weight on this wire is kilograms', () => {
+      expect(create({ targetRpe: undefined, targetWeightKg: 100, weightUnit: 'lb' }).success).toBe(
+        false,
+      );
+    });
+
     it('refuses two intensities at once — the segmented control allows one', () => {
       const result = create({ targetRpe: 8, targetRir: 2 });
 
       expect(result.success).toBe(false);
       expect(firstMessage(result)).toBe(SINGLE_INTENSITY_MESSAGE);
+    });
+
+    // Weight joins the same rule rather than sitting beside it: an
+    // absolute load and a relative one prescribe the same set twice.
+    it('refuses a weight alongside RPE, RIR or % 1RM', () => {
+      for (const other of [{ targetRpe: 8 }, { targetRir: 2 }, { targetPercent1rm: 65 }]) {
+        const result = create({ targetRpe: undefined, targetWeightKg: 100, ...other });
+
+        expect(result.success).toBe(false);
+        expect(firstMessage(result)).toBe(SINGLE_INTENSITY_MESSAGE);
+      }
     });
   });
 

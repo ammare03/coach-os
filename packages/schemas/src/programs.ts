@@ -42,6 +42,24 @@ const MIN_TARGET_PERCENT_1RM = 1;
 const MAX_TARGET_PERCENT_1RM = 150;
 
 /**
+ * `target_weight_kg` is `numeric(6, 2)` (DB§5.2) and carries no `CHECK` of
+ * its own, so both ends below are the column's, not invented ones: four
+ * digits before the point puts the ceiling at 9999.99, and the scale puts
+ * the floor at the smallest positive value it can hold. **Zero is not a
+ * light prescription, it is no prescription** — a bodyweight block clears
+ * the field rather than storing 0.00, which is also what keeps
+ * `formatTargetScheme` from printing `0kg`.
+ *
+ * Kilograms, always: `users.weight_unit` decides what the coach types and
+ * reads, never what crosses this wire (`CLAUDE.md` §0 / DB§5.1.1).
+ */
+const MIN_TARGET_WEIGHT_KG = 0.01;
+const MAX_TARGET_WEIGHT_KG = 9999.99;
+
+/** The `s` in `numeric(6, 2)` — the same argument `NUMERIC_SCALE_1_STEP` makes, one decimal further. */
+const NUMERIC_SCALE_2_STEP = 0.01;
+
+/**
  * `target_rpe` is `numeric(3,1)` and `target_percent_1rm` is `numeric(4,1)`
  * (DB§5.2), so one decimal place is the whole of what either column can
  * hold. Sent 7.25, Postgres would store 7.3 and hand the coach back a
@@ -111,6 +129,10 @@ export const PROGRAM_BOUNDS = {
   maxRir: MAX_TARGET_RIR,
   minPercent1rm: MIN_TARGET_PERCENT_1RM,
   maxPercent1rm: MAX_TARGET_PERCENT_1RM,
+  // Kilograms — the sheet converts to and from the coach's own unit at its
+  // own edge and never restates either number (`program-builder/02`).
+  minWeightKg: MIN_TARGET_WEIGHT_KG,
+  maxWeightKg: MAX_TARGET_WEIGHT_KG,
   maxRestSeconds: MAX_REST_SECONDS,
   tempoDigits: TEMPO_DIGITS,
   maxExercisesPerDay: MAX_EXERCISES_PER_DAY,
@@ -270,6 +292,20 @@ const targetBlockShape = {
     .multipleOf(NUMERIC_SCALE_1_STEP)
     .optional(),
   targetRir: z.number().int().min(MIN_TARGET_RIR).max(MAX_TARGET_RIR).optional(),
+  /**
+   * **Kilograms, on every device, in both directions.** The builder's
+   * stepper runs in whatever `users.weight_unit` says, and converts once,
+   * at its own edge, through `packages/utils`' `parseWeight` — nothing
+   * about the unit reaches this schema, this wire, or that column, which is
+   * exactly why there is no `weightUnit` field here to get out of step
+   * with the number beside it.
+   */
+  targetWeightKg: z
+    .number()
+    .min(MIN_TARGET_WEIGHT_KG)
+    .max(MAX_TARGET_WEIGHT_KG)
+    .multipleOf(NUMERIC_SCALE_2_STEP)
+    .optional(),
   targetPercent1rm: z
     .number()
     .min(MIN_TARGET_PERCENT_1RM)
@@ -288,16 +324,23 @@ interface TargetBlockCrossFields {
   targetRpe?: number | undefined;
   targetRir?: number | undefined;
   targetPercent1rm?: number | undefined;
+  targetWeightKg?: number | undefined;
 }
 
 export const REP_RANGE_PAIR_MESSAGE = 'A rep range needs both a bottom and a top.';
 
 /**
- * One intensity, not three. DB§5.2 has no `CHECK` for this — it is a
+ * One intensity, not four. DB§5.2 has no `CHECK` for this — it is a
  * product rule from the target sheet's segmented control (RPE · RIR ·
- * % 1RM · None), and it is enforced here as well as there because a
+ * % 1RM · Weight), and it is enforced here as well as there because a
  * client that sent two would leave a row the logger's target line cannot
  * render (`phase-09-workout-logger/session-runtime/04`).
+ *
+ * **An absolute weight is one of the four, not an extra.** "3 × 5 at 40kg
+ * at RPE 8" prescribes the same set twice and the two halves can disagree;
+ * RPE and % 1RM are relative instructions that presume the client already
+ * knows their working load, and a weight is what a coach writes when they
+ * do not (`program-builder/02`).
  */
 export const SINGLE_INTENSITY_MESSAGE = 'Pick one way to set the intensity.';
 
@@ -312,7 +355,7 @@ function hasCompleteRepRange(value: TargetBlockCrossFields): boolean {
 
 function hasAtMostOneIntensity(value: TargetBlockCrossFields): boolean {
   return (
-    [value.targetRpe, value.targetRir, value.targetPercent1rm].filter(
+    [value.targetRpe, value.targetRir, value.targetPercent1rm, value.targetWeightKg].filter(
       (intensity) => intensity !== undefined,
     ).length <= 1
   );

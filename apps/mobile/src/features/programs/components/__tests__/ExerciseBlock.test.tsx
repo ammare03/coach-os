@@ -1,8 +1,19 @@
-import { formatTargetScheme } from '@coachos/utils';
+import { formatTargetScheme, type WeightUnit } from '@coachos/utils';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import type { ProgramDayExercise } from '../../api/programs.ts';
 import { ExerciseBlock } from '../ExerciseBlock.tsx';
+
+// The block reads the coach's display unit from `me.get`; what it does with
+// it is this file's subject, and what tRPC does to fetch it is not.
+let mockWeightUnit: WeightUnit = 'kg';
+jest.mock('../../../../hooks/useWeightUnit.ts', () => ({
+  useWeightUnit: () => mockWeightUnit,
+}));
+
+beforeEach(() => {
+  mockWeightUnit = 'kg';
+});
 
 // The decision this file holds: **the scheme line is one string, built in
 // `packages/utils`, and it is the same string the client's logger shows as
@@ -20,6 +31,7 @@ const BLOCK: ProgramDayExercise = {
   targetRpe: 8,
   targetRir: null,
   targetPercent1rm: null,
+  targetWeightKg: null,
   targetRestSeconds: 90,
   tempo: '3010',
   supersetGroup: null,
@@ -40,9 +52,9 @@ describe('ExerciseBlock', () => {
     renderBlock();
 
     expect(screen.getByText('4 × 6–8 · RPE 8 · 3010 · 90s')).toBeTruthy();
-    expect(screen.getByText(formatTargetScheme(BLOCK))).toBeTruthy();
+    expect(screen.getByText(formatTargetScheme(BLOCK, 'kg'))).toBeTruthy();
     expect(screen.getByTestId('block-open').props.accessibilityHint).toBe(
-      formatTargetScheme(BLOCK),
+      formatTargetScheme(BLOCK, 'kg'),
     );
     expect(screen.getByTestId('block-open').props.accessibilityLabel).toBe('Barbell Back Squat');
   });
@@ -74,6 +86,35 @@ describe('ExerciseBlock', () => {
 
     expect(screen.getAllByText('65%', HIDDEN)).toHaveLength(4);
     expect(screen.getByText('4 × 10–12 · 65% 1RM · 90s')).toBeTruthy();
+  });
+
+  // An absolute load is one of the four intensities, so it lands in the
+  // same slot RPE would have — and it is rendered in the coach's own unit
+  // from one stored kilogram value, never converted twice.
+  it('renders an absolute target weight in the coach’s own unit', () => {
+    renderBlock({
+      targetRpe: null,
+      targetWeightKg: 100,
+      tempo: null,
+      targetRepsMin: 5,
+      targetRepsMax: 5,
+    });
+
+    expect(screen.getByText('4 × 5 · 100kg · 90s')).toBeTruthy();
+    expect(screen.getAllByText('100kg', HIDDEN)).toHaveLength(4);
+  });
+
+  it('shows the same stored weight in pounds for a coach who reads in pounds', () => {
+    mockWeightUnit = 'lb';
+    renderBlock({
+      targetRpe: null,
+      targetWeightKg: 100,
+      tempo: null,
+      targetRepsMin: 5,
+      targetRepsMax: 5,
+    });
+
+    expect(screen.getByText('4 × 5 · 220lb · 90s')).toBeTruthy();
   });
 
   it('shows a superset letter authored elsewhere, and folds it into the spoken label', () => {
