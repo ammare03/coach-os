@@ -20,6 +20,7 @@ export type ResourceKind =
   | 'programWeek'
   | 'programDay'
   | 'programExercise'
+  | 'assignment'
   | 'workoutSession'
   | 'setLog'
   | 'meal'
@@ -254,6 +255,49 @@ export const RESOURCE_REGISTRY: Record<ResourceKind, ResourceKindEntry> = {
     clientOwnedIds: null,
     // A coach's own authored template, not client content — no grace
     // window, no returning-client re-grant. Same as its three ancestors.
+    formerCoachOwnedIds: null,
+    historySharedOwnedIds: null,
+    nutritionSharedOwnedIds: null,
+  },
+
+  // `assignment/01` — the live-reference bridge itself
+  // (`apps/api/src/features/programs/versioning.md`). Both denormalised
+  // owner columns exist directly on the row (DB§5.2), so both branches are
+  // a single-table lookup, exactly like `workoutSession` below.
+  assignment: {
+    coachOwnedIds: async (db, { coachProfileId }, ids) =>
+      idsOf(
+        await db
+          .select({ id: schema.assignments.id })
+          .from(schema.assignments)
+          .where(
+            and(
+              inArray(schema.assignments.id, ids),
+              eq(schema.assignments.coachId, coachProfileId),
+            ),
+          ),
+      ),
+    // A client genuinely owns their own assignment — unlike `program`/
+    // `programWeek`/etc. above, this is not "structurally unrepresentable
+    // until a later phase"; it is real ownership with no procedure that
+    // needs it yet. Written now rather than left `null`, the same call the
+    // `workoutSession` entry below made for the same reason.
+    clientOwnedIds: async (db, { clientProfileId }, ids) =>
+      idsOf(
+        await db
+          .select({ id: schema.assignments.id })
+          .from(schema.assignments)
+          .where(
+            and(
+              inArray(schema.assignments.id, ids),
+              eq(schema.assignments.clientId, clientProfileId),
+            ),
+          ),
+      ),
+    // Not named in `account-lifecycle/06`'s transition table — it predates
+    // this table. Same default `liveSession` above took for the same
+    // reason: no grace window rather than inventing access it never
+    // granted. Revisit as an explicit decision if a real need surfaces.
     formerCoachOwnedIds: null,
     historySharedOwnedIds: null,
     nutritionSharedOwnedIds: null,

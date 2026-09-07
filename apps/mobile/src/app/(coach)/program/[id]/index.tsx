@@ -17,6 +17,9 @@ export default function CoachProgramScreen() {
       onOpenDay={(dayId) => {
         router.push({ pathname: '/(coach)/program/[id]/day/[dayId]', params: { id, dayId } });
       }}
+      onInviteClient={() => {
+        router.push('/(coach)/invite-client');
+      }}
     />
   );
 }

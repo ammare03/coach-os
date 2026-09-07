@@ -27,6 +27,10 @@ export const RESOURCE_FIELD_KIND: Record<string, ResourceKind> = {
   // The destination is a brand-new program this call creates, not a row to
   // guard, so `sourceProgramId` is the only field that needs registering.
   sourceProgramId: 'program',
+  // `assignments.pause` / `assignments.complete` (`assignment/01`).
+  // `assignments.create` names no `assignmentId` — it names `programId`
+  // and `clientId` instead, both already registered above.
+  assignmentId: 'assignment',
   workoutSessionId: 'workoutSession',
   setLogId: 'setLog',
   mealId: 'meal',

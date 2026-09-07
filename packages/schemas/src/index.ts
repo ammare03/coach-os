@@ -11,6 +11,7 @@ export * from './pagination.ts';
 export * from './primitives.ts';
 export * from './strict.ts';
 
+export * as assignments from './assignments.ts';
 export * as auth from './auth.ts';
 export * as billing from './billing.ts';
 export * as checkins from './checkins.ts';

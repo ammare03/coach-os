@@ -202,6 +202,13 @@ export const APP_ERROR_CODES = [
   // program it is already showing, so this is the floor under a stale or
   // patched client, never the normal path.
   'PROGRAM_COPY_CROSS_PROGRAM',
+  // assignment/01 — `assignments_one_active`'s partial unique index
+  // (`training-schema/03`), translated into a specific code rather than a
+  // raw constraint violation. Pre-checked in the resolver so the payload
+  // can name the conflicting assignment; the insert's own unique-index
+  // violation is the second line of defence for the concurrent-request
+  // case (`../../apps/api/src/features/assignments/create-assignment.ts`).
+  'CLIENT_ALREADY_HAS_ACTIVE_ASSIGNMENT',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -276,6 +283,7 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   PROGRAM_SUPERSET_STALE: 'CONFLICT',
   PROGRAM_ALTERNATIVE_IS_ORIGIN: 'BAD_REQUEST',
   PROGRAM_COPY_CROSS_PROGRAM: 'BAD_REQUEST',
+  CLIENT_ALREADY_HAS_ACTIVE_ASSIGNMENT: 'CONFLICT',
 };
 
 /**
@@ -386,6 +394,21 @@ export interface AppErrorPayloads {
   // DB§18's rule is that a payload carries only what the copy needs.
   PROGRAM_ALTERNATIVE_IS_ORIGIN: EmptyErrorPayload;
   PROGRAM_COPY_CROSS_PROGRAM: EmptyErrorPayload;
+  // The one place this catalogue's usual "never a name in a payload" rule
+  // (`EXERCISE_NAME_TAKEN`'s own comment) doesn't apply: a program's name
+  // is coach-authored organisational text, not DB§18-classified sensitive
+  // data, and — unlike `EXERCISE_NAME_TAKEN`, where the caller already sent
+  // the colliding name — the coach assigning a NEW program has no way to
+  // already know what the client's EXISTING one is called. The sheet's
+  // conflict card (`assignment/01`) needs all four fields to render "on
+  // {programName}, week {currentWeek} of {durationWeeks}" without a second
+  // round trip.
+  CLIENT_ALREADY_HAS_ACTIVE_ASSIGNMENT: {
+    assignmentId: string;
+    programName: string;
+    currentWeek: number;
+    durationWeeks: number;
+  };
 }
 
 /**

@@ -158,9 +158,10 @@ async function isProtectedByAuth(procedure: WalkedProcedure): Promise<boolean> {
 
 function foreignIdFor(kind: ResourceKind): string {
   // Exhaustive over `ResourceKind` (`03-owns-resource.md` step 8's ten
-  // seeded kinds, plus `invite` from `invites/01` and the two
+  // seeded kinds, plus `invite` from `invites/01`, the two
   // program-structure kinds from `program-builder/01` and the target block
-  // from `program-builder/02`) — adding another fails
+  // from `program-builder/02`, and `assignment` from `assignment/01`) —
+  // adding another fails
   // this switch until it's given a case, the same exhaustiveness discipline
   // as `has-role.ts`.
   switch (kind) {
@@ -178,6 +179,8 @@ function foreignIdFor(kind: ResourceKind): string {
       return fixture.coachB.programDayId;
     case 'programExercise':
       return fixture.coachB.programExerciseId;
+    case 'assignment':
+      return fixture.clientB1.assignmentId;
     case 'workoutSession':
       return fixture.clientB1.workoutSessionId;
     case 'setLog':

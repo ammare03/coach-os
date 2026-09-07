@@ -1,5 +1,6 @@
 import { router } from '../trpc/init.ts';
 
+import { assignmentsRouter } from './assignments.ts';
 import { authRouter } from './auth.ts';
 import { billingRouter } from './billing.ts';
 import { checkinsRouter } from './checkins.ts';
@@ -38,6 +39,7 @@ import { workoutsRouter } from './workouts.ts';
 // `router-registry.test.ts` derives the expected key from the filename.
 export const appRouter = router({
   health: healthRouter,
+  assignments: assignmentsRouter,
   auth: authRouter,
   billing: billingRouter,
   checkins: checkinsRouter,
