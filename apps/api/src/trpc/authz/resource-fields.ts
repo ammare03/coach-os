@@ -23,6 +23,10 @@ export const RESOURCE_FIELD_KIND: Record<string, ResourceKind> = {
   sourceDayId: 'programDay',
   targetWeekId: 'programWeek',
   sourceWeekId: 'programWeek',
+  // `programs.duplicate` (`program-templates/02`) — the whole-program copy.
+  // The destination is a brand-new program this call creates, not a row to
+  // guard, so `sourceProgramId` is the only field that needs registering.
+  sourceProgramId: 'program',
   workoutSessionId: 'workoutSession',
   setLogId: 'setLog',
   mealId: 'meal',

@@ -663,3 +663,29 @@ export const duplicateProgramWeekInput = strictObject({
   targetWeekNumber: weekNumber.optional(),
 });
 export type DuplicateProgramWeekInput = z.infer<typeof duplicateProgramWeekInput>;
+
+// ---------------------------------------------------------------------------
+// Whole-program duplication — `programs.duplicate` (`program-templates/02`)
+// ---------------------------------------------------------------------------
+
+/**
+ * `programs.duplicate` — the whole-program copy (`program-templates/02`).
+ *
+ * **One row, and the destination is not a row at all.** Unlike
+ * `duplicateProgramDayInput`, which names a source and a target week, the copy
+ * this makes is a NEW program owned by the caller, so there is nothing to
+ * guard but `sourceProgramId` and nothing for it to collide with.
+ *
+ * `newName` is required rather than defaulted to "X (copy)": a coach
+ * duplicating a template is on their way to making a different program out of
+ * it, and a server-invented name is one they would have to go and fix.
+ *
+ * There is no `isTemplate` here — the copy inherits the source's, and
+ * `programs.update`'s toggle is how a coach changes it afterwards
+ * (`program-templates/01`).
+ */
+export const duplicateProgramInput = strictObject({
+  sourceProgramId: id,
+  newName: programName,
+});
+export type DuplicateProgramInput = z.infer<typeof duplicateProgramInput>;

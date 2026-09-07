@@ -9,6 +9,7 @@ import { deleteProgramExercise } from '../features/programs/delete-program-exerc
 import { deleteProgramWeek } from '../features/programs/delete-program-week.ts';
 import { duplicateProgramDay } from '../features/programs/duplicate-program-day.ts';
 import { duplicateProgramWeek } from '../features/programs/duplicate-program-week.ts';
+import { duplicateProgram } from '../features/programs/duplicate-program.ts';
 import { getProgramDay } from '../features/programs/get-program-day.ts';
 import { getProgram } from '../features/programs/get-program.ts';
 import { reorderProgramExercises } from '../features/programs/reorder-program-exercises.ts';
@@ -224,6 +225,15 @@ export const programsRouter = router({
     .mutation(async ({ ctx, input }) => {
       await updateProgram(ctx.db, input);
     }),
+
+  // `program-templates/02` — the whole-program copy, across programs, where
+  // `weeks.duplicate` could only ever copy within one. ONE guard: the
+  // destination is a new program this call creates and the caller owns, so
+  // `sourceProgramId` is the only row the input names.
+  duplicate: coachProcedure
+    .input(programsSchemas.duplicateProgramInput)
+    .use(ownsResource('program', (i: { sourceProgramId: string }) => i.sourceProgramId))
+    .mutation(({ ctx, input }) => duplicateProgram(ctx.db, ctx.user.coachProfileId, input)),
 
   weeks: programWeeksRouter,
   days: programDaysRouter,
