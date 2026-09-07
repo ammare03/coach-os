@@ -1,3 +1,4 @@
+import type { AppErrorCode } from '@coachos/schemas';
 import {
   Badge,
   createThemedStyles,
@@ -12,12 +13,17 @@ import {
   spacing,
   Text,
   useTheme,
+  useToast,
+  useUndoToast,
 } from '@coachos/ui';
 import {
   CalendarPlus,
   ChevronLeft,
+  Copy,
+  CopyPlus,
   Plus,
   SlidersHorizontal,
+  Trash2,
   TriangleAlert,
 } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
@@ -25,12 +31,20 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getErrorCode } from '../../../lib/error-code.ts';
-import type { ProgramWeek } from '../api/programs.ts';
+import type { ProgramDay, ProgramWeek } from '../api/programs.ts';
 import { AddDaySheet } from '../components/AddDaySheet.tsx';
 import { ACTION_BAR_BOTTOM, BuilderActionBar } from '../components/BuilderActionBar.tsx';
+import {
+  BuilderActionsMenu,
+  useDestructiveInk,
+  type BuilderMenuAction,
+} from '../components/BuilderActionsMenu.tsx';
+import { CopySheet, type CopySubject } from '../components/CopySheet.tsx';
 import { ProgramDetailsSheet } from '../components/ProgramDetailsSheet.tsx';
 import { WeekCard } from '../components/WeekCard.tsx';
+import { nextFreeWeekNumber } from '../duplication.ts';
 import { useProgramBuilder } from '../hooks/useProgramBuilder.ts';
+import { dayFullLabel } from '../program-days.ts';
 
 // `(coach)/program/[id]` — the builder (`program-builder/01`, frame 1a).
 // Coach density throughout: 16px gutter, 56px rows, 46px buttons.
@@ -40,6 +54,11 @@ import { useProgramBuilder } from '../hooks/useProgramBuilder.ts';
 // loading state and one error boundary rather than one per level.
 
 const GUTTER = density.coach.gutter;
+
+/** What a kebab was pressed on. A day carries its week too — frame 1g's
+ *  middle item duplicates the week the day sits in. */
+type MenuSubject =
+  { kind: 'week'; week: ProgramWeek } | { kind: 'day'; week: ProgramWeek; day: ProgramDay };
 
 export interface ProgramBuilderScreenProps {
   programId: string;
@@ -59,12 +78,35 @@ export function ProgramBuilderScreen({
   const themed = useThemedStyles();
   const insets = useSafeAreaInsets();
 
-  const { program, updateProgram, addWeek, addDay } = useProgramBuilder(programId);
+  const showUndoToast = useUndoToast();
+  const { showToast } = useToast();
+  const destructiveInk = useDestructiveInk();
+
+  const {
+    program,
+    updateProgram,
+    addWeek,
+    removeWeek,
+    addDay,
+    removeDay,
+    duplicateDay,
+    duplicateWeek,
+  } = useProgramBuilder(programId);
 
   const [collapsedWeekIds, setCollapsedWeekIds] = useState<ReadonlySet<string>>(new Set());
   const [isDetailsOpen, setDetailsOpen] = useState(false);
   const [addDayWeek, setAddDayWeek] = useState<ProgramWeek | null>(null);
   const [lengthError, setLengthError] = useState<string | undefined>(undefined);
+  // The kebab's contents, and what they are about — one piece of state, so
+  // "a menu is open" and "which row it belongs to" cannot disagree.
+  const [menuSubject, setMenuSubject] = useState<MenuSubject | null>(null);
+  const [copySubject, setCopySubject] = useState<CopySubject | null>(null);
+  const [copyErrorCode, setCopyErrorCode] = useState<AppErrorCode | null>(null);
+  // Weeks and days the coach has deleted but whose delete has not been sent
+  // yet — the undo window is local, so the row leaves the list immediately
+  // and comes back if they take it back (`useUndoToast`'s deferred commit).
+  const [pendingWeekIds, setPendingWeekIds] = useState<ReadonlySet<string>>(new Set());
+  const [pendingDayIds, setPendingDayIds] = useState<ReadonlySet<string>>(new Set());
 
   const data = program.data;
 
@@ -135,8 +177,113 @@ export function ProgramBuilderScreen({
 
   if (!data) return null;
 
-  const weeks = data.weeks;
+  // A deleted week or day is gone from the list the moment it is deleted,
+  // and back the moment Undo is tapped — the server has not been told yet
+  // either way.
+  const weeks = data.weeks
+    .filter((week) => !pendingWeekIds.has(week.id))
+    .map((week) => ({ ...week, days: week.days.filter((day) => !pendingDayIds.has(day.id)) }));
   const canAddWeek = !addWeek.isPending;
+  const targetWeekNumber = nextFreeWeekNumber(weeks);
+
+  function deleteWeek(week: ProgramWeek): void {
+    setPendingWeekIds((current) => new Set(current).add(week.id));
+    showUndoToast({
+      message: `Week ${String(week.weekNumber)} deleted`,
+      onUndo: () => {
+        setPendingWeekIds((current) => {
+          const next = new Set(current);
+          next.delete(week.id);
+          return next;
+        });
+      },
+      onCommit: () => {
+        removeWeek.mutate({ programWeekId: week.id });
+      },
+    });
+  }
+
+  function deleteDay(day: ProgramDay): void {
+    setPendingDayIds((current) => new Set(current).add(day.id));
+    showUndoToast({
+      message: `${day.name} deleted`,
+      onUndo: () => {
+        setPendingDayIds((current) => {
+          const next = new Set(current);
+          next.delete(day.id);
+          return next;
+        });
+      },
+      onCommit: () => {
+        removeDay.mutate({ programDayId: day.id });
+      },
+    });
+  }
+
+  function openCopy(subject: CopySubject): void {
+    setMenuSubject(null);
+    setCopyErrorCode(null);
+    setCopySubject(subject);
+  }
+
+  // Frame 1g's three items on a day, and the week's own two on a week
+  // header. Destructive last, after a divider, in the urgent ramp.
+  function menuActions(subject: MenuSubject): BuilderMenuAction[] {
+    const copyIcon = <Copy size={16} color={theme.colors.fg.DEFAULT} />;
+    const weekIcon = <CopyPlus size={16} color={theme.colors.fg.DEFAULT} />;
+    const deleteIcon = <Trash2 size={16} color={destructiveInk} />;
+
+    if (subject.kind === 'week') {
+      return [
+        {
+          actionId: 'duplicate-week',
+          label: 'Duplicate whole week',
+          icon: weekIcon,
+          onPress: () => {
+            openCopy({ kind: 'week', week: subject.week });
+          },
+        },
+        {
+          actionId: 'delete-week',
+          label: 'Delete week',
+          icon: deleteIcon,
+          isDestructive: true,
+          onPress: () => {
+            setMenuSubject(null);
+            deleteWeek(subject.week);
+          },
+        },
+      ];
+    }
+    return [
+      {
+        actionId: 'duplicate-day',
+        label: 'Duplicate this day',
+        icon: copyIcon,
+        onPress: () => {
+          openCopy({ kind: 'day', day: subject.day, sourceWeekNumber: subject.week.weekNumber });
+        },
+      },
+      {
+        actionId: 'duplicate-week',
+        label: 'Duplicate whole week',
+        icon: weekIcon,
+        onPress: () => {
+          openCopy({ kind: 'week', week: subject.week });
+        },
+      },
+      {
+        actionId: 'delete-day',
+        label: 'Delete day',
+        icon: deleteIcon,
+        isDestructive: true,
+        onPress: () => {
+          setMenuSubject(null);
+          deleteDay(subject.day);
+        },
+      },
+    ];
+  }
 
   return (
     <View style={[styles.flex, themed.screen]}>
@@ -171,9 +318,10 @@ export function ProgramBuilderScreen({
           {/* `is_template` is DB§5.2's "in the coach's library, not assigned
               to anyone" — the same fact the action bar states in words. */}
           {data.isTemplate ? <Badge tone="neutral" size="sm" label="Draft" /> : null}
-          {/* The kebab's slot in frame 1a. A menu whose actions all land in
-              task 06 would be an affordance that opens nothing today, so the
-              slot carries the one action that works now. */}
+          {/* Frame 1a's topbar control. It stays a direct route to the
+              program's own details rather than becoming a third menu:
+              duplicate and delete are about a WEEK or a DAY, and both now
+              hang off the kebab on the row they are about (frame 1g). */}
           <IconButton
             icon={<SlidersHorizontal size={16} color={theme.colors.fg.muted} />}
             variant="ghost"
@@ -222,6 +370,12 @@ export function ProgramBuilderScreen({
                 onOpenDay={onOpenDay}
                 onAddDay={() => {
                   setAddDayWeek(week);
+                }}
+                onWeekMenu={() => {
+                  setMenuSubject({ kind: 'week', week });
+                }}
+                onDayMenu={(day) => {
+                  setMenuSubject({ kind: 'day', week, day });
                 }}
                 testID={`week-card-${week.weekNumber}`}
               />
@@ -311,6 +465,83 @@ export function ProgramBuilderScreen({
               {
                 onSuccess: () => {
                   setAddDayWeek(null);
+                },
+              },
+            );
+          }}
+        />
+      ) : null}
+
+      {menuSubject ? (
+        <BuilderActionsMenu
+          isOpen
+          title={
+            menuSubject.kind === 'week'
+              ? `Week ${String(menuSubject.week.weekNumber)}`
+              : dayFullLabel(menuSubject.day.dayNumber)
+          }
+          subtitle={menuSubject.kind === 'week' ? undefined : menuSubject.day.name}
+          actions={menuActions(menuSubject)}
+          onDismiss={() => {
+            setMenuSubject(null);
+          }}
+        />
+      ) : null}
+
+      {copySubject ? (
+        <CopySheet
+          isOpen
+          subject={copySubject}
+          weeks={weeks}
+          targetWeekNumber={targetWeekNumber}
+          isSaving={duplicateDay.isPending || duplicateWeek.isPending}
+          errorCode={copyErrorCode}
+          onDismiss={() => {
+            setCopySubject(null);
+            setCopyErrorCode(null);
+          }}
+          onCopy={(commit) => {
+            setCopyErrorCode(null);
+            if (commit.kind === 'week') {
+              if (copySubject.kind !== 'week' || targetWeekNumber === null) return;
+              duplicateWeek.mutate(
+                { sourceWeekId: copySubject.week.id },
+                {
+                  onSuccess: (result) => {
+                    setCopySubject(null);
+                    // States the fact, and where to find it — a copy that
+                    // lands off-screen with no word is indistinguishable
+                    // from one that failed (`COPY.md` CO§4.3).
+                    showToast({
+                      message: `Week ${String(copySubject.week.weekNumber)} copied to week ${String(result.weekNumber)}`,
+                    });
+                  },
+                  onError: (error) => {
+                    setCopyErrorCode(getErrorCode(error));
+                  },
+                },
+              );
+              return;
+            }
+            if (copySubject.kind !== 'day') return;
+            duplicateDay.mutate(
+              {
+                sourceDayId: copySubject.day.id,
+                targetWeekId: commit.targetWeekId,
+                targetDayNumber: commit.targetDayNumber,
+              },
+              {
+                onSuccess: () => {
+                  setCopySubject(null);
+                  showToast({
+                    message: `${copySubject.day.name} copied to ${dayFullLabel(commit.targetDayNumber)}`,
+                  });
+                },
+                // The refusal belongs in the sheet, under the slots it is
+                // about, not in a toast the coach has to trace back to a
+                // control (`ERRORS.md` ER§0.2 — inline).
+                onError: (error) => {
+                  setCopyErrorCode(getErrorCode(error));
                 },
               },
             );

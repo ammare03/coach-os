@@ -12,7 +12,7 @@ import {
 import { ChevronDown, ChevronRight, EllipsisVertical, Plus } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 
-import type { ProgramWeek } from '../api/programs.ts';
+import type { ProgramDay, ProgramWeek } from '../api/programs.ts';
 import { dayFullLabel, dayMetaLine, dayPillLabel, weekMetaLine } from '../program-days.ts';
 
 // One L2 card per week (`program-builder/01`, frame 1a). **The card IS the
@@ -28,11 +28,19 @@ export interface WeekCardProps {
   onOpenDay: (programDayId: string) => void;
   onAddDay: () => void;
   /**
-   * The kebab. Task 06 lands duplicate/delete behind it; until then the
-   * affordance is absent rather than inert — a menu button that opens
-   * nothing reads as broken (`ui-conventions` §4).
+   * The week header's kebab — duplicate and delete (`program-builder/06`,
+   * frame 1g). Optional, and the affordance is absent rather than inert
+   * when it is not passed: a menu button that opens nothing reads as broken
+   * (`ui-conventions` §4).
    */
   onWeekMenu?: (() => void) | undefined;
+  /**
+   * The same menu, scoped to one day. Frame 1g's three items — copy this
+   * day, copy the week it is in, delete it — are about a DAY, so a day row
+   * is where they hang from; the week header's kebab carries the week's own
+   * two. Absent when not passed, for the reason above.
+   */
+  onDayMenu?: ((day: ProgramDay) => void) | undefined;
   testID?: string;
 }
 
@@ -47,6 +55,7 @@ export function WeekCard({
   onOpenDay,
   onAddDay,
   onWeekMenu,
+  onDayMenu,
   testID,
 }: WeekCardProps) {
   const theme = useTheme();
@@ -134,6 +143,23 @@ export function WeekCard({
                   {dayMetaLine(day)}
                 </Text>
               </View>
+              {/* The kebab sits BESIDE the chevron rather than replacing
+                  it: the row still opens the day, and losing that affordance
+                  to gain a menu would trade the common action for the rare
+                  one. Two targets, each its own ≥44px (`IconButton`'s own
+                  hit slop), so a thumb cannot hit the wrong one. */}
+              {onDayMenu ? (
+                <IconButton
+                  icon={<EllipsisVertical size={16} color={theme.colors.fg.muted} />}
+                  variant="ghost"
+                  size="sm"
+                  onPress={() => {
+                    onDayMenu(day);
+                  }}
+                  accessibilityLabel={`More actions for ${day.name}`}
+                  testID={`day-menu-${day.id}`}
+                />
+              ) : null}
               <ChevronRight size={15} color={theme.colors.fg.faint} />
             </Pressable>
           ))}

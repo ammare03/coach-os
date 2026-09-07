@@ -190,6 +190,18 @@ export const APP_ERROR_CODES = [
   // exercise twice are both refused by the schema itself, as
   // `VALIDATION_FAILED`.
   'PROGRAM_ALTERNATIVE_IS_ORIGIN',
+  // program-builder/06 — a day copied into a week of a DIFFERENT program.
+  // Cross-program duplication is out of that task's scope (it belongs to
+  // `program-templates`), and `programs.days.duplicate` names two rows the
+  // caller may legitimately own without them belonging together: both
+  // `ownsResource` guards can pass on a pair this procedure does not
+  // offer to copy. BAD_REQUEST, not NOT_FOUND: both rows are the caller's
+  // own and `programs.get` returns each of them happily, so there is no
+  // existence to conceal and no oracle to close (`ERRORS.md` ER§2.1's test
+  // applied, not skipped). The copy-to sheet lists only the weeks of the
+  // program it is already showing, so this is the floor under a stale or
+  // patched client, never the normal path.
+  'PROGRAM_COPY_CROSS_PROGRAM',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -263,6 +275,7 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   PROGRAM_SUPERSET_NOT_ADJACENT: 'BAD_REQUEST',
   PROGRAM_SUPERSET_STALE: 'CONFLICT',
   PROGRAM_ALTERNATIVE_IS_ORIGIN: 'BAD_REQUEST',
+  PROGRAM_COPY_CROSS_PROGRAM: 'BAD_REQUEST',
 };
 
 /**
@@ -372,6 +385,7 @@ export interface AppErrorPayloads {
   // second, copyable statement of the same id for no recovery value, and
   // DB§18's rule is that a payload carries only what the copy needs.
   PROGRAM_ALTERNATIVE_IS_ORIGIN: EmptyErrorPayload;
+  PROGRAM_COPY_CROSS_PROGRAM: EmptyErrorPayload;
 }
 
 /**

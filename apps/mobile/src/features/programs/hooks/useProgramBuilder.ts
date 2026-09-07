@@ -29,6 +29,22 @@ export function useProgramBuilder(programId: string) {
   const addDay = api.programs.days.create.useMutation({ onSuccess: invalidate });
   const updateDay = api.programs.days.update.useMutation({ onSuccess: invalidate });
   const removeDay = api.programs.days.delete.useMutation({ onSuccess: invalidate });
+  // `program-builder/06`. Both land structure the screen already renders —
+  // a copied day changes its week's counts and a copied week changes the
+  // program's own length — so both invalidate the same honest unit as
+  // every write above.
+  const duplicateDay = api.programs.days.duplicate.useMutation({ onSuccess: invalidate });
+  const duplicateWeek = api.programs.weeks.duplicate.useMutation({ onSuccess: invalidate });
 
-  return { program, updateProgram, addWeek, removeWeek, addDay, updateDay, removeDay };
+  return {
+    program,
+    updateProgram,
+    addWeek,
+    removeWeek,
+    addDay,
+    updateDay,
+    removeDay,
+    duplicateDay,
+    duplicateWeek,
+  };
 }

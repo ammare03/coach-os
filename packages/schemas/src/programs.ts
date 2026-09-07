@@ -608,3 +608,58 @@ export const setAlternativesInput = strictObject({
   { message: ALTERNATIVE_DUPLICATE_MESSAGE, path: ['alternativeExerciseIds'] },
 );
 export type SetAlternativesInput = z.infer<typeof setAlternativesInput>;
+
+// ---------------------------------------------------------------------------
+// Duplication — `programs.days.duplicate` / `programs.weeks.duplicate`
+// (`program-builder/06`)
+// ---------------------------------------------------------------------------
+
+/**
+ * `programs.days.duplicate` — the copy-to sheet's commit
+ * (`program-builder/06`, frame 1g).
+ *
+ * **Two rows, not one.** `sourceDayId` names what is copied and
+ * `targetWeekId` names where it lands, and the router guards BOTH — a
+ * single guard on the source would let a coach copy their own day into
+ * another coach's week, which is a write into someone else's program.
+ *
+ * `targetDayNumber` is a slot, 1 (Monday) through 7 (Sunday), exactly as
+ * `createProgramDayInput`'s is. The sheet renders all seven and makes the
+ * taken ones inert and names their occupant, so `PROGRAM_DAY_TAKEN` is
+ * only ever reachable by a stale client — the collision is prevented, not
+ * reported.
+ *
+ * There is no `targetProgramId`: copying ACROSS programs is out of this
+ * task's scope (it belongs to `program-templates`), and the resolver
+ * refuses a target week in a different program outright rather than
+ * quietly performing a copy this procedure does not offer.
+ */
+export const duplicateProgramDayInput = strictObject({
+  sourceDayId: id,
+  targetWeekId: id,
+  targetDayNumber: dayNumber,
+});
+export type DuplicateProgramDayInput = z.infer<typeof duplicateProgramDayInput>;
+
+/**
+ * `programs.weeks.duplicate` — "Duplicate whole week" in the week kebab
+ * (`program-builder/06`, frame 1g).
+ *
+ * **One row, not two**, and that asymmetry with the day input above is the
+ * point: the destination is a week NUMBER inside the source week's own
+ * program, so there is no second row to own and nothing to guard beyond
+ * `sourceWeekId`. It is also why cross-program duplication is structurally
+ * impossible here rather than merely refused.
+ *
+ * `targetWeekNumber` is optional and defaults, server-side, to one past the
+ * program's current last week — the same append that `createProgramWeekInput`
+ * makes, and for the same reason: asking the UI to compute the next number
+ * is asking two devices to race for it. The menu action sends no number at
+ * all, so the coach cannot pick a collision; an explicit number is the
+ * stale-client path, and it answers `PROGRAM_WEEK_EXISTS`.
+ */
+export const duplicateProgramWeekInput = strictObject({
+  sourceWeekId: id,
+  targetWeekNumber: weekNumber.optional(),
+});
+export type DuplicateProgramWeekInput = z.infer<typeof duplicateProgramWeekInput>;

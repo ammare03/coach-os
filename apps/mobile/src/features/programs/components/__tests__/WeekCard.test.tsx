@@ -115,3 +115,35 @@ describe('WeekCard', () => {
     expect(onWeekMenu).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('WeekCard — the kebabs (`program-builder/06`)', () => {
+  it('offers a menu on the week header and on each day row, each naming what it is about', () => {
+    const onWeekMenu = jest.fn();
+    const onDayMenu = jest.fn();
+    renderCard({ onWeekMenu, onDayMenu });
+
+    const weekMenu = screen.getByTestId('week-menu-1');
+    expect(weekMenu.props.accessibilityLabel).toBe('More actions for week 1');
+    fireEvent.press(weekMenu);
+    expect(onWeekMenu).toHaveBeenCalledTimes(1);
+
+    const dayMenu = screen.getByTestId('day-menu-day-1');
+    expect(dayMenu.props.accessibilityLabel).toBe('More actions for Upper — press focus');
+    fireEvent.press(dayMenu);
+    expect(onDayMenu).toHaveBeenCalledWith(WEEK.days[0]);
+  });
+
+  it('keeps the row itself opening the day — the kebab is beside the chevron, not instead of it', () => {
+    const { onOpenDay } = renderCard({ onDayMenu: jest.fn() });
+
+    fireEvent.press(screen.getByTestId('day-row-day-1'));
+    expect(onOpenDay).toHaveBeenCalledWith('day-1');
+  });
+
+  it('renders no kebab at all when no handler is passed — an affordance that opens nothing reads as broken', () => {
+    renderCard();
+
+    expect(screen.queryByTestId('week-menu-1')).toBeNull();
+    expect(screen.queryByTestId('day-menu-day-1')).toBeNull();
+  });
+});

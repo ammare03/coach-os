@@ -7,6 +7,8 @@ import { createProgram } from '../features/programs/create-program.ts';
 import { deleteProgramDay } from '../features/programs/delete-program-day.ts';
 import { deleteProgramExercise } from '../features/programs/delete-program-exercise.ts';
 import { deleteProgramWeek } from '../features/programs/delete-program-week.ts';
+import { duplicateProgramDay } from '../features/programs/duplicate-program-day.ts';
+import { duplicateProgramWeek } from '../features/programs/duplicate-program-week.ts';
 import { getProgramDay } from '../features/programs/get-program-day.ts';
 import { getProgram } from '../features/programs/get-program.ts';
 import { reorderProgramExercises } from '../features/programs/reorder-program-exercises.ts';
@@ -50,6 +52,16 @@ const programWeeksRouter = router({
     .mutation(async ({ ctx, input }) => {
       await deleteProgramWeek(ctx.db, input.programWeekId);
     }),
+
+  // `program-builder/06`'s week copy. ONE guard, unlike `days.duplicate`
+  // below, and the asymmetry is structural rather than an oversight: the
+  // destination is a week NUMBER inside the source week's own program, so
+  // the only row this input names is `sourceWeekId`. It is also why a
+  // cross-program week copy cannot be expressed here at all.
+  duplicate: coachProcedure
+    .input(programsSchemas.duplicateProgramWeekInput)
+    .use(ownsResource('programWeek', (i: { sourceWeekId: string }) => i.sourceWeekId))
+    .mutation(({ ctx, input }) => duplicateProgramWeek(ctx.db, input)),
 });
 
 const programDaysRouter = router({
@@ -84,6 +96,22 @@ const programDaysRouter = router({
     .mutation(async ({ ctx, input }) => {
       await deleteProgramDay(ctx.db, input.programDayId);
     }),
+
+  // `program-builder/06`'s day copy. TWO guards, and the second is the one
+  // that matters: this input names a source AND a destination, and owning
+  // the day being copied says nothing about the week it is being copied
+  // into. Guarding only `sourceDayId` would let a coach write a day into
+  // another coach's program — the same two-guard shape `exercises.reorder`
+  // and `exercises.setSupersetGroup` take, for the same reason.
+  //
+  // What neither guard can answer — that the two rows belong to the SAME
+  // program, and that the target slot is free — is checked in the resolver
+  // against the rows themselves.
+  duplicate: coachProcedure
+    .input(programsSchemas.duplicateProgramDayInput)
+    .use(ownsResource('programDay', (i: { sourceDayId: string }) => i.sourceDayId))
+    .use(ownsResource('programWeek', (i: { targetWeekId: string }) => i.targetWeekId))
+    .mutation(({ ctx, input }) => duplicateProgramDay(ctx.db, input)),
 });
 
 // The task document names these `programExercises.create`/`update`/
