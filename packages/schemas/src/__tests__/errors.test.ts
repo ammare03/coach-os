@@ -67,6 +67,10 @@ function describeCode(code: AppErrorCode): string {
     case 'EXERCISE_NOT_FOUND':
     case 'EXERCISE_NAME_TAKEN':
     case 'EXERCISE_NOT_EDITABLE':
+    case 'PROGRAM_WEEK_EXISTS':
+    case 'PROGRAM_DAY_TAKEN':
+    case 'PROGRAM_DURATION_TOO_SHORT':
+    case 'PROGRAM_WEEK_LIMIT_REACHED':
       return code;
     default:
       return assertNever(code);

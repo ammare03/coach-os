@@ -118,6 +118,25 @@ export const APP_ERROR_CODES = [
   // so there is no oracle to close, and "you can't edit this" is the true
   // and more useful answer.
   'EXERCISE_NOT_EDITABLE',
+  // program-builder/01 — the three refusals a coach can walk into while
+  // building the week/day hierarchy, each mapping to one DB§5.2 constraint
+  // the builder would otherwise surface as a raw Postgres unique violation.
+  // `PROGRAM_WEEK_EXISTS` and `PROGRAM_DAY_TAKEN` are pre-checked in the
+  // resolver rather than translated from the constraint name, because both
+  // payloads carry the number that collided and the stateless database
+  // boundary cannot fabricate that (`../../apps/api/src/db/constraint-map.ts`
+  // documents the same rule for `CHECKIN_ALREADY_SUBMITTED`).
+  'PROGRAM_WEEK_EXISTS',
+  'PROGRAM_DAY_TAKEN',
+  // program-builder/01 — the length stepper cannot be driven below the
+  // weeks that already exist. Refusing is the only non-destructive answer:
+  // the alternative is silently orphaning weeks 9-12 of a twelve-week
+  // program the coach has already written.
+  'PROGRAM_DURATION_TOO_SHORT',
+  // program-builder/01 — "Add week" at the `programs_duration_weeks_check`
+  // ceiling. The builder hides the affordance at 104, so this is the
+  // server's own floor under a stale client, never the normal path.
+  'PROGRAM_WEEK_LIMIT_REACHED',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -181,6 +200,10 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   EXERCISE_NOT_FOUND: 'NOT_FOUND',
   EXERCISE_NAME_TAKEN: 'CONFLICT',
   EXERCISE_NOT_EDITABLE: 'FORBIDDEN',
+  PROGRAM_WEEK_EXISTS: 'CONFLICT',
+  PROGRAM_DAY_TAKEN: 'CONFLICT',
+  PROGRAM_DURATION_TOO_SHORT: 'BAD_REQUEST',
+  PROGRAM_WEEK_LIMIT_REACHED: 'BAD_REQUEST',
 };
 
 /**
@@ -262,6 +285,15 @@ export interface AppErrorPayloads {
   // sent it), and DB§18 keeps user-authored text out of error payloads.
   EXERCISE_NAME_TAKEN: { existingExerciseId: string };
   EXERCISE_NOT_EDITABLE: EmptyErrorPayload;
+  // The colliding number, never the colliding row's name — DB§18 keeps
+  // coach-authored text out of error payloads, and the number is what the
+  // copy needs anyway ("Week 3 already exists").
+  PROGRAM_WEEK_EXISTS: { weekNumber: number };
+  PROGRAM_DAY_TAKEN: { dayNumber: number };
+  // How many weeks are actually written, so the stepper can clamp itself to
+  // the truth rather than re-fetching to find out.
+  PROGRAM_DURATION_TOO_SHORT: { weekCount: number };
+  PROGRAM_WEEK_LIMIT_REACHED: { maxWeeks: number };
 }
 
 /**

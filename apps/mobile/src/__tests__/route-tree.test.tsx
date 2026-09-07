@@ -170,7 +170,9 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   ['(coach)/session/[id]', '/(coach)/session/s1'],
   ['(coach)/video/[id]', '/(coach)/video/v1'],
   ['(coach)/checkin/[id]', '/(coach)/checkin/k1'],
-  ['(coach)/program/[id]/index', '/(coach)/program/p1'],
+  // `(coach)/program/[id]/index` was a placeholder here until
+  // `program-builder/01` composed the real builder; it moved to SUBSTITUTED
+  // for the same reason the three exercise routes did.
   ['(coach)/program/[id]/day/[dayId]', '/(coach)/program/p1/day/d2'],
   // `exercise-library` was a placeholder here until `exercise-library/01`
   // composed the real screen; it and the two authoring routes moved to
@@ -249,6 +251,10 @@ const SUBSTITUTED = new Set([
   '(coach)/exercise-library',
   '(coach)/exercise/new',
   '(coach)/exercise/[exerciseId]',
+  // Real as of `program-builder/01`, and the same reason again: the builder
+  // reads `programs.get` through TanStack Query. What it renders is covered
+  // by `src/features/programs/`.
+  '(coach)/program/[id]/index',
 ]);
 
 /**

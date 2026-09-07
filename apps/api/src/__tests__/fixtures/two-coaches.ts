@@ -22,6 +22,8 @@ interface CoachFixture {
   userId: string;
   profileId: string;
   programId: string;
+  programWeekId: string;
+  programDayId: string;
   inviteId: string;
 }
 
@@ -65,6 +67,20 @@ async function insertCoach(db: DbClient, emailLocal: string): Promise<CoachFixtu
     .returning({ id: schema.programs.id });
   if (!program) throw new Error('seed insert into programs did not return a row');
 
+  // `program-builder/01` adds `programWeek`/`programDay` to the registry,
+  // so the enumeration needs a foreign one of each to probe against.
+  const [week] = await db
+    .insert(schema.programWeeks)
+    .values({ programId: program.id, weekNumber: 1 })
+    .returning({ id: schema.programWeeks.id });
+  if (!week) throw new Error('seed insert into program_weeks did not return a row');
+
+  const [day] = await db
+    .insert(schema.programDays)
+    .values({ programWeekId: week.id, dayNumber: 1, name: 'Fixture Day' })
+    .returning({ id: schema.programDays.id });
+  if (!day) throw new Error('seed insert into program_days did not return a row');
+
   const [invite] = await db
     .insert(schema.invites)
     .values({
@@ -75,7 +91,14 @@ async function insertCoach(db: DbClient, emailLocal: string): Promise<CoachFixtu
     .returning({ id: schema.invites.id });
   if (!invite) throw new Error('seed insert into invites did not return a row');
 
-  return { userId, profileId: profile.id, programId: program.id, inviteId: invite.id };
+  return {
+    userId,
+    profileId: profile.id,
+    programId: program.id,
+    programWeekId: week.id,
+    programDayId: day.id,
+    inviteId: invite.id,
+  };
 }
 
 async function insertClient(

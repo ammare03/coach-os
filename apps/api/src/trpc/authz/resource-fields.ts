@@ -11,6 +11,8 @@ export const RESOURCE_FIELD_KIND: Record<string, ResourceKind> = {
   coachNoteId: 'coachNote',
   inviteId: 'invite',
   programId: 'program',
+  programWeekId: 'programWeek',
+  programDayId: 'programDay',
   workoutSessionId: 'workoutSession',
   setLogId: 'setLog',
   mealId: 'meal',
