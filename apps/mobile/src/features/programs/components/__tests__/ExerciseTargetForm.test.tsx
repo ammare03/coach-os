@@ -310,3 +310,56 @@ describe('ExerciseTargetForm — edit mode', () => {
     expect(screen.getByText('A day holds up to 30 exercises.')).toBeTruthy();
   });
 });
+
+// `program-builder/05` appended a section here without restructuring
+// anything above it, which is what "composable on purpose" was supposed to
+// mean. These assert the seam: the section is edit-only, it shows the
+// current answer without opening anything, and it reads as ONE control to a
+// screen reader rather than a label and a button to be associated.
+describe('ExerciseTargetForm — approved swaps', () => {
+  const SECTION = {
+    originExerciseId: 'ex-origin',
+    originMovementPattern: 'squat',
+    approved: [
+      { id: 'ex-hack', name: 'Hack Squat' },
+      { id: 'ex-press', name: 'Leg Press' },
+    ],
+    onSave: jest.fn(),
+  } as const;
+
+  it('is absent in create mode — there is no row yet to attach swaps to', () => {
+    renderForm({ mode: 'create' });
+
+    expect(screen.queryByTestId('target-alternatives')).toBeNull();
+  });
+
+  it('is absent in edit mode too when the caller does not wire it', () => {
+    renderForm({ mode: 'edit' });
+
+    expect(screen.queryByTestId('target-alternatives')).toBeNull();
+  });
+
+  it('shows the current answer without opening anything', () => {
+    renderForm({ mode: 'edit', alternatives: SECTION });
+
+    expect(screen.getByText('Hack Squat, Leg Press')).toBeTruthy();
+  });
+
+  it('reads as one control carrying the count, the names and the action', () => {
+    renderForm({ mode: 'edit', alternatives: SECTION });
+
+    const row = screen.getByTestId('target-alternatives');
+    expect(row.props.accessibilityRole).toBe('button');
+    expect(row.props.accessibilityLabel).toBe(
+      'Approved swaps. 2 approved swaps: Hack Squat, Leg Press',
+    );
+    expect(row.props.accessibilityHint).toBe('Opens the exercise picker to change them');
+  });
+
+  it('says what the row is for when nothing is approved yet', () => {
+    renderForm({ mode: 'edit', alternatives: { ...SECTION, approved: [] } });
+
+    expect(screen.getByText('Add approved swaps')).toBeTruthy();
+    expect(screen.getByLabelText('Approved swaps. No approved swaps yet')).toBeTruthy();
+  });
+});

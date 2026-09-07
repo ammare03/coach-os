@@ -1,3 +1,4 @@
+import { Text } from '@coachos/ui';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -5,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   ExercisePickerSheet,
   shorterWordHint,
+  type ExercisePickerSheetBaseProps,
   type PickerExercise,
 } from '../ExercisePickerSheet.tsx';
 
@@ -72,7 +74,12 @@ const MACHINE_ROW: PickerExercise = {
   demoAssetId: 'a-1',
 };
 
-function renderPicker(overrides: Partial<Parameters<typeof ExercisePickerSheet>[0]> = {}) {
+// Base props only. `ExercisePickerSheetProps` is a discriminated union
+// (single- versus multi-select), and `Partial<>` over a union makes both
+// arms' required discriminant optional — which no caller can then satisfy.
+// The multi-select cases build their own element rather than override into
+// this one.
+function renderPicker(overrides: Partial<ExercisePickerSheetBaseProps> = {}) {
   const onSelect = jest.fn();
   const onDismiss = jest.fn();
   const onCreate = jest.fn();
@@ -262,5 +269,108 @@ describe('shorterWordHint', () => {
 
   it('invents no shorter word when there is only one', () => {
     expect(shorterWordHint('curl')).toBe('Try a shorter word, or add it as your own exercise.');
+  });
+});
+
+// `program-builder/05`'s opt-in mode. What is asserted here is that it IS a
+// mode and not a fork: the same search hook, the same filters, the same
+// rows and badges, with the row's affordance and the footer as the only
+// difference.
+describe('ExercisePickerSheet — multi-select', () => {
+  function renderMultiSelect(
+    selectedIds: readonly string[] = [],
+    overrides: Partial<ExercisePickerSheetBaseProps> = {},
+  ) {
+    const onToggle = jest.fn();
+    const onCommit = jest.fn();
+    const onDismiss = jest.fn();
+    render(
+      withSafeArea(
+        <ExercisePickerSheet
+          isOpen
+          title="Approved swaps"
+          onDismiss={onDismiss}
+          selection={{
+            selectedIds,
+            onToggle,
+            actionLabel: `Approve ${selectedIds.length} swaps`,
+            onCommit,
+          }}
+          {...overrides}
+        />,
+      ),
+    );
+    return { onToggle, onCommit, onDismiss };
+  }
+
+  it('toggles instead of committing, and leaves the sheet open', () => {
+    const { onToggle, onDismiss } = renderMultiSelect();
+
+    fireEvent.press(screen.getByTestId('picker-exercise-ex-1'));
+
+    expect(onToggle).toHaveBeenCalledWith(expect.objectContaining({ id: 'ex-1' }));
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it('announces each row as a checkbox carrying its own checked state', () => {
+    renderMultiSelect(['ex-1']);
+
+    const selected = screen.getByTestId('picker-exercise-ex-1');
+    const unselected = screen.getByTestId('picker-exercise-ex-2');
+
+    expect(selected.props.accessibilityRole).toBe('checkbox');
+    expect(selected.props.accessibilityState).toMatchObject({ checked: true });
+    expect(unselected.props.accessibilityState).toMatchObject({ checked: false });
+  });
+
+  // `includeHiddenElements`, because the box is deliberately hidden from
+  // the reading order — the row's own `accessibilityState.checked` above is
+  // what announces the state, and saying it twice is the bug that would be.
+  // What is asserted here is the OTHER channel: a tick a sighted user can
+  // see, so the state is never carried by fill colour alone
+  // (`accessibility` §4).
+  it('draws a tick on the selected row and none on the unselected one — shape, not hue alone', () => {
+    renderMultiSelect(['ex-1']);
+
+    const hidden = { includeHiddenElements: true } as const;
+    expect(screen.getByTestId('picker-check-ex-1', hidden).props.children).toBeTruthy();
+    expect(screen.getByTestId('picker-check-ex-2', hidden).props.children).toBeFalsy();
+  });
+
+  it('renders a commit footer whose label counts', () => {
+    renderMultiSelect(['ex-1', 'ex-2']);
+
+    expect(screen.getByText('Approve 2 swaps')).toBeTruthy();
+  });
+
+  it('gives the dimmed origin row a badge and no checkbox at all', () => {
+    renderMultiSelect([], { alreadyAdded: ['ex-1'], alreadyAddedLabel: 'This one' });
+
+    expect(screen.getByLabelText('Barbell Bent-Over Row, This one')).toBeTruthy();
+    // An inert checkbox is a checkbox that looks broken.
+    const hidden = { includeHiddenElements: true } as const;
+    expect(screen.queryByTestId('picker-check-ex-1', hidden)).toBeNull();
+    expect(screen.getByTestId('picker-check-ex-2', hidden)).toBeTruthy();
+  });
+
+  it('keeps ONE search implementation — the same hook, filters and ranking as single-select', () => {
+    renderMultiSelect([], { initialMovementPattern: 'squat' });
+
+    // The mode changes no search input: the picker is still asking
+    // `exercises.search` the same question with the same filter.
+    expect(mockSearchCalls[0]).toEqual({ query: '', movementPattern: 'squat' });
+    expect(screen.getByLabelText('Search exercises')).toBeTruthy();
+    expect(screen.getByTestId('picker-filter-all')).toBeTruthy();
+    // The "Yours" badge and the ranked single list, unchanged. Hidden from
+    // the reading order by `Badge`'s own contract — the row folds it into
+    // its label instead — so it is read back the same way.
+    expect(screen.getByText('Yours', { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.getByLabelText('Machine Row, your exercise, has a demo video')).toBeTruthy();
+  });
+
+  it('renders the consumer’s header above the search field', () => {
+    renderMultiSelect([], { header: <Text testID="swaps-header">Approved · 2</Text> });
+
+    expect(screen.getByTestId('swaps-header')).toBeTruthy();
   });
 });

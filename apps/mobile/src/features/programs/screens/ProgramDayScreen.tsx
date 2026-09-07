@@ -24,6 +24,7 @@ import {
   ExercisePickerSheet,
   type PickerExercise,
 } from '../../workouts/components/library/ExercisePickerSheet.tsx';
+import { ALTERNATIVE_BOUNDS } from '../alternatives.ts';
 import type { ProgramDayExercise } from '../api/programs.ts';
 import { DraggableExerciseList } from '../components/DraggableExerciseList.tsx';
 import { ExerciseTargetForm } from '../components/ExerciseTargetForm.tsx';
@@ -72,8 +73,15 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
   const insets = useSafeAreaInsets();
   const showUndoToast = useUndoToast();
 
-  const { day, addExercise, updateExercise, removeExercise, reorderExercises, setSupersetGroup } =
-    useProgramDayBuilder(programDayId);
+  const {
+    day,
+    addExercise,
+    updateExercise,
+    removeExercise,
+    reorderExercises,
+    setSupersetGroup,
+    setAlternatives,
+  } = useProgramDayBuilder(programDayId);
 
   const [isPickerOpen, setPickerOpen] = useState(false);
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -92,6 +100,7 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
   // disagree (`program-builder/04`, frame 1e).
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string> | null>(null);
   const [supersetError, setSupersetError] = useState<string | undefined>(undefined);
+  const [swapsError, setSwapsError] = useState<string | undefined>(undefined);
 
   const screenPadding = { paddingTop: insets.top + spacing(6) };
 
@@ -353,6 +362,7 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
               onUngroup={ungroup}
               onOpenBlock={(block) => {
                 setSaveError(undefined);
+                setSwapsError(undefined);
                 setEditing({ kind: 'edit', block });
               }}
               onReorder={(orderedExerciseIds) => {
@@ -499,6 +509,27 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
           onRemove={() => {
             handleRemove(editing.block);
           }}
+          // Edit mode only — `program_exercises.alternatives` lives on a
+          // row, and create mode has none yet (`program-builder/05`).
+          alternatives={{
+            originExerciseId: editing.block.exerciseId,
+            originMovementPattern: editing.block.exerciseMovementPattern,
+            approved: editing.block.alternatives,
+            isSaving: setAlternatives.isPending,
+            saveError: swapsError,
+            onSave: (alternativeExerciseIds) => {
+              const programExerciseId = editing.block.id;
+              setSwapsError(undefined);
+              setAlternatives.mutate(
+                { programExerciseId, alternativeExerciseIds },
+                {
+                  onError: (error) => {
+                    setSwapsError(alternativesErrorMessage(error));
+                  },
+                },
+              );
+            },
+          }}
           onDismiss={() => {
             setEditing(null);
           }}
@@ -584,6 +615,32 @@ function supersetErrorMessage(error: unknown): string {
     return 'This day changed on another device, so the grouping was not saved. We have refreshed it — try again.';
   }
   return "We couldn't save this grouping. Check your connection and try again.";
+}
+
+/**
+ * The approved-swaps refusals, said inside the sheet the coach is standing
+ * in rather than in a toast behind it (`ERRORS.md` ER§0.2). Every branch
+ * is a state the sheet already prevents — the origin row has no checkbox,
+ * the picker only offers exercises this coach can see, and the commit goes
+ * inert at the ceiling — so this is what is said when a stale or patched
+ * client reaches one anyway.
+ */
+function alternativesErrorMessage(error: unknown): string {
+  const code = getErrorCode(error);
+  if (code === 'PROGRAM_ALTERNATIVE_IS_ORIGIN') {
+    return 'An exercise cannot be a swap for itself. Take it off the list and save again.';
+  }
+  if (code === 'EXERCISE_NOT_FOUND') {
+    // Both halves of the server's one answer: an id naming nothing, and an
+    // id naming an exercise this coach cannot see. They are deliberately
+    // indistinguishable there (`ERRORS.md` ER§2.1), so they are one
+    // sentence here too.
+    return 'One of those exercises is no longer in your library. Refresh and pick again.';
+  }
+  if (code === 'VALIDATION_FAILED') {
+    return `A block holds up to ${ALTERNATIVE_BOUNDS.maxApproved} approved swaps, each named once.`;
+  }
+  return "We couldn't save these swaps. Check your connection and try again.";
 }
 
 /** One frozen empty set, so "not selecting" never allocates a new one per render. */

@@ -128,6 +128,41 @@ export function useProgramDayBuilder(programDayId: string) {
     },
   });
 
+  // `program-builder/05`'s commit. NOT optimistic, unlike the two above,
+  // and the difference is the point: reorder and grouping are gestures a
+  // coach makes ON the list they are looking at, so a round trip's delay
+  // reads as a dropped tap — approving swaps is a form the coach fills in
+  // and then commits, and the sheet's own footer is already showing them
+  // that it is saving. Guessing here would buy nothing and would have to
+  // guess the server's resolved NAMES, which the device does not hold for
+  // an exercise it only knows the id of.
+  //
+  // Only this day's key is touched: a swap list changes no count, so
+  // `programs.get`'s "5 exercises" line is not stale.
+  const setAlternatives = api.programs.exercises.setAlternatives.useMutation({
+    // Reconciled against what the server actually settled on, the same
+    // bargain the two above make — the resolved list comes back named and
+    // in the coach's own order.
+    onSuccess: (result, { programExerciseId }) => {
+      const current = utils.programs.days.get.getData({ programDayId });
+      if (!current) return;
+      utils.programs.days.get.setData(
+        { programDayId },
+        {
+          ...current,
+          exercises: current.exercises.map((exercise) =>
+            exercise.id === programExerciseId
+              ? { ...exercise, alternatives: result.alternatives }
+              : exercise,
+          ),
+        },
+      );
+    },
+    onSettled: async () => {
+      await utils.programs.days.get.invalidate({ programDayId });
+    },
+  });
+
   return {
     day,
     addExercise,
@@ -135,5 +170,6 @@ export function useProgramDayBuilder(programDayId: string) {
     removeExercise,
     reorderExercises,
     setSupersetGroup,
+    setAlternatives,
   };
 }

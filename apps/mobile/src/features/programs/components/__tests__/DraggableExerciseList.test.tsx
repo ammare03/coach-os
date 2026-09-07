@@ -39,6 +39,8 @@ function block(
     exerciseName: name,
     exercisePrimaryMuscle: 'quads',
     exerciseEquipment: 'barbell',
+    exerciseMovementPattern: 'squat',
+    alternatives: [],
   };
 }
 

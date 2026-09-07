@@ -294,6 +294,8 @@ describe('targetDraftFrom', () => {
     exerciseName: 'Seated Leg Curl',
     exercisePrimaryMuscle: 'hamstrings',
     exerciseEquipment: 'machine',
+    exerciseMovementPattern: 'squat',
+    alternatives: [],
   };
 
   it('reopens a saved block on the mode it was written in', () => {

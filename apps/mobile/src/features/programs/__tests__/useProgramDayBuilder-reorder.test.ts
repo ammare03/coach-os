@@ -18,7 +18,12 @@ const DAY_ID = 'day-1';
 // carries the rest and none of it is read here.
 interface CachedDay {
   programId: string;
-  exercises: { id: string; orderIndex: number; supersetGroup: string | null }[];
+  exercises: {
+    id: string;
+    orderIndex: number;
+    supersetGroup: string | null;
+    alternatives?: { id: string; name: string }[];
+  }[];
 }
 
 type ReorderVariables = { programDayId: string; orderedExerciseIds: string[] };
@@ -49,8 +54,19 @@ interface GroupOptions {
   onSettled: () => Promise<void>;
 }
 
+// `program-builder/05`'s swap list. NOT optimistic — the sheet's own footer
+// already shows the coach it is saving, and the resolved names only exist
+// server-side — so only the reconcile and the invalidation are captured.
+type AlternativesVariables = { programExerciseId: string; alternativeExerciseIds: string[] };
+type AlternativesResult = { alternatives: { id: string; name: string }[] };
+interface AlternativesOptions {
+  onSuccess: (result: AlternativesResult, variables: AlternativesVariables) => void;
+  onSettled: () => Promise<void>;
+}
+
 let mockReorderOptions: ReorderOptions;
 let mockGroupOptions: GroupOptions;
+let mockAlternativesOptions: AlternativesOptions;
 const mockCache = new Map<string, CachedDay>();
 const mockCancel = jest.fn().mockResolvedValue(undefined);
 const mockInvalidateDay = jest.fn().mockResolvedValue(undefined);
@@ -74,6 +90,12 @@ jest.mock('../../../lib/trpc.ts', () => ({
         setSupersetGroup: {
           useMutation: (options: unknown) => {
             mockGroupOptions = options as GroupOptions;
+            return { mutate: jest.fn(), isPending: false };
+          },
+        },
+        setAlternatives: {
+          useMutation: (options: unknown) => {
+            mockAlternativesOptions = options as AlternativesOptions;
             return { mutate: jest.fn(), isPending: false };
           },
         },
@@ -266,5 +288,43 @@ describe('useProgramDayBuilder — supersets', () => {
 
     expect(mockCache.get(DAY_ID)).toBe(before);
     expect(cachedGroups()).toEqual([null, null, null]);
+  });
+});
+
+describe('useProgramDayBuilder — approved swaps', () => {
+  it('writes the server’s resolved list onto the one block it belongs to', () => {
+    seedCache();
+
+    mockAlternativesOptions.onSuccess(
+      { alternatives: [{ id: 'ex-hack', name: 'Hack Squat' }] },
+      { programExerciseId: 'b', alternativeExerciseIds: ['ex-hack'] },
+    );
+
+    const exercises = mockCache.get(DAY_ID)?.exercises ?? [];
+    expect(exercises.map((exercise) => exercise.alternatives)).toEqual([
+      undefined,
+      [{ id: 'ex-hack', name: 'Hack Squat' }],
+      undefined,
+    ]);
+  });
+
+  it('survives a reconcile against a cache that has already been evicted', () => {
+    mockCache.clear();
+
+    expect(() => {
+      mockAlternativesOptions.onSuccess(
+        { alternatives: [] },
+        { programExerciseId: 'b', alternativeExerciseIds: [] },
+      );
+    }).not.toThrow();
+  });
+
+  // A swap list changes no count, so `programs.get`'s "5 exercises" line is
+  // not stale and must not be thrown away with it.
+  it('refreshes this day only', async () => {
+    await mockAlternativesOptions.onSettled();
+
+    expect(mockInvalidateDay).toHaveBeenCalledWith({ programDayId: DAY_ID });
+    expect(mockInvalidateProgram).not.toHaveBeenCalled();
   });
 });

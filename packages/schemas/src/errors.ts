@@ -175,6 +175,21 @@ export const APP_ERROR_CODES = [
   'PROGRAM_SUPERSET_LIMIT_REACHED',
   'PROGRAM_SUPERSET_NOT_ADJACENT',
   'PROGRAM_SUPERSET_STALE',
+  // program-builder/05 — a block offered as its own approved swap. The
+  // sheet renders the origin exercise dimmed, badged "This one" and
+  // without a checkbox, so this is the server's own floor under a stale or
+  // patched client, never the normal path.
+  //
+  // It is the ONLY refusal `setAlternatives` needed a new code for. An id
+  // that names nothing, and an id that names another coach's custom
+  // exercise, both answer the existing `EXERCISE_NOT_FOUND` — deliberately
+  // indistinguishable from each other, because a distinct code for the
+  // second would confirm that row exists and hand back the enumeration
+  // oracle `exercises.get` and `createProgramExercise` already close
+  // (`ERRORS.md` ER§2.1). A count over the ceiling and a list naming one
+  // exercise twice are both refused by the schema itself, as
+  // `VALIDATION_FAILED`.
+  'PROGRAM_ALTERNATIVE_IS_ORIGIN',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -247,6 +262,7 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   PROGRAM_SUPERSET_LIMIT_REACHED: 'BAD_REQUEST',
   PROGRAM_SUPERSET_NOT_ADJACENT: 'BAD_REQUEST',
   PROGRAM_SUPERSET_STALE: 'CONFLICT',
+  PROGRAM_ALTERNATIVE_IS_ORIGIN: 'BAD_REQUEST',
 };
 
 /**
@@ -351,6 +367,11 @@ export interface AppErrorPayloads {
   // How many groups the day actually holds now, which is what a client
   // with a stale picture is wrong about.
   PROGRAM_SUPERSET_STALE: { groupCount: number };
+  // Nothing to carry. The client already knows which block it is editing
+  // and which exercise that block is — echoing either back would add a
+  // second, copyable statement of the same id for no recovery value, and
+  // DB§18's rule is that a payload carries only what the copy needs.
+  PROGRAM_ALTERNATIVE_IS_ORIGIN: EmptyErrorPayload;
 }
 
 /**

@@ -39,6 +39,8 @@ const BLOCK: ProgramDayExercise = {
   exerciseName: 'Barbell Back Squat',
   exercisePrimaryMuscle: 'quads',
   exerciseEquipment: 'barbell',
+  exerciseMovementPattern: 'squat',
+  alternatives: [],
 };
 
 function renderBlock(overrides: Partial<ProgramDayExercise> = {}) {

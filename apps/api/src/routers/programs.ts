@@ -10,6 +10,7 @@ import { deleteProgramWeek } from '../features/programs/delete-program-week.ts';
 import { getProgramDay } from '../features/programs/get-program-day.ts';
 import { getProgram } from '../features/programs/get-program.ts';
 import { reorderProgramExercises } from '../features/programs/reorder-program-exercises.ts';
+import { setAlternatives } from '../features/programs/set-alternatives.ts';
 import { setSupersetGroup } from '../features/programs/set-superset-group.ts';
 import { updateProgramDay } from '../features/programs/update-program-day.ts';
 import { updateProgramExercise } from '../features/programs/update-program-exercise.ts';
@@ -143,6 +144,25 @@ const programExercisesRouter = router({
     .use(ownsResource('programDay', (i: { programDayId: string }) => i.programDayId))
     .use(ownsResource('programExercise', (i: { exerciseIds: string[] }) => i.exerciseIds))
     .mutation(({ ctx, input }) => setSupersetGroup(ctx.db, input)),
+
+  // `program-builder/05`'s commit. ONE guard, not two, and the asymmetry
+  // is the whole point: `programExerciseId` names a row this coach either
+  // owns or does not, which is `ownsResource`'s question — but
+  // `alternativeExerciseIds` name LIBRARY rows, which nobody owns and
+  // every coach may reference some of. That is a visibility question, the
+  // same one `exerciseId` raises on `create`
+  // (`../trpc/authz/resource-fields.ts` records why), and forcing it
+  // through `ownsResource` would be answering it with the wrong model.
+  //
+  // It is answered instead by `visibleToCoach` inside the resolver,
+  // resolved from `ctx.user.coachProfileId` rather than from anything the
+  // caller sends — alongside the existence check that
+  // `program_exercises.alternatives`, alone among DB§5.2's id columns, has
+  // no foreign key to perform for it.
+  setAlternatives: coachProcedure
+    .input(programsSchemas.setAlternativesInput)
+    .use(ownsResource('programExercise', (i: { programExerciseId: string }) => i.programExerciseId))
+    .mutation(({ ctx, input }) => setAlternatives(ctx.db, ctx.user.coachProfileId, input)),
 });
 
 export const programsRouter = router({

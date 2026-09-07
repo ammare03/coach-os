@@ -18,6 +18,7 @@ import type { createProgramExercise as CreateProgramExercise } from './create-pr
 import type { deleteProgramExercise as DeleteProgramExercise } from './delete-program-exercise.ts';
 import type { getProgramDay as GetProgramDay } from './get-program-day.ts';
 import type { reorderProgramExercises as ReorderProgramExercises } from './reorder-program-exercises.ts';
+import type { setAlternatives as SetAlternatives } from './set-alternatives.ts';
 import type { setSupersetGroup as SetSupersetGroup } from './set-superset-group.ts';
 import type { updateProgramExercise as UpdateProgramExercise } from './update-program-exercise.ts';
 
@@ -29,6 +30,7 @@ let deleteProgramExercise: typeof DeleteProgramExercise;
 let getProgramDay: typeof GetProgramDay;
 let reorderProgramExercises: typeof ReorderProgramExercises;
 let setSupersetGroup: typeof SetSupersetGroup;
+let setAlternatives: typeof SetAlternatives;
 
 beforeAll(async () => {
   pgContainer = await new GenericContainer('postgres:16')
@@ -67,6 +69,7 @@ beforeAll(async () => {
   ({ getProgramDay } = await import('./get-program-day.ts'));
   ({ reorderProgramExercises } = await import('./reorder-program-exercises.ts'));
   ({ setSupersetGroup } = await import('./set-superset-group.ts'));
+  ({ setAlternatives } = await import('./set-alternatives.ts'));
 }, 180_000);
 
 afterAll(async () => {
@@ -1116,5 +1119,235 @@ describe('DB§5.2 constraints — the backstop under the schema', () => {
         }),
       ),
     ).toBe('program_exercises_target_sets_check');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// `setAlternatives` (`program-builder/05`)
+// ---------------------------------------------------------------------------
+//
+// **This block is the reason the feature has tests at all.**
+// `program_exercises.alternatives` is the one id column in DB§5.2 with no
+// foreign key, so Postgres will happily store a uuid that names nothing and
+// a uuid that names another coach's private exercise. The resolver is the
+// only thing standing there, and the two cases named "refuses an id that
+// names nothing" and "refuses another coach's custom exercise" are what
+// assert it still is — by calling the write path directly with fabricated
+// and foreign ids, exactly as this task's Verification section requires.
+
+/** A second exercise in the GLOBAL library — a legitimate approved swap. */
+async function seedGlobalExercise(name: string): Promise<string> {
+  seq += 1;
+  const [row] = await db
+    .insert(schema.exercises)
+    .values({
+      name: `${name} ${seq}`,
+      primaryMuscle: 'quads',
+      equipment: 'machine',
+      movementPattern: 'squat',
+    })
+    .returning({ id: schema.exercises.id });
+  if (!row) throw new Error('seed insert into exercises did not return a row');
+  return row.id;
+}
+
+async function seedBlock(scene: Scene): Promise<string> {
+  const [row] = await db
+    .insert(schema.programExercises)
+    .values({
+      programDayId: scene.programDayId,
+      exerciseId: scene.exerciseId,
+      orderIndex: 1,
+      targetSets: 3,
+    })
+    .returning({ id: schema.programExercises.id });
+  if (!row) throw new Error('seed insert into program_exercises did not return a row');
+  return row.id;
+}
+
+async function alternativesOf(programExerciseId: string): Promise<string[]> {
+  const [row] = await db
+    .select({ alternatives: schema.programExercises.alternatives })
+    .from(schema.programExercises)
+    .where(eq(schema.programExercises.id, programExerciseId));
+  return row?.alternatives ?? [];
+}
+
+describe('setAlternatives', () => {
+  it('persists the coach’s list in the coach’s own order and reads it back named', async () => {
+    const scene = await seedScene();
+    const blockId = await seedBlock(scene);
+    const hackSquat = await seedGlobalExercise('Hack Squat');
+    const legPress = await seedGlobalExercise('Leg Press');
+
+    // Deliberately not alphabetical: the order the coach approved them in
+    // is the order the chips and the client's swap sheet both show.
+    const result = await setAlternatives(db, scene.coachProfileId, {
+      programExerciseId: blockId,
+      alternativeExerciseIds: [legPress, hackSquat],
+    });
+
+    expect(result.alternatives.map((exercise) => exercise.id)).toEqual([legPress, hackSquat]);
+    expect(result.alternatives.every((exercise) => exercise.name.length > 0)).toBe(true);
+    expect(await alternativesOf(blockId)).toEqual([legPress, hackSquat]);
+  });
+
+  it('round-trips through the day read, resolved to names in the same order', async () => {
+    const scene = await seedScene();
+    const blockId = await seedBlock(scene);
+    const hackSquat = await seedGlobalExercise('Hack Squat');
+    const legPress = await seedGlobalExercise('Leg Press');
+
+    await setAlternatives(db, scene.coachProfileId, {
+      programExerciseId: blockId,
+      alternativeExerciseIds: [legPress, hackSquat],
+    });
+
+    const day = await getProgramDay(db, scene.programDayId);
+    const block = day?.exercises[0];
+    // The exact shape `phase-09-workout-logger/session-modifications/02`
+    // reads off the pager's in-memory exercise entry: id plus name, per
+    // approved swap, already resolved — no second query mid-session.
+    expect(block?.alternatives).toEqual([
+      { id: legPress, name: expect.stringContaining('Leg Press') },
+      { id: hackSquat, name: expect.stringContaining('Hack Squat') },
+    ]);
+  });
+
+  it('clears the list when handed an empty array — taking the last swap away is a real edit', async () => {
+    const scene = await seedScene();
+    const blockId = await seedBlock(scene);
+    const hackSquat = await seedGlobalExercise('Hack Squat');
+
+    await setAlternatives(db, scene.coachProfileId, {
+      programExerciseId: blockId,
+      alternativeExerciseIds: [hackSquat],
+    });
+    const result = await setAlternatives(db, scene.coachProfileId, {
+      programExerciseId: blockId,
+      alternativeExerciseIds: [],
+    });
+
+    expect(result.alternatives).toEqual([]);
+    expect(await alternativesOf(blockId)).toEqual([]);
+  });
+
+  // EXISTENCE. The column has no foreign key, so nothing but this check
+  // stands between a fabricated uuid and a permanently dangling reference.
+  it('refuses an id that names nothing, and writes none of the list', async () => {
+    const scene = await seedScene();
+    const blockId = await seedBlock(scene);
+    const hackSquat = await seedGlobalExercise('Hack Squat');
+    const fabricated = '00000000-0000-7000-8000-0000000000ff';
+
+    const error = await setAlternatives(db, scene.coachProfileId, {
+      programExerciseId: blockId,
+      // One real id and one invented one. The real one must not survive:
+      // a partially-approved list is a list the coach never approved.
+      alternativeExerciseIds: [hackSquat, fabricated],
+    }).catch((caught: unknown) => caught);
+
+    expect(appCodeOf(error)).toBe('EXERCISE_NOT_FOUND');
+    expect(await alternativesOf(blockId)).toEqual([]);
+  });
+
+  // VISIBILITY. The catastrophic case: planting another coach's custom
+  // exercise id here would leak that exercise's name straight back out
+  // through this coach's own swap sheet, and on to their client's.
+  it('refuses another coach’s custom exercise, with the same code a fabricated id gets', async () => {
+    const scene = await seedScene();
+    const other = await seedScene();
+    const blockId = await seedBlock(scene);
+    seq += 1;
+    const [foreign] = await db
+      .insert(schema.exercises)
+      .values({
+        coachId: other.coachProfileId,
+        name: `Foreign Swap ${seq}`,
+        primaryMuscle: 'quads',
+        equipment: 'machine',
+        movementPattern: 'squat',
+      })
+      .returning({ id: schema.exercises.id });
+    if (!foreign) throw new Error('seed insert into exercises did not return a row');
+
+    const error = await setAlternatives(db, scene.coachProfileId, {
+      programExerciseId: blockId,
+      alternativeExerciseIds: [foreign.id],
+    }).catch((caught: unknown) => caught);
+
+    // Byte-identical to the fabricated-id case above, and that is the
+    // assertion: a distinct code would confirm the row exists and hand
+    // back the enumeration oracle `exercises.get` closes (ER§2.1).
+    expect(appCodeOf(error)).toBe('EXERCISE_NOT_FOUND');
+    expect(await alternativesOf(blockId)).toEqual([]);
+  });
+
+  it('accepts the coach’s OWN custom exercise — the other half of the same predicate', async () => {
+    const scene = await seedScene();
+    const blockId = await seedBlock(scene);
+    seq += 1;
+    const [own] = await db
+      .insert(schema.exercises)
+      .values({
+        coachId: scene.coachProfileId,
+        name: `Belt Squat ${seq}`,
+        primaryMuscle: 'quads',
+        equipment: 'machine',
+        movementPattern: 'squat',
+      })
+      .returning({ id: schema.exercises.id });
+    if (!own) throw new Error('seed insert into exercises did not return a row');
+
+    const result = await setAlternatives(db, scene.coachProfileId, {
+      programExerciseId: blockId,
+      alternativeExerciseIds: [own.id],
+    });
+
+    expect(result.alternatives.map((exercise) => exercise.id)).toEqual([own.id]);
+  });
+
+  it('refuses the block’s own exercise as its own alternative', async () => {
+    const scene = await seedScene();
+    const blockId = await seedBlock(scene);
+    const hackSquat = await seedGlobalExercise('Hack Squat');
+
+    const error = await setAlternatives(db, scene.coachProfileId, {
+      programExerciseId: blockId,
+      alternativeExerciseIds: [hackSquat, scene.exerciseId],
+    }).catch((caught: unknown) => caught);
+
+    expect(appCodeOf(error)).toBe('PROGRAM_ALTERNATIVE_IS_ORIGIN');
+    expect(await alternativesOf(blockId)).toEqual([]);
+  });
+
+  it('answers a block deleted since the ownership guard with NOT_YOUR_CLIENT', async () => {
+    const scene = await seedScene();
+    const blockId = await seedBlock(scene);
+    await db.delete(schema.programExercises).where(eq(schema.programExercises.id, blockId));
+
+    const error = await setAlternatives(db, scene.coachProfileId, {
+      programExerciseId: blockId,
+      alternativeExerciseIds: [],
+    }).catch((caught: unknown) => caught);
+
+    expect(appCodeOf(error)).toBe('NOT_YOUR_CLIENT');
+  });
+
+  it('drops an alternative whose exercise row has since disappeared, rather than failing the read', async () => {
+    const scene = await seedScene();
+    const blockId = await seedBlock(scene);
+    const hackSquat = await seedGlobalExercise('Hack Squat');
+    await setAlternatives(db, scene.coachProfileId, {
+      programExerciseId: blockId,
+      alternativeExerciseIds: [hackSquat],
+    });
+
+    // The state the missing foreign key makes possible, forced directly:
+    // the array still holds the id, the row behind it is gone.
+    await db.delete(schema.exercises).where(eq(schema.exercises.id, hackSquat));
+
+    const day = await getProgramDay(db, scene.programDayId);
+    expect(day?.exercises[0]?.alternatives).toEqual([]);
   });
 });

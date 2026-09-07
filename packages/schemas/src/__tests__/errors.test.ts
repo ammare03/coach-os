@@ -76,6 +76,7 @@ function describeCode(code: AppErrorCode): string {
     case 'PROGRAM_SUPERSET_LIMIT_REACHED':
     case 'PROGRAM_SUPERSET_NOT_ADJACENT':
     case 'PROGRAM_SUPERSET_STALE':
+    case 'PROGRAM_ALTERNATIVE_IS_ORIGIN':
       return code;
     default:
       return assertNever(code);

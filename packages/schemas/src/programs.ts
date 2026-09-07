@@ -104,6 +104,23 @@ const MAX_REPS = 32767;
 const MAX_EXERCISES_PER_DAY = 30;
 
 /**
+ * `program_exercises.alternatives` is a bare `uuid[]` — no `CHECK`, and
+ * (uniquely in DB§5.2) no foreign key either, which `training-schema/02`
+ * flagged as this feature's responsibility to make good. So every bound on
+ * it is chosen here and has to be defended here.
+ *
+ * **Eight**, because the list's consumer is a client mid-session
+ * (`phase-09-workout-logger/session-modifications/02`): the swap sheet is
+ * a scannable list of what their coach sanctioned, and somewhere past
+ * eight rows it stops being a curated approval and becomes the exercise
+ * library again — which is the one thing "coach-approved" exists to
+ * prevent. Generous enough that a coach can approve every machine variant
+ * of a squat without meeting it, and low enough to be a real ceiling on an
+ * otherwise unbounded array write.
+ */
+const MAX_ALTERNATIVES = 8;
+
+/**
  * `program_exercises_superset_group_check` — `~ '^[A-Z]$'`. One uppercase
  * letter is the whole column, so **the alphabet is the ceiling**: a day
  * holds at most 26 supersets. Written out as a tuple rather than derived
@@ -187,6 +204,10 @@ export const PROGRAM_BOUNDS = {
   // (`program-builder/04`, frame 1e).
   minSupersetMembers: MIN_SUPERSET_MEMBERS,
   maxSupersetGroupsPerDay: SUPERSET_LETTERS.length,
+  // Printed as the swap sheet's own sub-label, and again as the reason the
+  // commit goes inert at the ceiling — the same "guidance, not a wall"
+  // bargain every bound above makes (`program-builder/05`, frame 1f).
+  maxAlternatives: MAX_ALTERNATIVES,
   /**
    * Step sizes, not database bounds — the columns permit one decimal
    * (`NUMERIC_SCALE_1_STEP`) and these are what a coach actually writes.
@@ -539,3 +560,51 @@ export const setSupersetGroupInput = strictObject({
   path: ['exerciseIds'],
 });
 export type SetSupersetGroupInput = z.infer<typeof setSupersetGroupInput>;
+
+// ---------------------------------------------------------------------------
+// Coach-approved alternatives — `programs.exercises.setAlternatives`
+// (`program-builder/05`)
+// ---------------------------------------------------------------------------
+
+/** The one sentence the product says about a swap list that names an exercise twice. */
+export const ALTERNATIVE_DUPLICATE_MESSAGE = 'An exercise can only be an approved swap once.';
+
+/**
+ * `programs.exercises.setAlternatives` — the commit at the bottom of the
+ * approved-swaps sheet (`program-builder/05`, frame 1f).
+ *
+ * **The COMPLETE approved list, not an add or a remove**, for the same
+ * reason `reorder` takes the day's whole order: the sheet shows the current
+ * answer as removable chips and the coach edits it in place, so what they
+ * commit is a picture, and a picture is what the server should be able to
+ * refuse outright rather than merge into something it cannot see. An empty
+ * array is therefore meaningful and valid — it is "this block has no
+ * approved swaps", which is also how a coach takes the last one away.
+ *
+ * **Two rules are NOT expressible here** and are checked in the resolver,
+ * because both need rows this schema cannot see:
+ *   - every id is a real `training.exercises` row the caller may actually
+ *     reference — the global library or their own custom exercises. This
+ *     array has **no foreign key** (DB§5.2), so nothing but that check
+ *     stands between it and a dangling reference, or between a coach and
+ *     another coach's custom exercise name leaking into their client's
+ *     swap sheet (`EXERCISE_NOT_FOUND`).
+ *   - the block's own exercise is not among its alternatives
+ *     (`PROGRAM_ALTERNATIVE_IS_ORIGIN`) — the sheet renders that row
+ *     dimmed, badged and inert, so this is the floor under a stale client.
+ *
+ * The distinctness refinement sits on the OBJECT rather than on the array,
+ * for the reason `reorder` and `setSupersetGroup` state: the authorisation
+ * enumeration test synthesises an input for every procedure and refuses to
+ * guess a value for a custom check on an array
+ * (`apps/api/src/__tests__/authz/synthesise-input.ts`), so an `.refine()`d
+ * array would make this procedure unprobeable.
+ */
+export const setAlternativesInput = strictObject({
+  programExerciseId: id,
+  alternativeExerciseIds: z.array(id).max(MAX_ALTERNATIVES),
+}).refine(
+  (value) => new Set(value.alternativeExerciseIds).size === value.alternativeExerciseIds.length,
+  { message: ALTERNATIVE_DUPLICATE_MESSAGE, path: ['alternativeExerciseIds'] },
+);
+export type SetAlternativesInput = z.infer<typeof setAlternativesInput>;
