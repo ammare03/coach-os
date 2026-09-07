@@ -33,7 +33,14 @@ export interface TwoCoachesFixture {
   clientA1: ClientFixture;
   clientA2: ClientFixture;
   coachB: CoachFixture & { coachNoteId: string };
-  clientB1: ClientFixture;
+  // `assignment/01` adds `assignment` to the registry, so the enumeration
+  // needs a foreign one to probe against. Seeded on `clientB1` only, not on
+  // the shared `insertClient` every client goes through: other suites
+  // (`coach-client-transition.test.ts`) insert their OWN 'active'
+  // assignment for `clientA1`/`clientA2` against a client they expect to
+  // start with none, and `assignments_one_active` would refuse a second one
+  // if this fixture had already claimed the slot.
+  clientB1: ClientFixture & { assignmentId: string };
 }
 
 async function insertUser(
@@ -270,6 +277,30 @@ async function insertCoachNote(
   return note.id;
 }
 
+// `assignment/01` — live-referencing the coach's own fixture program rather
+// than a snapshot (`apps/api/src/features/programs/versioning.md`). A
+// standalone insert, not folded into `insertClient`, so callers other than
+// `clientB1` start with no active assignment at all — see `TwoCoachesFixture`'s
+// own comment on why that matters.
+async function insertAssignment(
+  db: DbClient,
+  coachProfileId: string,
+  clientProfileId: string,
+  programId: string,
+): Promise<string> {
+  const [assignment] = await db
+    .insert(schema.assignments)
+    .values({
+      programId,
+      clientId: clientProfileId,
+      coachId: coachProfileId,
+      startDate: '2026-08-01',
+    })
+    .returning({ id: schema.assignments.id });
+  if (!assignment) throw new Error('seed insert into assignments did not return a row');
+  return assignment.id;
+}
+
 export async function createTwoCoachesFixture(db: DbClient): Promise<TwoCoachesFixture> {
   const coachA = await insertCoach(db, 'coach-a');
   const clientA1 = await insertClient(db, coachA.profileId, 'client-a1');
@@ -290,11 +321,18 @@ export async function createTwoCoachesFixture(db: DbClient): Promise<TwoCoachesF
     'Fixture note B',
   );
 
+  const assignmentBId = await insertAssignment(
+    db,
+    coachB.profileId,
+    clientB1.profileId,
+    coachB.programId,
+  );
+
   return {
     coachA: { ...coachA, coachNoteId: coachNoteAId },
     clientA1,
     clientA2,
     coachB: { ...coachB, coachNoteId: coachNoteBId },
-    clientB1,
+    clientB1: { ...clientB1, assignmentId: assignmentBId },
   };
 }

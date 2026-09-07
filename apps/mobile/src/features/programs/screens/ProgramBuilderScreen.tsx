@@ -33,6 +33,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getErrorCode } from '../../../lib/error-code.ts';
 import type { ProgramDay, ProgramWeek } from '../api/programs.ts';
 import { AddDaySheet } from '../components/AddDaySheet.tsx';
+import { AssignProgramSheet } from '../components/AssignProgramSheet.tsx';
 import { ACTION_BAR_BOTTOM, BuilderActionBar } from '../components/BuilderActionBar.tsx';
 import {
   BuilderActionsMenu,
@@ -64,15 +65,20 @@ export interface ProgramBuilderScreenProps {
   programId: string;
   onBack: () => void;
   onOpenDay: (programDayId: string) => void;
-  /** Wired by `assignment`. See `BuilderActionBar` for why it is optional here. */
-  onPublish?: (() => void) | undefined;
+  /**
+   * `assignment/01` — the assign sheet's picker is self-contained (it owns
+   * its own client-roster query and its create/pause/complete mutations),
+   * but its empty-state action still needs somewhere to navigate, and
+   * navigation is the route's job, not a screen's (`code-conventions` §1).
+   */
+  onInviteClient: () => void;
 }
 
 export function ProgramBuilderScreen({
   programId,
   onBack,
   onOpenDay,
-  onPublish,
+  onInviteClient,
 }: ProgramBuilderScreenProps) {
   const theme = useTheme();
   const themed = useThemedStyles();
@@ -107,6 +113,9 @@ export function ProgramBuilderScreen({
   // and comes back if they take it back (`useUndoToast`'s deferred commit).
   const [pendingWeekIds, setPendingWeekIds] = useState<ReadonlySet<string>>(new Set());
   const [pendingDayIds, setPendingDayIds] = useState<ReadonlySet<string>>(new Set());
+  // `assignment/01` — "Publish" is assignment. The sheet is self-contained
+  // (see its own file comment); this screen owns only whether it's open.
+  const [isAssignOpen, setAssignOpen] = useState(false);
 
   const data = program.data;
 
@@ -404,10 +413,11 @@ export function ProgramBuilderScreen({
 
       <BuilderActionBar
         // No client is attached to a template, so the line states that fact
-        // rather than naming a person until `assignment` supplies one.
+        // rather than naming a person until the coach actually assigns it.
         statusText="Draft · no client can see this yet"
-        {...(onPublish ? { onPublish } : {})}
-        publishHint="Assign this program to a client first"
+        onPublish={() => {
+          setAssignOpen(true);
+        }}
         testID="program-action-bar"
       />
 
@@ -547,6 +557,27 @@ export function ProgramBuilderScreen({
                 },
               },
             );
+          }}
+        />
+      ) : null}
+
+      {isAssignOpen ? (
+        <AssignProgramSheet
+          isOpen
+          mode="single"
+          programId={programId}
+          programName={data.name}
+          durationWeeks={data.durationWeeks}
+          onDismiss={() => {
+            setAssignOpen(false);
+          }}
+          onAssigned={() => {
+            setAssignOpen(false);
+            showToast({ message: 'Program assigned' });
+          }}
+          onInviteClient={() => {
+            setAssignOpen(false);
+            onInviteClient();
           }}
         />
       ) : null}

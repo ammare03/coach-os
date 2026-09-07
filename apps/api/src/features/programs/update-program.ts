@@ -17,8 +17,9 @@ export interface UpdateProgramInput {
    * `program-templates/01`'s toggle. Turning it off is not destructive — the
    * program just stops offering itself for assignment — so this is a plain
    * field write, not a soft delete. Toggling it is not a structural edit and
-   * never touches `version`, which `program-templates/04` reserves for
-   * edits to the program's actual content (exercises, targets, structure).
+   * never touches `version`, which `./versioning.md` (`assignment/00`)
+   * reserves for edits to the program's actual content (exercises, targets,
+   * structure) — `durationWeeks` on its own included, for the same reason.
    */
   isTemplate?: boolean | undefined;
 }

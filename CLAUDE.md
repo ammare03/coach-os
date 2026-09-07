@@ -1128,6 +1128,7 @@ Track these here; move them into the body of the file when decided.
 - [ ] **Organisation (gym) pricing** — per pooled seat, per coach, or flat; INR and USD tracks; whether a self-serve checkout ever replaces operator onboarding. §15.10 and `phase-28-gym-organisations/` are built so no number lives in code until this is decided.
 - [ ] Whether a gym admin should ever see client **names** on the roster (counts only today, §15.10). A privacy decision, not a feature request — revisit only with a concrete, written need from a pilot gym.
 - [ ] Whether a reusable "noticeboard" organisation join code is worth the leaked-code risk over single-use codes. Decided against for P28; revisit with pilot feedback.
+- [ ] **Program assignment: live-reference over snapshot.** `assignment/00` resolved that a client's assignment points at the coach's program template directly — a template edit is visible to every assigned client immediately, and `programs.version` is a change counter, not a per-session pin. Neither `DATABASE.md` nor this file stated the model outright; the resolution was inferred at planning time from §8.4's bulk-edit acceptance criterion, which is incoherent under the snapshot alternative. Defensible, but it is a product decision made without Ammar's direct sign-off — worth a look. Full rationale: `apps/api/src/features/programs/versioning.md`.
 
 ### 27.1 Deferred to future scope
 

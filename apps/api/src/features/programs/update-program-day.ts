@@ -3,6 +3,8 @@ import { and, eq, ne } from 'drizzle-orm';
 
 import { appError } from '../../lib/app-error.ts';
 
+import { bumpProgramVersion, programIdForDay } from './program-version.ts';
+
 // `programs.days.update` — rename a day, move it to another slot in its own
 // week, or flip it to a rest day. Ownership is
 // `ownsResource('programDay', …)` in the router.
@@ -57,6 +59,13 @@ export async function updateProgramDay(db: DbClient, input: UpdateProgramDayInpu
       }
     }
 
+    // Resolved before the write, not after: an update never removes the
+    // row, but reading against the pre-write state keeps this call
+    // identical in shape to `deleteProgramDay`'s before-a-delete rule
+    // (`./program-version.ts`), rather than two different conventions for
+    // "when do I look up the owning program."
+    const programId = await programIdForDay(tx, programDayId);
+
     await tx
       .update(schema.programDays)
       .set({
@@ -66,5 +75,11 @@ export async function updateProgramDay(db: DbClient, input: UpdateProgramDayInpu
         ...(changes.notes !== undefined ? { notes: changes.notes } : {}),
       })
       .where(eq(schema.programDays.id, programDayId));
+
+    // A day's own name, slot and notes are authored session content
+    // (`./versioning.md`), unlike the program-level metadata sheet
+    // `updateProgram` writes — every field this procedure can change
+    // counts as structural.
+    if (programId) await bumpProgramVersion(tx, programId);
   });
 }

@@ -8,6 +8,7 @@ import * as barrel from '../index.ts';
 // read from apps/api/src/routers/ — §6.1 is the shared spec both features
 // independently derive from, not one importing the other's directory.
 const ROUTERS = [
+  'assignments',
   'auth',
   'billing',
   'checkins',

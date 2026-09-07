@@ -6,6 +6,7 @@ import { appError } from '../../lib/app-error.ts';
 import { visibleToCoach } from '../../services/exercises/visibility.ts';
 
 import { targetColumns, type ProgramExerciseTargets } from './program-exercise-targets.ts';
+import { bumpProgramVersion, programIdForDay } from './program-version.ts';
 
 // `programs.exercises.create` — the commit at the end of the
 // picker-then-target flow (`program-builder/02`, frames 1b and 1c).
@@ -75,6 +76,9 @@ export async function createProgramExercise(
       })
       .returning({ id: schema.programExercises.id });
     if (!row) throw new Error('insert into training.program_exercises did not return a row');
+
+    const programId = await programIdForDay(tx, input.programDayId);
+    if (programId) await bumpProgramVersion(tx, programId);
 
     return { id: row.id };
   });

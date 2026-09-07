@@ -3,6 +3,8 @@ import { and, eq } from 'drizzle-orm';
 
 import { appError } from '../../lib/app-error.ts';
 
+import { bumpProgramVersion, programIdForWeek } from './program-version.ts';
+
 // `programs.days.create` — the "Add day" ghost row inside a week card
 // (`program-builder/01`, frame 1a). Ownership is
 // `ownsResource('programWeek', …)` in the router.
@@ -56,6 +58,9 @@ export async function createProgramDay(
       })
       .returning({ id: schema.programDays.id });
     if (!day) throw new Error('insert into training.program_days did not return a row');
+
+    const programId = await programIdForWeek(tx, input.programWeekId);
+    if (programId) await bumpProgramVersion(tx, programId);
 
     return { id: day.id };
   });

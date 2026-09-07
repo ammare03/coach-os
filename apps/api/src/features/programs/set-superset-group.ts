@@ -4,6 +4,8 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import { appError } from '../../lib/app-error.ts';
 
+import { bumpProgramVersion, programIdForDay } from './program-version.ts';
+
 // `programs.exercises.setSupersetGroup` — the commit at the bottom of
 // selection mode, and the "Ungroup A" chip attached to a group
 // (`program-builder/04`, frame 1e).
@@ -145,6 +147,10 @@ export async function setSupersetGroup(
           inArray(schema.programExercises.id, input.exerciseIds),
         ),
       );
+
+    // Grouping and ungrouping are both structural (`./versioning.md`).
+    const programId = await programIdForDay(tx, input.programDayId);
+    if (programId) await bumpProgramVersion(tx, programId);
 
     return { exercises: await readBack(tx, input.programDayId) };
   });

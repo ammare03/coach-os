@@ -4,6 +4,8 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { appError } from '../../lib/app-error.ts';
 import { visibleToCoach } from '../../services/exercises/visibility.ts';
 
+import { bumpProgramVersion, programIdForExercise } from './program-version.ts';
+
 // `programs.exercises.setAlternatives` — the commit at the bottom of the
 // approved-swaps sheet (`program-builder/05`, frame 1f).
 //
@@ -133,6 +135,10 @@ export async function setAlternatives(
       // the same way. Postgres holds a `uuid[]` in the order given.
       .set({ alternatives: input.alternativeExerciseIds })
       .where(eq(schema.programExercises.id, input.programExerciseId));
+
+    // Approved swaps are structural (`./versioning.md`).
+    const programId = await programIdForExercise(tx, input.programExerciseId);
+    if (programId) await bumpProgramVersion(tx, programId);
 
     return { alternatives: await readBack(tx, input.alternativeExerciseIds) };
   });
