@@ -6,8 +6,21 @@ import CoachClientsScreen from '../../../../app/(coach)/(tabs)/clients.tsx';
 import CoachInboxScreen from '../../../../app/(coach)/(tabs)/inbox.tsx';
 import CoachHomeScreen from '../../../../app/(coach)/(tabs)/index.tsx';
 import CoachMoreScreen from '../../../../app/(coach)/(tabs)/more.tsx';
-import CoachProgramsScreen from '../../../../app/(coach)/(tabs)/programs.tsx';
+import { RouteStub } from '../../../../test-support/route-stub.tsx';
 import { COACH_TABS } from '../coach-tabs.ts';
+
+const PROGRAMS_ROUTE = '(coach)/(tabs)/programs';
+
+/**
+ * Real as of `program-templates/01`. This suite is about the dock and the
+ * stack, not a screen's content — and the real screen reads
+ * `programs.listTemplates` through TanStack Query, which needs the tRPC
+ * provider this bare `Stack` deliberately doesn't mount. What it actually
+ * renders is `ProgramTemplatesScreen.test.tsx`'s job.
+ */
+function CoachProgramsScreen() {
+  return <RouteStub route={PROGRAMS_ROUTE} />;
+}
 
 // The half of `router-skeleton/03`'s "navigate through all five tabs" that can
 // be checked without a device: the real `(coach)/(tabs)` layout, mounted in the
