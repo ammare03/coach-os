@@ -1,12 +1,16 @@
 import { programs as programsSchemas } from '@coachos/schemas';
 
 import { createProgramDay } from '../features/programs/create-program-day.ts';
+import { createProgramExercise } from '../features/programs/create-program-exercise.ts';
 import { createProgramWeek } from '../features/programs/create-program-week.ts';
 import { createProgram } from '../features/programs/create-program.ts';
 import { deleteProgramDay } from '../features/programs/delete-program-day.ts';
+import { deleteProgramExercise } from '../features/programs/delete-program-exercise.ts';
 import { deleteProgramWeek } from '../features/programs/delete-program-week.ts';
+import { getProgramDay } from '../features/programs/get-program-day.ts';
 import { getProgram } from '../features/programs/get-program.ts';
 import { updateProgramDay } from '../features/programs/update-program-day.ts';
+import { updateProgramExercise } from '../features/programs/update-program-exercise.ts';
 import { updateProgram } from '../features/programs/update-program.ts';
 import { appError } from '../lib/app-error.ts';
 import { router } from '../trpc/init.ts';
@@ -29,7 +33,8 @@ import { coachProcedure, ownsResource } from '../trpc/procedures.ts';
 // `.input()` and never inlined in the resolver (`CLAUDE.md` §6.2). The
 // three kinds resolve to the same owner by different routes:
 // `program` reads `programs.coach_id`, `programWeek` joins one level to it,
-// `programDay` two (`../trpc/authz/resource-registry.ts`).
+// `programDay` two, `programExercise` three
+// (`../trpc/authz/resource-registry.ts`).
 const programWeeksRouter = router({
   create: coachProcedure
     .input(programsSchemas.createProgramWeekInput)
@@ -45,6 +50,19 @@ const programWeeksRouter = router({
 });
 
 const programDaysRouter = router({
+  // The day screen's single read (`program-builder/02`, frame 1b). Same
+  // NOT_FOUND-after-ownership shape as `programs.get` below, and for the
+  // same reason: a row deleted between the guard's lookup and this one must
+  // not be distinguishable from a row that was never the caller's.
+  get: coachProcedure
+    .input(programsSchemas.getProgramDayInput)
+    .use(ownsResource('programDay', (i: { programDayId: string }) => i.programDayId))
+    .query(async ({ ctx, input }) => {
+      const day = await getProgramDay(ctx.db, input.programDayId);
+      if (!day) throw appError('NOT_YOUR_CLIENT', "We couldn't find that.", {});
+      return day;
+    }),
+
   create: coachProcedure
     .input(programsSchemas.createProgramDayInput)
     .use(ownsResource('programWeek', (i: { programWeekId: string }) => i.programWeekId))
@@ -62,6 +80,36 @@ const programDaysRouter = router({
     .use(ownsResource('programDay', (i: { programDayId: string }) => i.programDayId))
     .mutation(async ({ ctx, input }) => {
       await deleteProgramDay(ctx.db, input.programDayId);
+    }),
+});
+
+// The task document names these `programExercises.create`/`update`/
+// `delete`; they land nested, as `programs.exercises.*`, for the same
+// reason `weeks` and `days` did — `api-conventions` §6.1's router list has
+// one entry for this whole domain.
+//
+// `create` is guarded on the DAY it is being added to and `update`/`delete`
+// on the ROW itself; `exerciseId` is not an ownership question at all
+// (`../trpc/authz/resource-fields.ts` records why) and is checked for
+// visibility inside `createProgramExercise`.
+const programExercisesRouter = router({
+  create: coachProcedure
+    .input(programsSchemas.createProgramExerciseInput)
+    .use(ownsResource('programDay', (i: { programDayId: string }) => i.programDayId))
+    .mutation(({ ctx, input }) => createProgramExercise(ctx.db, ctx.user.coachProfileId, input)),
+
+  update: coachProcedure
+    .input(programsSchemas.updateProgramExerciseInput)
+    .use(ownsResource('programExercise', (i: { programExerciseId: string }) => i.programExerciseId))
+    .mutation(async ({ ctx, input }) => {
+      await updateProgramExercise(ctx.db, input);
+    }),
+
+  delete: coachProcedure
+    .input(programsSchemas.deleteProgramExerciseInput)
+    .use(ownsResource('programExercise', (i: { programExerciseId: string }) => i.programExerciseId))
+    .mutation(async ({ ctx, input }) => {
+      await deleteProgramExercise(ctx.db, input.programExerciseId);
     }),
 });
 
@@ -99,4 +147,5 @@ export const programsRouter = router({
 
   weeks: programWeeksRouter,
   days: programDaysRouter,
+  exercises: programExercisesRouter,
 });

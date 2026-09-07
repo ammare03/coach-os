@@ -13,6 +13,7 @@ export const RESOURCE_FIELD_KIND: Record<string, ResourceKind> = {
   programId: 'program',
   programWeekId: 'programWeek',
   programDayId: 'programDay',
+  programExerciseId: 'programExercise',
   workoutSessionId: 'workoutSession',
   setLogId: 'setLog',
   mealId: 'meal',

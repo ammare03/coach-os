@@ -9,4 +9,5 @@ export * from './mask-email.ts';
 export * from './nutrition/macros.ts';
 export * from './numeric.ts';
 export * from './seat-limit.ts';
+export * from './training/target-scheme.ts';
 export * from './units/weight.ts';

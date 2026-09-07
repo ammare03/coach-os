@@ -24,6 +24,7 @@ interface CoachFixture {
   programId: string;
   programWeekId: string;
   programDayId: string;
+  programExerciseId: string;
   inviteId: string;
 }
 
@@ -81,6 +82,37 @@ async function insertCoach(db: DbClient, emailLocal: string): Promise<CoachFixtu
     .returning({ id: schema.programDays.id });
   if (!day) throw new Error('seed insert into program_days did not return a row');
 
+  // `program-builder/02` adds `programExercise` to the registry, so the
+  // enumeration needs a foreign one to probe against — and it needs an
+  // exercise of this coach's own to hang it on, because the block's owner
+  // is resolved three joins up to `programs.coach_id`, never from here.
+  const [coachExercise] = await db
+    .insert(schema.exercises)
+    .values({
+      coachId: profile.id,
+      name: `Fixture Coach Exercise ${emailLocal}`,
+      primaryMuscle: 'quads',
+      equipment: 'barbell',
+      movementPattern: 'squat',
+    })
+    .returning({ id: schema.exercises.id });
+  if (!coachExercise) throw new Error('seed insert into exercises did not return a row');
+
+  const [programExercise] = await db
+    .insert(schema.programExercises)
+    .values({
+      programDayId: day.id,
+      exerciseId: coachExercise.id,
+      orderIndex: 1,
+      targetSets: 3,
+      targetRepsMin: 8,
+      targetRepsMax: 10,
+    })
+    .returning({ id: schema.programExercises.id });
+  if (!programExercise) {
+    throw new Error('seed insert into program_exercises did not return a row');
+  }
+
   const [invite] = await db
     .insert(schema.invites)
     .values({
@@ -97,6 +129,7 @@ async function insertCoach(db: DbClient, emailLocal: string): Promise<CoachFixtu
     programId: program.id,
     programWeekId: week.id,
     programDayId: day.id,
+    programExerciseId: programExercise.id,
     inviteId: invite.id,
   };
 }

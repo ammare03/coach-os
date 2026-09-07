@@ -137,6 +137,12 @@ export const APP_ERROR_CODES = [
   // ceiling. The builder hides the affordance at 104, so this is the
   // server's own floor under a stale client, never the normal path.
   'PROGRAM_WEEK_LIMIT_REACHED',
+  // program-builder/02 — "Add exercise" at the day's ceiling. The day
+  // screen hides the affordance once the day is full, so this is the
+  // server's own floor under a stale client, never the normal path.
+  // Exactly the shape `PROGRAM_WEEK_LIMIT_REACHED` above has, and for the
+  // same reason.
+  'PROGRAM_EXERCISE_LIMIT_REACHED',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -204,6 +210,7 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   PROGRAM_DAY_TAKEN: 'CONFLICT',
   PROGRAM_DURATION_TOO_SHORT: 'BAD_REQUEST',
   PROGRAM_WEEK_LIMIT_REACHED: 'BAD_REQUEST',
+  PROGRAM_EXERCISE_LIMIT_REACHED: 'BAD_REQUEST',
 };
 
 /**
@@ -294,6 +301,7 @@ export interface AppErrorPayloads {
   // the truth rather than re-fetching to find out.
   PROGRAM_DURATION_TOO_SHORT: { weekCount: number };
   PROGRAM_WEEK_LIMIT_REACHED: { maxWeeks: number };
+  PROGRAM_EXERCISE_LIMIT_REACHED: { maxExercises: number };
 }
 
 /**

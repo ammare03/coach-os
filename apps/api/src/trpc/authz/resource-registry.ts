@@ -19,6 +19,7 @@ export type ResourceKind =
   | 'program'
   | 'programWeek'
   | 'programDay'
+  | 'programExercise'
   | 'workoutSession'
   | 'setLog'
   | 'meal'
@@ -214,6 +215,45 @@ export const RESOURCE_REGISTRY: Record<ResourceKind, ResourceKindEntry> = {
           ),
       ),
     clientOwnedIds: null,
+    formerCoachOwnedIds: null,
+    historySharedOwnedIds: null,
+    nutritionSharedOwnedIds: null,
+  },
+
+  // Three joins — one further than `programDay`, and the deepest kind in
+  // the registry. Still bounded and indexed (every FK on this path is,
+  // per DB§7), and still `programs.coach_id` at the end of it: an
+  // exercise block has no owner of its own, it inherits the program's
+  // (`program-builder/02`).
+  programExercise: {
+    coachOwnedIds: async (db, { coachProfileId }, ids) =>
+      idsOf(
+        await db
+          .select({ id: schema.programExercises.id })
+          .from(schema.programExercises)
+          .innerJoin(
+            schema.programDays,
+            eq(schema.programDays.id, schema.programExercises.programDayId),
+          )
+          .innerJoin(
+            schema.programWeeks,
+            eq(schema.programWeeks.id, schema.programDays.programWeekId),
+          )
+          .innerJoin(schema.programs, eq(schema.programs.id, schema.programWeeks.programId))
+          .where(
+            and(
+              inArray(schema.programExercises.id, ids),
+              eq(schema.programs.coachId, coachProfileId),
+            ),
+          ),
+      ),
+    // A client never addresses a program exercise by id — they see a
+    // scheduled session's exercises, not the template rows behind them.
+    // `null`, not a function returning an empty set, exactly as `program`,
+    // `programWeek` and `programDay` above.
+    clientOwnedIds: null,
+    // A coach's own authored template, not client content — no grace
+    // window, no returning-client re-grant. Same as its three ancestors.
     formerCoachOwnedIds: null,
     historySharedOwnedIds: null,
     nutritionSharedOwnedIds: null,

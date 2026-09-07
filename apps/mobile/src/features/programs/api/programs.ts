@@ -18,3 +18,12 @@ export function useProgram(programId: string, enabled = true) {
 export type ProgramDetail = NonNullable<ReturnType<typeof useProgram>['data']>;
 export type ProgramWeek = ProgramDetail['weeks'][number];
 export type ProgramDay = ProgramWeek['days'][number];
+
+/** One day of the program, with its exercises — the day screen's single read. */
+export function useProgramDay(programDayId: string, enabled = true) {
+  return api.programs.days.get.useQuery({ programDayId }, { enabled });
+}
+
+export type ProgramDayDetail = NonNullable<ReturnType<typeof useProgramDay>['data']>;
+export type ProgramDayExercise = ProgramDayDetail['exercises'][number];
+export type ProgramDaySlot = ProgramDayDetail['siblingDays'][number];
