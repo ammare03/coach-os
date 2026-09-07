@@ -28,6 +28,15 @@ export function useCreateAssignment() {
   return api.assignments.create.useMutation();
 }
 
+/** The bulk-picker's commit (`assignment/02`) — one program, one start date, many clients. */
+export function useBulkCreateAssignment() {
+  return api.assignments.bulkCreate.useMutation();
+}
+
+export type BulkCreateAssignmentsResult = NonNullable<
+  ReturnType<typeof useBulkCreateAssignment>['data']
+>;
+
 /** One of the two conflict resolutions the sheet offers. */
 export function usePauseAssignment() {
   return api.assignments.pause.useMutation();

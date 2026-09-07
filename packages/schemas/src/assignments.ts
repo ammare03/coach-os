@@ -11,9 +11,17 @@
 // `assignment/05` adds `getAssignmentInput` — `assignments.get`'s shape,
 // the one procedure this task adds to read a single assignment's
 // lazily-corrected `current_week`/`status` (`apps/api/src/features/assignments/advance-assignment.ts`).
-import type { z } from 'zod';
+//
+// `assignment/02` adds `bulkCreateAssignmentInput` — one program, one start
+// date, many clients (`CLAUDE.md` §1's "change Tuesday's session for 12
+// clients without opening 12 chats"). `clientIds` is capped at
+// `MAX_ID_ARRAY`, the same array cap `../authorization-middleware/
+// 03-owns-resource.md` step 5 sized for a Studio coach's 75 seats
+// (`./limits.ts`'s own doc comment) — bulk assignment past that size is a
+// background job, not a synchronous request.
+import { z } from 'zod';
 
-import { calendarDate, id, strictObject } from './primitives.ts';
+import { calendarDate, id, MAX_ID_ARRAY, strictObject } from './primitives.ts';
 
 export const createAssignmentInput = strictObject({
   programId: id,
@@ -37,3 +45,12 @@ export const getAssignmentInput = strictObject({
   assignmentId: id,
 });
 export type GetAssignmentInput = z.infer<typeof getAssignmentInput>;
+
+export const bulkCreateAssignmentInput = strictObject({
+  programId: id,
+  /** At least one client, never more than `MAX_ID_ARRAY` in one call. */
+  clientIds: z.array(id).min(1).max(MAX_ID_ARRAY),
+  /** The same start date for every client in the batch — no per-client override (task's own Scope). */
+  startDate: calendarDate,
+});
+export type BulkCreateAssignmentInput = z.infer<typeof bulkCreateAssignmentInput>;

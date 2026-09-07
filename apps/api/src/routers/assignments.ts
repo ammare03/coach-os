@@ -1,6 +1,7 @@
 import { assignments as assignmentsSchemas, paginationInput } from '@coachos/schemas';
 
 import { listAssignableClients } from '../features/assignments/assignable-clients.ts';
+import { bulkCreateAssignments } from '../features/assignments/bulk-create-assignments.ts';
 import { completeAssignment } from '../features/assignments/complete-assignment.ts';
 import { createAssignment } from '../features/assignments/create-assignment.ts';
 import { getAssignment } from '../features/assignments/get-assignment.ts';
@@ -55,6 +56,31 @@ export const assignmentsRouter = router({
     .input(assignmentsSchemas.getAssignmentInput)
     .use(ownsResource('assignment', (i: { assignmentId: string }) => i.assignmentId))
     .query(({ ctx, input }) => getAssignment(ctx.db, input.assignmentId)),
+
+  // `assignment/02` — the bulk picker's commit (`CLAUDE.md` §1's "change
+  // Tuesday's session for 12 clients without opening 12 chats"). Guarded on
+  // the program AND on EVERY id in `clientIds`, not just the first — the
+  // second `ownsResource` call's selector returns the whole array, and
+  // `ownsResource` is already all-or-nothing over an array selector
+  // (`../trpc/middleware/owns-resource.ts`, the same mechanism
+  // `programs.reorder`/`programs.setSupersetGroup` use for
+  // `orderedExerciseIds`/`exerciseIds`): a coach who owns 11 of 12 ids and
+  // not the 12th is refused outright, never partially served, so a foreign
+  // client id can never be slipped into a batch. `clientIds` itself is
+  // bounded at `MAX_ID_ARRAY` in `packages/schemas` — the input schema is
+  // the one place that bound lives.
+  bulkCreate: coachProcedure
+    .input(assignmentsSchemas.bulkCreateAssignmentInput)
+    .use(ownsResource('program', (i: { programId: string }) => i.programId))
+    .use(ownsResource('client', (i: { clientIds: string[] }) => i.clientIds))
+    .mutation(({ ctx, input }) =>
+      bulkCreateAssignments(ctx.db, {
+        programId: input.programId,
+        clientIds: input.clientIds,
+        coachId: ctx.user.coachProfileId,
+        startDate: input.startDate,
+      }),
+    ),
 
   // The assign sheet's client picker. `paginationInput` straight from the
   // barrel, the shape every list procedure takes (`programs.listTemplates`

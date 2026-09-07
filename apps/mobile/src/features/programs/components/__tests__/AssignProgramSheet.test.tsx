@@ -1,13 +1,15 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+import { AccessibilityInfo } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { AssignableClient } from '../../api/assignments.ts';
 import { AssignProgramSheet } from '../AssignProgramSheet.tsx';
 
 // `assignment/01`, frames A/B/E: single-client mode, the conflict card, and
-// the footer's five label states. `assignment/02`'s bulk mode is out of
-// scope for this file.
+// the footer's five label states. `assignment/02`, frames C/D: bulk mode's
+// multi-select, footer singular/plural labels, and the outcome view with
+// and without conflicts.
 
 const SAFE_AREA_METRICS = {
   frame: { x: 0, y: 0, width: 393, height: 852 },
@@ -47,6 +49,7 @@ const CLIENT_WITH_PROGRAM: AssignableClient = {
 const mockInvalidate = jest.fn();
 const mockRefetch = jest.fn();
 const mockCreateMutate = jest.fn();
+const mockBulkCreateMutate = jest.fn();
 const mockPauseMutate = jest.fn();
 const mockCompleteMutate = jest.fn();
 const mockTrackEvent = jest.fn();
@@ -64,6 +67,7 @@ let mockAssignableClientsState: AssignableClientsQueryState = {
 };
 
 let mockCreateIsPending = false;
+let mockBulkCreateIsPending = false;
 let mockPauseIsPending = false;
 let mockCompleteIsPending = false;
 
@@ -78,6 +82,9 @@ jest.mock('../../../../lib/trpc.ts', () => ({
       },
       create: {
         useMutation: () => ({ mutate: mockCreateMutate, isPending: mockCreateIsPending }),
+      },
+      bulkCreate: {
+        useMutation: () => ({ mutate: mockBulkCreateMutate, isPending: mockBulkCreateIsPending }),
       },
       pause: {
         useMutation: () => ({ mutate: mockPauseMutate, isPending: mockPauseIsPending }),
@@ -125,10 +132,33 @@ function openPicker() {
   fireEvent.press(firstOf(screen.getAllByText('Choose a client')));
 }
 
+function renderBulkSheet(overrides: Partial<Parameters<typeof AssignProgramSheet>[0]> = {}) {
+  const onDismiss = jest.fn();
+  const onAssigned = jest.fn();
+  const onInviteClient = jest.fn();
+  render(
+    withSafeArea(
+      <AssignProgramSheet
+        isOpen
+        mode="bulk"
+        programId="program-1"
+        programName="Hypertrophy Block"
+        durationWeeks={8}
+        onDismiss={onDismiss}
+        onAssigned={onAssigned}
+        onInviteClient={onInviteClient}
+        {...overrides}
+      />,
+    ),
+  );
+  return { onDismiss, onAssigned, onInviteClient };
+}
+
 beforeEach(() => {
   mockInvalidate.mockClear();
   mockRefetch.mockClear();
   mockCreateMutate.mockReset();
+  mockBulkCreateMutate.mockReset();
   mockPauseMutate.mockReset();
   mockCompleteMutate.mockReset();
   mockTrackEvent.mockClear();
@@ -138,6 +168,7 @@ beforeEach(() => {
     isError: false,
   };
   mockCreateIsPending = false;
+  mockBulkCreateIsPending = false;
   mockPauseIsPending = false;
   mockCompleteIsPending = false;
 });
@@ -336,5 +367,290 @@ describe('AssignProgramSheet — empty roster', () => {
 
     openPicker();
     expect(screen.getByLabelText('Loading your clients')).toBeTruthy();
+  });
+});
+
+describe('AssignProgramSheet — bulk mode, frame C: multi-select', () => {
+  it('starts with none selected and the inert footer', () => {
+    renderBulkSheet();
+
+    expect(screen.getByText('Clients · 0 selected')).toBeTruthy();
+    expect(screen.getByText('Select clients to assign')).toBeTruthy();
+  });
+
+  it('selecting clients updates the eyebrow count, the checkbox state, and the footer label — plural then singular', () => {
+    renderBulkSheet();
+
+    fireEvent.press(screen.getByTestId('assign-bulk-client-client-1'));
+    expect(screen.getByText('Clients · 1 selected')).toBeTruthy();
+    expect(screen.getByTestId('assign-bulk-client-client-1').props.accessibilityState.checked).toBe(
+      true,
+    );
+    expect(screen.getByText('Assign to 1 client')).toBeTruthy();
+
+    fireEvent.press(screen.getByTestId('assign-bulk-client-client-2'));
+    expect(screen.getByText('Clients · 2 selected')).toBeTruthy();
+    expect(screen.getByText('Assign to 2 clients')).toBeTruthy();
+
+    // Toggling one back off returns to the singular label.
+    fireEvent.press(screen.getByTestId('assign-bulk-client-client-1'));
+    expect(screen.getByText('Clients · 1 selected')).toBeTruthy();
+    expect(screen.getByText('Assign to 1 client')).toBeTruthy();
+  });
+
+  it('carries the name as the accessible label and the status line as the hint, separately', () => {
+    renderBulkSheet();
+
+    const arjunRow = screen.getByTestId('assign-bulk-client-client-2');
+    expect(arjunRow.props.accessibilityRole).toBe('checkbox');
+    expect(arjunRow.props.accessibilityLabel).toBe('Arjun Mehta');
+    expect(arjunRow.props.accessibilityHint).toBe('On Base Strength');
+  });
+
+  it('a client already on a program is selectable, never pre-checked or blocked in the picker', () => {
+    renderBulkSheet();
+
+    const arjunRow = screen.getByTestId('assign-bulk-client-client-2');
+    expect(arjunRow.props.accessibilityState.checked).toBe(false);
+
+    fireEvent.press(arjunRow);
+    expect(screen.getByTestId('assign-bulk-client-client-2').props.accessibilityState.checked).toBe(
+      true,
+    );
+  });
+
+  it('shows the quiet "No clients match" line for a search with no results, not the illustrated empty state', () => {
+    renderBulkSheet();
+
+    fireEvent.changeText(screen.getByTestId('assign-bulk-search'), 'nobody here');
+
+    expect(screen.getByTestId('assign-bulk-no-match')).toBeTruthy();
+    expect(screen.getByText('No clients match')).toBeTruthy();
+    expect(screen.queryByTestId('assign-bulk-empty')).toBeNull();
+  });
+
+  it("shows the picker's empty state and routes its action to onInviteClient when there are no clients at all", () => {
+    mockAssignableClientsState = { data: { items: [] }, isPending: false, isError: false };
+    const { onInviteClient } = renderBulkSheet();
+
+    expect(screen.getByTestId('assign-bulk-empty')).toBeTruthy();
+    fireEvent.press(screen.getByText('Invite a client'));
+    expect(onInviteClient).toHaveBeenCalled();
+  });
+
+  it('reads "Assigning…" while the bulk mutation is in flight', () => {
+    mockBulkCreateIsPending = true;
+    renderBulkSheet();
+
+    fireEvent.press(screen.getByTestId('assign-bulk-client-client-1'));
+    expect(screen.getByText('Assigning…')).toBeTruthy();
+  });
+
+  it('submits every selected client id and fires program_assigned once per succeeded client, announcing the outcome once', () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
+    mockBulkCreateMutate.mockImplementation(
+      (_input: unknown, opts?: { onSuccess?: (result: unknown) => void }) =>
+        opts?.onSuccess?.({
+          succeeded: [{ clientId: 'client-1', assignmentId: 'new-1' }],
+          conflicted: [],
+        }),
+    );
+    renderBulkSheet();
+
+    fireEvent.press(screen.getByTestId('assign-bulk-client-client-1'));
+    fireEvent.press(screen.getByText('Assign to 1 client'));
+
+    expect(mockBulkCreateMutate).toHaveBeenCalledWith(
+      { programId: 'program-1', clientIds: ['client-1'], startDate: expect.any(String) },
+      expect.anything(),
+    );
+    expect(mockTrackEvent).toHaveBeenCalledWith('program_assigned', {
+      client_id: 'client-1',
+      program_id: 'program-1',
+      week_count: 8,
+    });
+    expect(announce).toHaveBeenCalledWith('1 of 1 client assigned.');
+  });
+});
+
+describe('AssignProgramSheet — bulk mode, frame D: outcome view', () => {
+  function submitBulk(result: {
+    succeeded: { clientId: string; assignmentId: string }[];
+    conflicted: {
+      clientId: string;
+      assignmentId: string;
+      programName: string;
+      currentWeek: number;
+      durationWeeks: number;
+    }[];
+  }) {
+    mockBulkCreateMutate.mockImplementation(
+      (_input: unknown, opts?: { onSuccess?: (r: unknown) => void }) => opts?.onSuccess?.(result),
+    );
+    const rendered = renderBulkSheet();
+    fireEvent.press(screen.getByTestId('assign-bulk-client-client-1'));
+    fireEvent.press(screen.getByTestId('assign-bulk-client-client-2'));
+    fireEvent.press(screen.getByText('Assign to 2 clients'));
+    return rendered;
+  }
+
+  it('shows both stat tiles and both sections for a mix of succeeded and conflicted outcomes', () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
+    submitBulk({
+      succeeded: [{ clientId: 'client-1', assignmentId: 'new-1' }],
+      conflicted: [
+        {
+          clientId: 'client-2',
+          assignmentId: 'assignment-existing',
+          programName: 'Base Strength',
+          currentWeek: 3,
+          durationWeeks: 8,
+        },
+      ],
+    });
+
+    expect(screen.getByText('Assignment results')).toBeTruthy();
+    expect(screen.getByTestId('assign-outcome-stat-assigned')).toBeTruthy();
+    expect(screen.getByTestId('assign-outcome-stat-attention')).toBeTruthy();
+    expect(screen.getByText('Assigned · 1')).toBeTruthy();
+    expect(screen.getByText('Needs attention · 1')).toBeTruthy();
+    expect(screen.getByTestId('assign-outcome-succeeded-client-1')).toBeTruthy();
+    expect(screen.getByTestId('assign-outcome-conflict-client-2')).toBeTruthy();
+    expect(screen.getByText('On Base Strength, week 3 of 8')).toBeTruthy();
+
+    const pauseButton = screen.getByTestId('assign-outcome-pause-client-2');
+    expect(pauseButton.props.accessibilityLabel).toBe("Pause Arjun's current program");
+    const completeButton = screen.getByTestId('assign-outcome-complete-client-2');
+    expect(completeButton.props.accessibilityLabel).toBe(
+      "Mark Arjun's current program as complete",
+    );
+
+    expect(announce).toHaveBeenCalledWith('1 of 2 clients assigned. 1 needs attention.');
+  });
+
+  it('omits the "Needs attention" tile and section entirely when every client succeeded — never shown empty', () => {
+    submitBulk({
+      succeeded: [
+        { clientId: 'client-1', assignmentId: 'new-1' },
+        { clientId: 'client-2', assignmentId: 'new-2' },
+      ],
+      conflicted: [],
+    });
+
+    expect(screen.getByText('Assigned · 2')).toBeTruthy();
+    expect(screen.queryByTestId('assign-outcome-stat-attention')).toBeNull();
+    expect(screen.queryByText('Needs attention · 0')).toBeNull();
+  });
+
+  it("resolving a conflict via Pause retries that client's assignment and moves it from Needs attention into Assigned", () => {
+    mockPauseMutate.mockImplementation((_input: unknown, opts?: { onSuccess?: () => void }) =>
+      opts?.onSuccess?.(),
+    );
+    mockCreateMutate.mockImplementation(
+      (_input: unknown, opts?: { onSuccess?: (result: { id: string }) => void }) =>
+        opts?.onSuccess?.({ id: 'retried-assignment' }),
+    );
+    submitBulk({
+      succeeded: [],
+      conflicted: [
+        {
+          clientId: 'client-2',
+          assignmentId: 'assignment-existing',
+          programName: 'Base Strength',
+          currentWeek: 3,
+          durationWeeks: 8,
+        },
+      ],
+    });
+
+    fireEvent.press(screen.getByTestId('assign-outcome-pause-client-2'));
+
+    expect(mockPauseMutate).toHaveBeenCalledWith(
+      { assignmentId: 'assignment-existing' },
+      expect.anything(),
+    );
+    expect(mockCreateMutate).toHaveBeenCalledWith(
+      { programId: 'program-1', clientId: 'client-2', startDate: expect.any(String) },
+      expect.anything(),
+    );
+    expect(mockTrackEvent).toHaveBeenCalledWith('program_assigned', {
+      client_id: 'client-2',
+      program_id: 'program-1',
+      week_count: 8,
+    });
+    expect(screen.queryByTestId('assign-outcome-conflict-client-2')).toBeNull();
+    expect(screen.getByTestId('assign-outcome-succeeded-client-2')).toBeTruthy();
+  });
+
+  it('resolving via Complete does the same, through assignments.complete', () => {
+    mockCompleteMutate.mockImplementation((_input: unknown, opts?: { onSuccess?: () => void }) =>
+      opts?.onSuccess?.(),
+    );
+    mockCreateMutate.mockImplementation(
+      (_input: unknown, opts?: { onSuccess?: (result: { id: string }) => void }) =>
+        opts?.onSuccess?.({ id: 'retried-assignment' }),
+    );
+    submitBulk({
+      succeeded: [],
+      conflicted: [
+        {
+          clientId: 'client-2',
+          assignmentId: 'assignment-existing',
+          programName: 'Base Strength',
+          currentWeek: 3,
+          durationWeeks: 8,
+        },
+      ],
+    });
+
+    fireEvent.press(screen.getByTestId('assign-outcome-complete-client-2'));
+
+    expect(mockCompleteMutate).toHaveBeenCalledWith(
+      { assignmentId: 'assignment-existing' },
+      expect.anything(),
+    );
+    expect(screen.getByTestId('assign-outcome-succeeded-client-2')).toBeTruthy();
+  });
+
+  it('a genuine resolution failure shows a row-scoped error rather than moving the client anywhere', () => {
+    mockPauseMutate.mockImplementation((_input: unknown, opts?: { onError?: () => void }) =>
+      opts?.onError?.(),
+    );
+    submitBulk({
+      succeeded: [],
+      conflicted: [
+        {
+          clientId: 'client-2',
+          assignmentId: 'assignment-existing',
+          programName: 'Base Strength',
+          currentWeek: 3,
+          durationWeeks: 8,
+        },
+      ],
+    });
+
+    fireEvent.press(screen.getByTestId('assign-outcome-pause-client-2'));
+
+    expect(screen.getByTestId('assign-outcome-row-error')).toBeTruthy();
+    expect(screen.getByTestId('assign-outcome-conflict-client-2')).toBeTruthy();
+    expect(screen.queryByTestId('assign-outcome-succeeded-client-2')).toBeNull();
+  });
+
+  it('"Done" closes the sheet regardless of any remaining conflict', () => {
+    const { onDismiss } = submitBulk({
+      succeeded: [],
+      conflicted: [
+        {
+          clientId: 'client-2',
+          assignmentId: 'assignment-existing',
+          programName: 'Base Strength',
+          currentWeek: 3,
+          durationWeeks: 8,
+        },
+      ],
+    });
+
+    fireEvent.press(screen.getByText('Done'));
+    expect(onDismiss).toHaveBeenCalled();
   });
 });

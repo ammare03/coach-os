@@ -19,25 +19,36 @@ import {
   useTheme,
 } from '@coachos/ui';
 import type { CalendarDate } from '@coachos/utils';
-import { CalendarDays, ChevronDown, ChevronRight, TriangleAlert, Users } from 'lucide-react-native';
+import {
+  CalendarDays,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  CircleCheck,
+  TriangleAlert,
+  Users,
+} from 'lucide-react-native';
 import { useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, ScrollView, StyleSheet, View } from 'react-native';
 
 import { asUuid, trackEvent } from '../../../lib/analytics/index.ts';
 import { getErrorCode, getErrorDetails } from '../../../lib/error-code.ts';
 import { api } from '../../../lib/trpc.ts';
 import {
   useAssignableClients,
+  useBulkCreateAssignment,
   useCompleteAssignment,
   useCreateAssignment,
   usePauseAssignment,
   type AssignableClient,
 } from '../api/assignments.ts';
 
-// The assign sheet (`assignment/01`, frames A/B/E). Single-client mode
-// only — `mode` is accepted now, not branched on, so `assignment/02`'s
-// bulk multi-select mode extends this component rather than restructuring
-// it.
+// The assign sheet. `assignment/01` built single-client mode (frames A/B/E);
+// `assignment/02` adds bulk mode (frames C/D) as a hard branch on `mode`,
+// never a toggle the coach flips inside the sheet (the approved design's
+// own note on frame C) — the two mode bodies below are rendered by ONE
+// exported component so a consumer never imports two different sheets for
+// what is, from the outside, one feature.
 //
 // **Self-contained, unlike `CopySheet`/`ProgramDetailsSheet`.** Those two
 // are controlled: the host screen owns the mutation and hands down
@@ -47,7 +58,7 @@ import {
 // for its own purposes, so there is nothing for a host to usefully own on
 // this one's behalf. The host's whole job is opening and closing it.
 
-export type AssignProgramSheetMode = 'single';
+export type AssignProgramSheetMode = 'single' | 'bulk';
 
 export interface AssignProgramSheetInitialClient {
   clientId: string;
@@ -63,10 +74,17 @@ export interface AssignProgramSheetProps {
   /**
    * Set when the sheet is opened from that client's own detail screen —
    * the client row becomes inert text rather than a picker trigger
-   * (design spec, Client section).
+   * (design spec, Client section). Single mode only; bulk mode ignores it.
    */
   initialClient?: AssignProgramSheetInitialClient | undefined;
   onDismiss: () => void;
+  /**
+   * Single mode only — fired once, on that one client's successful
+   * assignment. Bulk mode never calls this: its own outcome view (frame D)
+   * shows every client's result inline and "Done" simply closes the sheet,
+   * so a host opening bulk mode still passes a handler (kept required to
+   * avoid a second prop shape) but it goes unused.
+   */
   onAssigned: (assignment: { id: string; clientId: string }) => void;
   /** The picker's empty-state action, when the coach has no assignable clients at all. */
   onInviteClient: () => void;
@@ -122,11 +140,24 @@ function statusTextFor(client: Pick<AssignableClient, 'activeAssignment'> | null
   return `On ${client.activeAssignment.programName}`;
 }
 
-export function AssignProgramSheet({
+export function AssignProgramSheet(props: AssignProgramSheetProps) {
+  if (props.mode === 'bulk') {
+    return (
+      <BulkAssignSheetBody
+        isOpen={props.isOpen}
+        programId={props.programId}
+        programName={props.programName}
+        durationWeeks={props.durationWeeks}
+        onDismiss={props.onDismiss}
+        onInviteClient={props.onInviteClient}
+      />
+    );
+  }
+  return <SingleAssignSheetBody {...props} />;
+}
+
+function SingleAssignSheetBody({
   isOpen,
-  // `mode` isn't destructured — `'single'` is this task's only value, and
-  // there is nothing to branch on yet. `assignment/02` is what gives it a
-  // second value and a reason to read it.
   programId,
   programName,
   durationWeeks,
@@ -573,6 +604,665 @@ function ClientPickerSheet({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Bulk mode (`assignment/02`, frames C/D)
+// ---------------------------------------------------------------------------
+
+/** The design's `.ck` — 22px of box inside a 56px row, per frame C. Same
+ * treatment `ExercisePickerSheet`'s own multi-select checkbox uses (solid
+ * brand fill when checked, bordered box when not, a `Check` glyph on top —
+ * there is no shared `Checkbox` primitive in `packages/ui`, and this is the
+ * second sheet in this codebase to need the exact same 22px-box-in-a-row
+ * treatment) — reused rather than hand-rolled a second time, with ONE
+ * deliberate difference: `CHECKBOX_RADIUS` below is 6px, a square-ish
+ * corner, not `radius.full`'s circle, because frame C's own `.ck` CSS class
+ * is `border-radius:6px` and this task's brief is to build to that spec,
+ * not invent a new one. 6 isn't on `tokens.ts`'s shared radius ladder
+ * (`cell:3, chip:7, control:12…`) — same as the handful of other literal
+ * `borderRadius` values already in this codebase's screens for a value the
+ * ladder doesn't carry (`GuardianConsentPendingScreen`, for one).
+ */
+const BULK_CHECKBOX = 22;
+const BULK_CHECKBOX_RADIUS = 6;
+/** Frame C's `.clientrow{min-height:56px}` — `ui-conventions`' own "never a fixed height" rule, so `minHeight`, not `height`. */
+const BULK_ROW_MIN_HEIGHT = 56;
+
+interface BulkSucceededRow {
+  clientId: string;
+  assignmentId: string;
+  name: string;
+}
+
+interface BulkConflictedRow {
+  clientId: string;
+  assignmentId: string;
+  name: string;
+  programName: string;
+  currentWeek: number;
+  durationWeeks: number;
+}
+
+/**
+ * "3 of 4 clients assigned. 1 needs attention." — frame D's own example,
+ * verbatim, for the one-conflict case. Said once, on arrival
+ * (`AccessibilityInfo.announceForAccessibility`, called exactly once from
+ * the mutation's `onSuccess`) — an optimistic outcome view is otherwise
+ * invisible to a screen reader. The "needs attention" clause is omitted
+ * entirely when nothing conflicted, matching frame D's own "omit the
+ * section, never show it empty" rule extended to the announcement.
+ */
+function outcomeAnnouncement(succeededCount: number, conflictedCount: number): string {
+  const total = succeededCount + conflictedCount;
+  const base = `${String(succeededCount)} of ${String(total)} ${total === 1 ? 'client' : 'clients'} assigned.`;
+  if (conflictedCount === 0) return base;
+  const attention = conflictedCount === 1 ? 'needs attention' : 'need attention';
+  return `${base} ${String(conflictedCount)} ${attention}.`;
+}
+
+interface BulkAssignSheetBodyProps {
+  isOpen: boolean;
+  programId: string;
+  programName: string;
+  durationWeeks: number;
+  onDismiss: () => void;
+  onInviteClient: () => void;
+}
+
+function BulkAssignSheetBody({
+  isOpen,
+  programId,
+  programName,
+  durationWeeks,
+  onDismiss,
+  onInviteClient,
+}: BulkAssignSheetBodyProps) {
+  const theme = useTheme();
+  const utils = api.useUtils();
+  const clientsQuery = useAssignableClients();
+  const bulkCreateAssignment = useBulkCreateAssignment();
+  const createAssignment = useCreateAssignment();
+  const pauseAssignment = usePauseAssignment();
+  const completeAssignment = useCompleteAssignment();
+
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [query, setQuery] = useState('');
+  const [startDate, setStartDate] = useState<CalendarDate>(todayCalendarDate);
+  const [isCalendarOpen, setCalendarOpen] = useState(false);
+  const [stage, setStage] = useState<'picking' | 'outcome'>('picking');
+  const [succeeded, setSucceeded] = useState<readonly BulkSucceededRow[]>([]);
+  const [conflicted, setConflicted] = useState<readonly BulkConflictedRow[]>([]);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [resolvingClientId, setResolvingClientId] = useState<string | null>(null);
+  const [resolvingAction, setResolvingAction] = useState<'pause' | 'complete' | null>(null);
+  const [rowError, setRowError] = useState<string | null>(null);
+
+  // A fresh sheet every time it opens — a selection or an outcome carried
+  // over from the last time this sheet was opened would silently apply to
+  // a program the coach never chose this time. Adjusted during render
+  // against the previous `isOpen`, React's own documented pattern for
+  // "reset state when a prop changes" (the same technique
+  // `ApprovedSwapsSheet`/`ExercisePickerSheet` use for the same reason).
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
+    if (isOpen) {
+      setSelectedIds(new Set());
+      setQuery('');
+      setStartDate(todayCalendarDate());
+      setCalendarOpen(false);
+      setStage('picking');
+      setSucceeded([]);
+      setConflicted([]);
+      setBulkError(null);
+      setResolvingClientId(null);
+      setResolvingAction(null);
+      setRowError(null);
+    }
+  }
+
+  const clients = clientsQuery.data?.items ?? [];
+  const filtered =
+    query.trim().length === 0
+      ? clients
+      : clients.filter((client) => client.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const today = todayCalendarDate();
+
+  function toggleClient(clientId: string): void {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(clientId)) {
+        next.delete(clientId);
+      } else {
+        next.add(clientId);
+      }
+      return next;
+    });
+  }
+
+  function handleBulkSubmit(): void {
+    if (selectedIds.size === 0) return;
+    setBulkError(null);
+    const clientIds = [...selectedIds];
+    const byId = new Map(clients.map((client) => [client.id, client]));
+
+    bulkCreateAssignment.mutate(
+      { programId, clientIds, startDate: toWireDate(startDate) },
+      {
+        onSuccess: (result) => {
+          const succeededRows: BulkSucceededRow[] = result.succeeded.map((item) => ({
+            clientId: item.clientId,
+            assignmentId: item.assignmentId,
+            name: byId.get(item.clientId)?.name ?? '',
+          }));
+          const conflictedRows: BulkConflictedRow[] = result.conflicted.map((item) => ({
+            clientId: item.clientId,
+            assignmentId: item.assignmentId,
+            name: byId.get(item.clientId)?.name ?? '',
+            programName: item.programName,
+            currentWeek: item.currentWeek,
+            durationWeeks: item.durationWeeks,
+          }));
+
+          for (const row of succeededRows) {
+            trackEvent('program_assigned', {
+              client_id: asUuid(row.clientId),
+              program_id: asUuid(programId),
+              week_count: durationWeeks,
+            });
+          }
+
+          setSucceeded(succeededRows);
+          setConflicted(conflictedRows);
+          setStage('outcome');
+          AccessibilityInfo.announceForAccessibility(
+            outcomeAnnouncement(succeededRows.length, conflictedRows.length),
+          );
+          void utils.assignments.assignableClients.invalidate();
+        },
+        onError: () => {
+          setBulkError("That didn't save. Check your connection and try again.");
+        },
+      },
+    );
+  }
+
+  /**
+   * Frame D's own rule: resolving Pause/Complete on a conflicted row
+   * "immediately retries that one client's assignment" — not just clears
+   * the conflict for the coach to resubmit by hand (single mode's own
+   * behaviour), because there is no second submit button per row in the
+   * outcome view. Success moves the row from `conflicted` into `succeeded`
+   * with its real new `assignmentId`.
+   */
+  function resolveConflict(row: BulkConflictedRow, action: 'pause' | 'complete'): void {
+    setRowError(null);
+    setResolvingClientId(row.clientId);
+    setResolvingAction(action);
+
+    function settle(): void {
+      setResolvingClientId(null);
+      setResolvingAction(null);
+    }
+
+    function retryCreate(): void {
+      void utils.assignments.assignableClients.invalidate();
+      createAssignment.mutate(
+        { programId, clientId: row.clientId, startDate: toWireDate(startDate) },
+        {
+          onSuccess: (result) => {
+            trackEvent('program_assigned', {
+              client_id: asUuid(row.clientId),
+              program_id: asUuid(programId),
+              week_count: durationWeeks,
+            });
+            setConflicted((current) => current.filter((entry) => entry.clientId !== row.clientId));
+            setSucceeded((current) => [
+              ...current,
+              { clientId: row.clientId, assignmentId: result.id, name: row.name },
+            ]);
+            settle();
+          },
+          onError: () => {
+            setRowError("That didn't save. Check your connection and try again.");
+            settle();
+          },
+        },
+      );
+    }
+
+    const mutation = action === 'pause' ? pauseAssignment : completeAssignment;
+    mutation.mutate(
+      { assignmentId: row.assignmentId },
+      {
+        onSuccess: retryCreate,
+        onError: () => {
+          setRowError("That didn't save. Check your connection and try again.");
+          settle();
+        },
+      },
+    );
+  }
+
+  let footerLabel: string;
+  if (selectedIds.size === 0) {
+    footerLabel = 'Select clients to assign';
+  } else if (bulkCreateAssignment.isPending) {
+    footerLabel = 'Assigning…';
+  } else if (selectedIds.size === 1) {
+    footerLabel = 'Assign to 1 client';
+  } else {
+    footerLabel = `Assign to ${String(selectedIds.size)} clients`;
+  }
+  const canSubmit = selectedIds.size > 0 && !bulkCreateAssignment.isPending;
+
+  return (
+    <Sheet isOpen={isOpen} onDismiss={onDismiss} snap="full" testID="assign-bulk-sheet">
+      {stage === 'outcome' ? (
+        <BulkOutcomeView
+          programName={programName}
+          succeeded={succeeded}
+          conflicted={conflicted}
+          resolvingClientId={resolvingClientId}
+          resolvingAction={resolvingAction}
+          isPausePending={pauseAssignment.isPending}
+          isCompletePending={completeAssignment.isPending}
+          rowError={rowError}
+          onResolve={resolveConflict}
+          onDone={onDismiss}
+        />
+      ) : (
+        <>
+          <SheetHeader
+            title="Assign program"
+            subtitle={`${programName} · ${String(durationWeeks)} ${durationWeeks === 1 ? 'week' : 'weeks'} · same start date for everyone`}
+            onClose={onDismiss}
+            density="coach"
+          />
+          <ScrollView
+            contentContainerStyle={styles.bulkBody}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Input
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search clients"
+              accessibilityLabel="Search clients"
+              density="coach"
+              testID="assign-bulk-search"
+            />
+
+            <Text size="eyebrow" tone="warm-muted">
+              {`Clients · ${String(selectedIds.size)} selected`}
+            </Text>
+
+            {clientsQuery.isPending ? (
+              <LoadingState shape="list" rows={4} accessibilityLabel="Loading your clients" />
+            ) : clientsQuery.isError ? (
+              <EmptyState
+                icon={<TriangleAlert size={22} color={theme.colors.brand.mid} />}
+                title="We couldn't load your clients"
+                body="Check your connection and try again."
+                primaryAction={{
+                  label: 'Try again',
+                  onPress: () => {
+                    void clientsQuery.refetch();
+                  },
+                }}
+                density="coach"
+                testID="assign-bulk-error"
+              />
+            ) : clients.length === 0 ? (
+              <EmptyState
+                icon={<Users size={22} color={theme.colors.fg.muted} />}
+                title="No clients yet"
+                body="You need at least one client before you can assign a program."
+                primaryAction={{ label: 'Invite a client', onPress: onInviteClient }}
+                density="coach"
+                testID="assign-bulk-empty"
+              />
+            ) : filtered.length === 0 ? (
+              <Text size="body-sm" tone="muted" testID="assign-bulk-no-match">
+                No clients match
+              </Text>
+            ) : (
+              <View testID="assign-bulk-list">
+                {filtered.map((client, index) => (
+                  <BulkClientRow
+                    key={client.id}
+                    client={client}
+                    checked={selectedIds.has(client.id)}
+                    isLast={index === filtered.length - 1}
+                    onToggle={() => {
+                      toggleClient(client.id);
+                    }}
+                  />
+                ))}
+              </View>
+            )}
+
+            <View style={styles.field}>
+              <Text size="eyebrow" tone="warm-muted">
+                Start date
+              </Text>
+              <BulkStartDateField
+                startDate={startDate}
+                today={today}
+                isCalendarOpen={isCalendarOpen}
+                onToggleCalendar={() => {
+                  setCalendarOpen((current) => !current);
+                }}
+                onSelectDate={(date) => {
+                  setStartDate(date);
+                  setCalendarOpen(false);
+                }}
+              />
+            </View>
+
+            {bulkError ? (
+              <Text
+                size="body-sm"
+                tone="urgent"
+                accessibilityRole="alert"
+                testID="assign-bulk-error-inline"
+              >
+                {bulkError}
+              </Text>
+            ) : null}
+          </ScrollView>
+          <SheetFooter
+            actionLabel={footerLabel}
+            onAction={handleBulkSubmit}
+            isActionDisabled={!canSubmit}
+            isActionLoading={bulkCreateAssignment.isPending}
+            density="coach"
+          />
+        </>
+      )}
+    </Sheet>
+  );
+}
+
+interface BulkClientRowProps {
+  client: AssignableClient;
+  checked: boolean;
+  isLast: boolean;
+  onToggle: () => void;
+}
+
+function BulkClientRow({ client, checked, isLast, onToggle }: BulkClientRowProps) {
+  const theme = useTheme();
+  const themed = useThemedStyles();
+  const statusText = statusTextFor(client);
+
+  return (
+    <Pressable
+      onPress={onToggle}
+      // A checkbox is a checkbox — the role, plus `accessibilityState.checked`
+      // below, is what announces the selection; the visible tick alone
+      // never carries meaning on its own (`accessibility` §2).
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      accessibilityLabel={client.name}
+      accessibilityHint={statusText}
+      style={[styles.bulkRow, isLast ? null : themed.bulkRowDivider]}
+      testID={`assign-bulk-client-${client.id}`}
+    >
+      <View
+        style={[styles.checkbox, checked ? themed.checkboxOn : themed.checkboxOff]}
+        // The row's own `accessibilityState.checked` already announces
+        // this; a second element here would say it twice.
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+        testID={`assign-bulk-check-${client.id}`}
+      >
+        {checked ? <Check size={13} strokeWidth={3} color={theme.colors.fg.onBrand} /> : null}
+      </View>
+      <Avatar size="sm" name={client.name} userId={client.id} />
+      <View style={styles.grow}>
+        <Text size="label" numberOfLines={1}>
+          {client.name}
+        </Text>
+        <Text size="micro" tone="muted" numberOfLines={1}>
+          {statusText}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+interface BulkStartDateFieldProps {
+  startDate: CalendarDate;
+  today: CalendarDate;
+  isCalendarOpen: boolean;
+  onToggleCalendar: () => void;
+  onSelectDate: (date: CalendarDate) => void;
+}
+
+function BulkStartDateField({
+  startDate,
+  today,
+  isCalendarOpen,
+  onToggleCalendar,
+  onSelectDate,
+}: BulkStartDateFieldProps) {
+  const theme = useTheme();
+  const themed = useThemedStyles();
+
+  return (
+    <>
+      <Pressable
+        onPress={onToggleCalendar}
+        accessibilityRole="button"
+        accessibilityLabel={`Start date, ${formatStartDateLabel(startDate, today)}`}
+        accessibilityHint="Opens calendar"
+        style={[styles.dateField, themed.dateField, { minHeight: tapTarget.MIN }]}
+        testID="assign-bulk-start-date"
+      >
+        <CalendarDays size={16} color={theme.colors.fg.muted} />
+        <Text size="body-sm" style={styles.grow}>
+          {formatStartDateLabel(startDate, today)}
+        </Text>
+        <ChevronDown size={16} color={theme.colors.fg.subtle} />
+      </Pressable>
+      {isCalendarOpen ? (
+        <Calendar
+          mode="single"
+          selected={startDate}
+          onSelect={onSelectDate}
+          today={today}
+          density="coach"
+          testID="assign-bulk-calendar"
+        />
+      ) : null}
+    </>
+  );
+}
+
+interface BulkOutcomeViewProps {
+  programName: string;
+  succeeded: readonly BulkSucceededRow[];
+  conflicted: readonly BulkConflictedRow[];
+  resolvingClientId: string | null;
+  resolvingAction: 'pause' | 'complete' | null;
+  isPausePending: boolean;
+  isCompletePending: boolean;
+  rowError: string | null;
+  onResolve: (row: BulkConflictedRow, action: 'pause' | 'complete') => void;
+  onDone: () => void;
+}
+
+/** Frame D — the outcome view, replacing the picker's body after the mutation. */
+function BulkOutcomeView({
+  programName,
+  succeeded,
+  conflicted,
+  resolvingClientId,
+  resolvingAction,
+  isPausePending,
+  isCompletePending,
+  rowError,
+  onResolve,
+  onDone,
+}: BulkOutcomeViewProps) {
+  const theme = useTheme();
+  const themed = useThemedStyles();
+  const isResolving = resolvingClientId !== null;
+
+  return (
+    <>
+      <SheetHeader
+        title="Assignment results"
+        subtitle={programName}
+        onClose={onDone}
+        density="coach"
+      />
+      <ScrollView
+        contentContainerStyle={styles.bulkBody}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.statRow}>
+          <View style={styles.statTile}>
+            <Card elevation="raised" density="coach" testID="assign-outcome-stat-assigned">
+              <View style={styles.statHeader}>
+                <CircleCheck size={14} color={theme.colors.brand.DEFAULT} />
+                <Text size="eyebrow" tone="warm-muted">
+                  Assigned
+                </Text>
+              </View>
+              <Text size="stat">{succeeded.length}</Text>
+            </Card>
+          </View>
+          {/* Omitted entirely at zero conflicts — never an empty "Needs
+              attention" tile (frame D's own rule). */}
+          {conflicted.length > 0 ? (
+            <View style={styles.statTile}>
+              <Card elevation="tinted" density="coach" testID="assign-outcome-stat-attention">
+                <View style={styles.statHeader}>
+                  <TriangleAlert size={14} color={theme.colors.fg.warm} />
+                  <Text size="eyebrow" tone="warm-muted">
+                    Needs attention
+                  </Text>
+                </View>
+                <Text size="stat">{conflicted.length}</Text>
+              </Card>
+            </View>
+          ) : null}
+        </View>
+
+        {succeeded.length > 0 ? (
+          <View style={styles.field}>
+            <Text size="eyebrow" tone="warm-muted">
+              {`Assigned · ${String(succeeded.length)}`}
+            </Text>
+            <View>
+              {succeeded.map((row, index) => (
+                <View
+                  key={row.clientId}
+                  style={[
+                    styles.outcomeRow,
+                    index === succeeded.length - 1 ? null : themed.bulkRowDivider,
+                  ]}
+                  testID={`assign-outcome-succeeded-${row.clientId}`}
+                >
+                  <Avatar size="sm" name={row.name} userId={row.clientId} />
+                  <Text size="body-sm" style={styles.grow} numberOfLines={1}>
+                    {row.name}
+                  </Text>
+                  <CircleCheck size={15} color={theme.colors.brand.DEFAULT} />
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        {/* Omitted entirely once every conflict resolves — never an empty section either. */}
+        {conflicted.length > 0 ? (
+          <View style={styles.field}>
+            <Text size="eyebrow" tone="warm-muted">
+              {`Needs attention · ${String(conflicted.length)}`}
+            </Text>
+            {rowError ? (
+              <Text
+                size="body-sm"
+                tone="urgent"
+                accessibilityRole="alert"
+                testID="assign-outcome-row-error"
+              >
+                {rowError}
+              </Text>
+            ) : null}
+            {conflicted.map((row) => {
+              const first = firstNameOf(row.name);
+              const isThisRow = resolvingClientId === row.clientId;
+              return (
+                <Card
+                  key={row.clientId}
+                  elevation="tinted"
+                  density="coach"
+                  testID={`assign-outcome-conflict-${row.clientId}`}
+                >
+                  <View style={styles.outcomeConflictContent}>
+                    <View style={styles.outcomeConflictRow}>
+                      <Avatar size="sm" name={row.name} userId={row.clientId} />
+                      <View style={styles.grow}>
+                        <Text size="label" numberOfLines={1}>
+                          {row.name}
+                        </Text>
+                        <Text size="micro" tone="muted" numberOfLines={1}>
+                          {`On ${row.programName}, week ${String(row.currentWeek)} of ${String(row.durationWeeks)}`}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.conflictActions}>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        density="coach"
+                        onPress={() => {
+                          onResolve(row, 'pause');
+                        }}
+                        disabled={isResolving}
+                        loading={isThisRow && resolvingAction === 'pause' && isPausePending}
+                        accessibilityLabel={`Pause ${first}'s current program`}
+                        testID={`assign-outcome-pause-${row.clientId}`}
+                      >
+                        Pause
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        density="coach"
+                        onPress={() => {
+                          onResolve(row, 'complete');
+                        }}
+                        disabled={isResolving}
+                        loading={isThisRow && resolvingAction === 'complete' && isCompletePending}
+                        accessibilityLabel={`Mark ${first}'s current program as complete`}
+                        testID={`assign-outcome-complete-${row.clientId}`}
+                      >
+                        Complete
+                      </Button>
+                    </View>
+                  </View>
+                </Card>
+              );
+            })}
+          </View>
+        ) : null}
+      </ScrollView>
+      <SheetFooter
+        actionLabel="Done"
+        onAction={onDone}
+        isActionDisabled={false}
+        isActionLoading={false}
+        density="coach"
+      />
+    </>
+  );
+}
+
 const styles = StyleSheet.create({
   body: { paddingHorizontal: spacing(14), paddingTop: spacing(12), gap: spacing(14) },
   grow: { flex: 1, minWidth: 0 },
@@ -611,6 +1301,43 @@ const styles = StyleSheet.create({
     gap: spacing(12),
     paddingVertical: spacing(6),
   },
+  // Bulk mode (frames C/D).
+  bulkBody: {
+    paddingHorizontal: spacing(14),
+    paddingTop: spacing(12),
+    paddingBottom: spacing(24),
+    gap: spacing(12),
+  },
+  bulkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(11),
+    minHeight: BULK_ROW_MIN_HEIGHT,
+  },
+  checkbox: {
+    width: BULK_CHECKBOX,
+    height: BULK_CHECKBOX,
+    borderRadius: BULK_CHECKBOX_RADIUS,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  statRow: { flexDirection: 'row', gap: spacing(9) },
+  statTile: { flex: 1 },
+  statHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing(6) },
+  outcomeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(11),
+    paddingVertical: spacing(8),
+  },
+  outcomeConflictContent: { gap: spacing(10) },
+  outcomeConflictRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(11),
+  },
 });
 
 const useThemedStyles = createThemedStyles((t) => ({
@@ -619,4 +1346,7 @@ const useThemedStyles = createThemedStyles((t) => ({
     borderWidth: 1,
     borderColor: t.colors.border.soft,
   },
+  bulkRowDivider: { borderBottomWidth: 1, borderBottomColor: t.colors.border.soft },
+  checkboxOn: { backgroundColor: t.colors.brand.DEFAULT, borderColor: t.colors.brand.DEFAULT },
+  checkboxOff: { backgroundColor: 'transparent', borderColor: t.colors.border.strong },
 }));
