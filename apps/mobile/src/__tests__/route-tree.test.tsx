@@ -113,6 +113,13 @@ const EXPECTED_ROUTE_FILES = [
   '(coach)/client/[id]/training.tsx',
   '(coach)/client/[id]/videos.tsx',
   '(coach)/exercise-library.tsx',
+  // Not in §9.1 — the two authoring routes behind the library
+  // (`phase-07-exercise-and-program-authoring/exercise-library/03`). §9.1
+  // lists the library itself and stops there; creating and editing a custom
+  // exercise each need their own route because both are reachable by deep
+  // link from a name-collision notice.
+  '(coach)/exercise/[exerciseId].tsx',
+  '(coach)/exercise/new.tsx',
   '(coach)/invite-client.tsx',
   '(coach)/live/[sessionId].tsx',
   '(coach)/program/[id]/day/[dayId].tsx',
@@ -165,7 +172,9 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   ['(coach)/checkin/[id]', '/(coach)/checkin/k1'],
   ['(coach)/program/[id]/index', '/(coach)/program/p1'],
   ['(coach)/program/[id]/day/[dayId]', '/(coach)/program/p1/day/d2'],
-  ['(coach)/exercise-library', '/(coach)/exercise-library'],
+  // `exercise-library` was a placeholder here until `exercise-library/01`
+  // composed the real screen; it and the two authoring routes moved to
+  // SUBSTITUTED for the same reason `(auth)/welcome` did.
   ['(coach)/invite-client', '/(coach)/invite-client'],
   ['(coach)/live/[sessionId]', '/(coach)/live/l1'],
   ['(coach)/settings/index', '/(coach)/settings'],
@@ -232,6 +241,14 @@ const SUBSTITUTED = new Set([
   // Real as of `guardian-consent/06`; what it renders is covered by
   // `src/features/onboarding/__tests__/GuardianConsentPendingScreen.test.tsx`.
   '(client-onboarding)/guardian-consent-pending',
+  // Real screens as of `phase-07-exercise-and-program-authoring/exercise-library/`
+  // 01 and 03. All three call `exercises.*` through TanStack Query, so
+  // rendering them here would need the tRPC provider `_layout` supplies and
+  // this test deliberately substitutes. What each renders is covered by
+  // `src/features/workouts/components/library/__tests__/`.
+  '(coach)/exercise-library',
+  '(coach)/exercise/new',
+  '(coach)/exercise/[exerciseId]',
 ]);
 
 /**

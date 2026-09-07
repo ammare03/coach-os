@@ -30,6 +30,15 @@ type MovementDef = {
   equipment: string[];
   bodyweightVariant?: string; // matches one entry in `equipment` exactly when present
   unilateral?: boolean;
+  // Gym shorthand a coach actually types. Feeds `exercises.search_vector`
+  // (DB§5.2's generated column), which is the only reason "rdl" finds
+  // Romanian Deadlift: `to_tsvector('english', …)` tokenises "RDL" fine but
+  // has no way to derive it from the full name, and the trigram tier scores
+  // a three-letter query against a 24-character name far too low to help
+  // (`phase-07-.../exercise-library/02`'s Risks section calls aliases the
+  // escape hatch for exactly this). Deterministic: no faker call
+  // participates, so the seed's byte-identical guarantee is unaffected.
+  aliases?: string[];
 };
 
 // 33 base movements × their equipment variants ≈ 121 exercises — DB§21's
@@ -37,6 +46,7 @@ type MovementDef = {
 const MOVEMENTS: MovementDef[] = [
   {
     base: 'Back Squat',
+    aliases: ['Squat'],
     pattern: 'squat',
     muscle: 'quadriceps',
     secondary: ['glutes', 'hamstrings'],
@@ -51,6 +61,7 @@ const MOVEMENTS: MovementDef[] = [
     bodyweightVariant: 'Bodyweight',
   },
   {
+    aliases: ['BSS', 'Rear Foot Elevated Split Squat'],
     base: 'Bulgarian Split Squat',
     pattern: 'squat',
     muscle: 'quadriceps',
@@ -81,6 +92,7 @@ const MOVEMENTS: MovementDef[] = [
     muscle: 'hamstrings',
     secondary: ['glutes', 'back'],
     equipment: ['Barbell', 'Trap Bar', 'Sumo Barbell', 'Deficit Barbell'],
+    aliases: ['DL', 'Conventional Deadlift'],
   },
   {
     base: 'Romanian Deadlift',
@@ -88,6 +100,7 @@ const MOVEMENTS: MovementDef[] = [
     muscle: 'hamstrings',
     secondary: ['glutes'],
     equipment: ['Barbell', 'Dumbbell', 'Single-Leg Dumbbell'],
+    aliases: ['RDL', 'Romanian DL', 'Stiff Leg Deadlift'],
   },
   {
     base: 'Hip Thrust',
@@ -116,6 +129,7 @@ const MOVEMENTS: MovementDef[] = [
     pattern: 'push',
     muscle: 'chest',
     secondary: ['triceps', 'shoulders'],
+    aliases: ['BP', 'Bench'],
     equipment: [
       'Barbell',
       'Dumbbell',
@@ -131,6 +145,7 @@ const MOVEMENTS: MovementDef[] = [
     muscle: 'shoulders',
     secondary: ['triceps'],
     equipment: ['Barbell', 'Dumbbell', 'Seated Dumbbell', 'Machine'],
+    aliases: ['OHP', 'Military Press', 'Shoulder Press'],
   },
   {
     base: 'Push-up',
@@ -164,6 +179,7 @@ const MOVEMENTS: MovementDef[] = [
     bodyweightVariant: 'Bodyweight',
   },
   {
+    aliases: ['Pulldown'],
     base: 'Lat Pulldown',
     pattern: 'pull',
     muscle: 'back',
@@ -463,7 +479,7 @@ export async function seedExercises(tx: Transaction): Promise<SeededExercise[]> 
         id: rowId,
         coachId: null,
         name,
-        aliases: [],
+        aliases: movement.aliases ?? [],
         primaryMuscle: movement.muscle,
         secondaryMuscles: movement.secondary,
         equipment: equipmentSlug(variant),

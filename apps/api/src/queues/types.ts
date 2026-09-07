@@ -57,3 +57,16 @@ export interface AccountDeletionJobData {
 export interface DataExportJobData {
   exportId: string;
 }
+
+/**
+ * `exercise-library/06` — DB§15's `exercise-reconcile` queue. A union, not
+ * the single-subject-id shape every other payload here uses, because this
+ * queue carries two job kinds on one schedule: the weekly `sweep` that BullMQ's
+ * own job scheduler emits, and the per-coach `reconcile` jobs that sweep
+ * fans out. One queue, per DB§15's fixed queue list — never a second one.
+ */
+export type ExerciseReconcileJobData =
+  /** The weekly fan-out. Enumerates coaches and enqueues one `reconcile` job each. */
+  | { kind: 'sweep' }
+  /** One coach's four passes for one ISO week. */
+  | { kind: 'reconcile'; coachId: string; isoWeek: string };

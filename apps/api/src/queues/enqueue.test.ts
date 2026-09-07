@@ -12,6 +12,7 @@ import type {
   enqueueAiGeneration as EnqueueAiGeneration,
   enqueueCheckinScheduler as EnqueueCheckinScheduler,
   enqueueDigestEmail as EnqueueDigestEmail,
+  enqueueExerciseReconcile as EnqueueExerciseReconcile,
   enqueueMediaTranscode as EnqueueMediaTranscode,
   enqueueNotification as EnqueueNotification,
   enqueueRetentionSweep as EnqueueRetentionSweep,
@@ -21,6 +22,7 @@ import type {
   aiGenerationQueue as AiGenerationQueue,
   checkinSchedulerQueue as CheckinSchedulerQueue,
   digestEmailQueue as DigestEmailQueue,
+  exerciseReconcileQueue as ExerciseReconcileQueue,
   mediaTranscodeQueue as MediaTranscodeQueue,
   notificationsQueue as NotificationsQueue,
   retentionSweepQueue as RetentionSweepQueue,
@@ -36,6 +38,7 @@ let checkinSchedulerQueue: typeof CheckinSchedulerQueue;
 let retentionSweepQueue: typeof RetentionSweepQueue;
 let webhookProcessorQueue: typeof WebhookProcessorQueue;
 let aiGenerationQueue: typeof AiGenerationQueue;
+let exerciseReconcileQueue: typeof ExerciseReconcileQueue;
 let enqueueMediaTranscode: typeof EnqueueMediaTranscode;
 let enqueueNotification: typeof EnqueueNotification;
 let enqueueDigestEmail: typeof EnqueueDigestEmail;
@@ -43,6 +46,7 @@ let enqueueCheckinScheduler: typeof EnqueueCheckinScheduler;
 let enqueueRetentionSweep: typeof EnqueueRetentionSweep;
 let enqueueWebhookProcessor: typeof EnqueueWebhookProcessor;
 let enqueueAiGeneration: typeof EnqueueAiGeneration;
+let enqueueExerciseReconcile: typeof EnqueueExerciseReconcile;
 
 beforeAll(async () => {
   container = await new GenericContainer('redis:7-alpine')
@@ -61,6 +65,7 @@ beforeAll(async () => {
     retentionSweepQueue,
     webhookProcessorQueue,
     aiGenerationQueue,
+    exerciseReconcileQueue,
   } = await import('./registry.ts'));
   ({
     enqueueMediaTranscode,
@@ -70,6 +75,7 @@ beforeAll(async () => {
     enqueueRetentionSweep,
     enqueueWebhookProcessor,
     enqueueAiGeneration,
+    enqueueExerciseReconcile,
   } = await import('./enqueue.ts'));
 }, 60_000);
 
@@ -82,6 +88,7 @@ afterAll(async () => {
     retentionSweepQueue.close(),
     webhookProcessorQueue.close(),
     aiGenerationQueue.close(),
+    exerciseReconcileQueue.close(),
   ]);
   queueConnection.disconnect();
   await container.stop();
@@ -144,6 +151,24 @@ describe('idempotent enqueue — same subject twice yields one job', () => {
     expect((await aiGenerationQueue.getJobCounts('waiting')).waiting).toBe(1);
   });
 
+  it('exercise-reconcile dedupes on (coachId, isoWeek) — and BullMQ accepts its colon-delimited id', async () => {
+    // The one `:`-delimited job id in `enqueue.ts` (`exercise-library/06`
+    // fixes the literal `exercise-reconcile:{coachId}:{isoWeek}` form).
+    // BullMQ only permits a custom id containing `:` when it splits into
+    // exactly three parts; this asserts that against a real Redis rather
+    // than trusting a reading of `job.js`'s `validateOptions`.
+    const first = await enqueueExerciseReconcile({ coachId: 'coach-9', isoWeek: '2026-W36' });
+    const second = await enqueueExerciseReconcile({ coachId: 'coach-9', isoWeek: '2026-W36' });
+
+    expect(first.id).toBe('exercise-reconcile:coach-9:2026-W36');
+    expect(second.id).toBe(first.id);
+    expect((await exerciseReconcileQueue.getJobCounts('waiting')).waiting).toBe(1);
+
+    // The next week is a genuinely new job, not a suppressed duplicate.
+    const nextWeek = await enqueueExerciseReconcile({ coachId: 'coach-9', isoWeek: '2026-W37' });
+    expect(nextWeek.id).not.toBe(first.id);
+  });
+
   it('a different subject on the same queue is a genuinely new job', async () => {
     const first = await enqueueMediaTranscode({ assetId: 'asset-3' });
     const second = await enqueueMediaTranscode({ assetId: 'asset-4' });
@@ -165,6 +190,7 @@ it('every queue appears in Redis under its own bull:{queue}:* key', async () => 
     'retention-sweep',
     'webhook-processor',
     'ai-generation',
+    'exercise-reconcile',
   ];
 
   for (const name of queueNames) {

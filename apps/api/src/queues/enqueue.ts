@@ -4,6 +4,7 @@ import {
   checkinSchedulerQueue,
   dataExportQueue,
   digestEmailQueue,
+  exerciseReconcileQueue,
   mediaTranscodeQueue,
   notificationsQueue,
   retentionSweepQueue,
@@ -101,4 +102,64 @@ export function enqueuePurgeAccount(data: { userId: string }) {
  */
 export function enqueueDataExport(data: { exportId: string }) {
   return dataExportQueue.add('export', data, { jobId: `export.${data.exportId}` });
+}
+
+/** The BullMQ job-scheduler id behind the weekly fan-out. One, forever. */
+const EXERCISE_RECONCILE_SCHEDULER_ID = 'exercise-reconcile-weekly';
+
+/**
+ * Monday 03:00 in the server's timezone — off-peak by design
+ * (`exercise-library/06` Approach step 1). A coach opening the app on a
+ * Monday morning sees last week's digest already waiting rather than
+ * competing with their own dashboard queries for the database.
+ */
+const EXERCISE_RECONCILE_CRON = '0 3 * * 1';
+
+/**
+ * Installs the weekly repeatable trigger for `exercise-reconcile`.
+ * `upsertJobScheduler` is idempotent on the scheduler id, so calling this on
+ * every worker boot is safe and is how the schedule stays in Redis without a
+ * separate deploy step. The emitted job carries `{ kind: 'sweep' }`;
+ * `../jobs/exercise-reconcile.ts` fans it out into one
+ * {@link enqueueExerciseReconcile} per coach.
+ */
+export function scheduleWeeklyExerciseReconcile() {
+  return exerciseReconcileQueue.upsertJobScheduler(
+    EXERCISE_RECONCILE_SCHEDULER_ID,
+    { pattern: EXERCISE_RECONCILE_CRON },
+    { name: 'sweep', data: { kind: 'sweep' } },
+  );
+}
+
+/** `exercise-library/06`'s literal job id. See {@link enqueueExerciseReconcile}. */
+export function exerciseReconcileJobId(coachId: string, isoWeek: string): string {
+  return `exercise-reconcile:${coachId}:${isoWeek}`;
+}
+
+/**
+ * `jobId`: `exercise-reconcile:{coachId}:{isoWeek}` — one reconciliation
+ * per coach per ISO week, which is the whole of this job's idempotency
+ * contract at the queue level (`exercise-library/06` Approach step 1).
+ *
+ * **The one `:`-delimited id in this file, and deliberately so.** The block
+ * at the top of this module explains why every other derivation uses `.`:
+ * BullMQ rejects a custom `jobId` containing `:` *unless* it splits into
+ * exactly three parts, which is the shape it reserves for its own
+ * repeatable-job ids (`job.js`'s `validateOptions`). This id has exactly
+ * three parts, so it is accepted verbatim as the task specifies it — and
+ * `enqueue.test.ts` asserts that against a real Redis rather than trusting
+ * the reading of that source.
+ *
+ * Queue-level dedup only holds while the earlier job is pending or active,
+ * so it is not on its own enough to guarantee "two runs in one week produce
+ * one digest" — `../jobs/exercise-reconcile.ts` re-checks for an existing
+ * digest row before writing one. Both layers, because either alone leaves a
+ * window.
+ */
+export function enqueueExerciseReconcile(data: { coachId: string; isoWeek: string }) {
+  return exerciseReconcileQueue.add(
+    'reconcile',
+    { kind: 'reconcile', coachId: data.coachId, isoWeek: data.isoWeek },
+    { jobId: exerciseReconcileJobId(data.coachId, data.isoWeek) },
+  );
 }

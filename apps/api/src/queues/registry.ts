@@ -7,6 +7,7 @@ import type {
   CheckinSchedulerJobData,
   DataExportJobData,
   DigestEmailJobData,
+  ExerciseReconcileJobData,
   MediaTranscodeJobData,
   NotificationsJobData,
   RetentionSweepJobData,
@@ -85,6 +86,12 @@ export const accountDeletionQueue = new Queue<AccountDeletionJobData>('account-d
 
 /** `account-lifecycle/09` — DB§15's `data-export` queue. */
 export const dataExportQueue = new Queue<DataExportJobData>('data-export', {
+  connection: queueConnection,
+  defaultJobOptions,
+});
+
+/** `exercise-library/06` — DB§15's weekly `exercise-reconcile` queue. */
+export const exerciseReconcileQueue = new Queue<ExerciseReconcileJobData>('exercise-reconcile', {
   connection: queueConnection,
   defaultJobOptions,
 });

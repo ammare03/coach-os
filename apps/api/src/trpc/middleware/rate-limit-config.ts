@@ -17,6 +17,8 @@ export const RATE_LIMIT_TIERS = {
   mediaCreateUploadUrl: { windowSeconds: HOUR, max: 60 },
   /** 120 / min / user */
   nutritionSearchFood: { windowSeconds: MINUTE, max: 120 },
+  /** 120 / min / user — `exercise-library/02`. The same interaction as `nutrition.searchFood` (a debounced keystroke path), so the same budget. */
+  exercisesSearch: { windowSeconds: MINUTE, max: 120 },
   /** 60 / min / user */
   commentsCreate: { windowSeconds: MINUTE, max: 60 },
   /** 600 / min / user — the structural fallback every procedure gets by deriving from `publicProcedure` (`procedures.ts`). */

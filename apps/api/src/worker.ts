@@ -3,12 +3,18 @@ import { Worker } from 'bullmq';
 
 import { env } from './env.ts';
 import { buildDataExport } from './jobs/data-export.ts';
+import { runExerciseReconcile, runExerciseReconcileSweep } from './jobs/exercise-reconcile.ts';
 import { purgeAccount } from './jobs/purge-account.ts';
 import { logger } from './lib/logger.ts';
 import { initSentry } from './lib/sentry.ts';
 import { queueConnection } from './queues/connection.ts';
+import { scheduleWeeklyExerciseReconcile } from './queues/enqueue.ts';
 import { registerGracefulShutdown } from './queues/graceful-shutdown.ts';
-import type { AccountDeletionJobData, DataExportJobData } from './queues/types.ts';
+import type {
+  AccountDeletionJobData,
+  DataExportJobData,
+  ExerciseReconcileJobData,
+} from './queues/types.ts';
 
 /**
  * The worker process entry point (`03-worker-process.md`) — genuinely
@@ -62,6 +68,34 @@ workers.push(
     { connection: queueConnection },
   ),
 );
+
+// `exercise-library/06`. One queue, two job kinds (`./queues/types.ts`):
+// the weekly `sweep` BullMQ's own scheduler emits, and the per-coach
+// `reconcile` jobs it fans out into.
+workers.push(
+  new Worker<ExerciseReconcileJobData>(
+    'exercise-reconcile',
+    async (job) => {
+      if (job.data.kind === 'sweep') {
+        await runExerciseReconcileSweep(db);
+        return;
+      }
+      await runExerciseReconcile(db, {
+        coachId: job.data.coachId,
+        isoWeek: job.data.isoWeek,
+      });
+    },
+    { connection: queueConnection },
+  ),
+);
+
+// Idempotent on the scheduler id, so re-running it on every boot is how the
+// weekly trigger stays installed without a separate deploy step. A Redis
+// failure here must not stop the worker from processing the queues it
+// already has.
+scheduleWeeklyExerciseReconcile().catch(() => {
+  logger.error('worker.schedule_failed', { queue: 'exercise-reconcile' });
+});
 
 registerGracefulShutdown(workers);
 

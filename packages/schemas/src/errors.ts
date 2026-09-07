@@ -97,6 +97,27 @@ export const APP_ERROR_CODES = [
   // enumeration-oracle reasoning `EXPORT_NOT_FOUND` already established —
   // a guardian probing ids must not learn *which* condition failed.
   'DEPENDENT_NOT_FOUND',
+  // exercise-library/01 — `exercises.get` on an id that names nothing, or
+  // names another coach's custom exercise. One code for both, `NOT_FOUND`
+  // for both: a distinct "not yours" would confirm the row exists, the same
+  // enumeration oracle `NOT_YOUR_CLIENT` and `EXPORT_NOT_FOUND` already
+  // close (`security-and-privacy` skill §1).
+  'EXERCISE_NOT_FOUND',
+  // exercise-library/03 — the coach already has a non-archived exercise
+  // with this name. DB§5.2's partial unique index is what refuses it; this
+  // is the product's translation of that refusal, carried to the name field
+  // rather than to a toast. Not in `CONSTRAINT_ERROR_MAP`: its payload
+  // needs the colliding row's id so the form can offer "open the existing
+  // one", and the stateless boundary cannot fabricate that (see that map's
+  // own doc comment).
+  'EXERCISE_NAME_TAKEN',
+  // exercise-library/03 — an attempt to edit or archive a GLOBAL
+  // (`coach_id IS NULL`) exercise. Every coach's programs reference those
+  // rows and no procedure may write one. FORBIDDEN, not NOT_FOUND: the row
+  // is not hidden from the caller — `get` and `list` return it happily —
+  // so there is no oracle to close, and "you can't edit this" is the true
+  // and more useful answer.
+  'EXERCISE_NOT_EDITABLE',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -157,6 +178,9 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   EXPORT_RATE_LIMITED: 'TOO_MANY_REQUESTS',
   EXPORT_NOT_FOUND: 'NOT_FOUND',
   DEPENDENT_NOT_FOUND: 'NOT_FOUND',
+  EXERCISE_NOT_FOUND: 'NOT_FOUND',
+  EXERCISE_NAME_TAKEN: 'CONFLICT',
+  EXERCISE_NOT_EDITABLE: 'FORBIDDEN',
 };
 
 /**
@@ -231,6 +255,13 @@ export interface AppErrorPayloads {
   EXPORT_RATE_LIMITED: { retryAfterSeconds: number };
   EXPORT_NOT_FOUND: EmptyErrorPayload;
   DEPENDENT_NOT_FOUND: EmptyErrorPayload;
+  // No id echoed back — naming the exercise that "wasn't found" would let a
+  // caller distinguish a bad id from another coach's id one probe at a time.
+  EXERCISE_NOT_FOUND: EmptyErrorPayload;
+  // The id only — never the name. The client already has the name (it just
+  // sent it), and DB§18 keeps user-authored text out of error payloads.
+  EXERCISE_NAME_TAKEN: { existingExerciseId: string };
+  EXERCISE_NOT_EDITABLE: EmptyErrorPayload;
 }
 
 /**
