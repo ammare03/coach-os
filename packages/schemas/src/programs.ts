@@ -4,7 +4,6 @@
 // multi-week shape and adds the rest.
 import { z } from 'zod';
 
-import { paginationInput } from './pagination.ts';
 import { id, MAX_NOTE_TEXT, MAX_SHORT_TEXT, strictObject } from './primitives.ts';
 
 // Every bound below mirrors a `CHECK` in DB§5.2, and nothing here invents
@@ -672,26 +671,8 @@ export const duplicateProgramWeekInput = strictObject({
 export type DuplicateProgramWeekInput = z.infer<typeof duplicateProgramWeekInput>;
 
 // ---------------------------------------------------------------------------
-// Templates — `programs.listTemplates` / `programs.duplicate`
-// (`program-templates/01`, `program-templates/02`)
+// Whole-program duplication — `programs.duplicate` (`program-templates/02`)
 // ---------------------------------------------------------------------------
-
-/**
- * `programs.listTemplates` — the Programs tab's default view.
- *
- * `paginationInput` verbatim, not a bespoke shape: a coach with forty
- * templates is unusual and a coach with four hundred is not impossible, and a
- * list procedure that is the only one in the product without a cursor is a
- * list procedure that gets one under duress later.
- *
- * **No filter arguments.** The two filters this view applies —
- * `is_template = true` and `archived_at IS NULL` — are what the procedure IS,
- * not parameters of it. Making either optional would put an archived program
- * one boolean away from a screen with no way to render it
- * (`program-templates/03`).
- */
-export const listTemplatesInput = paginationInput;
-export type ListTemplatesInput = z.infer<typeof listTemplatesInput>;
 
 /**
  * `programs.duplicate` — the whole-program copy (`program-templates/02`).

@@ -1,4 +1,4 @@
-import { programs as programsSchemas } from '@coachos/schemas';
+import { paginationInput, programs as programsSchemas } from '@coachos/schemas';
 
 import { createProgramDay } from '../features/programs/create-program-day.ts';
 import { createProgramExercise } from '../features/programs/create-program-exercise.ts';
@@ -229,13 +229,24 @@ export const programsRouter = router({
 
   // `program-templates/01` — the Programs tab's default view.
   //
+  // `paginationInput` straight from the barrel, the shape every list
+  // procedure takes (`routers/me.ts` does the same). It is NOT re-exported
+  // through `programsSchemas`: that module may import only zod and
+  // `./primitives.ts` (`packages/schemas/src/__tests__/layout.test.ts`).
+  //
+  // No filter arguments. The two filters this view applies —
+  // `is_template = true` and `archived_at IS NULL` — are what the procedure
+  // IS, not parameters of it; making either optional would put an archived
+  // program one boolean away from a screen with no way to render it
+  // (`program-templates/03`).
+  //
   // `coachProcedure` and no `ownsResource`, for the reason `create` has
   // none: the only row this reads is the caller, and the owning coach is
   // `ctx.user.coachProfileId` rather than anything the caller sent. A
   // `coachId` in the input would be exactly the enumeration hole §6.2
   // exists to close.
   listTemplates: coachProcedure
-    .input(programsSchemas.listTemplatesInput)
+    .input(paginationInput)
     .query(({ ctx, input }) => listProgramTemplates(ctx.db, ctx.user.coachProfileId, input)),
 
   // `program-templates/02` — the whole-program copy, across programs, where

@@ -1,11 +1,11 @@
 import { schema, type DbClient, type Program } from '@coachos/db';
-import type { programs as programsSchemas } from '@coachos/schemas';
+import type { PaginationInput } from '@coachos/schemas';
 import { and, count, desc, eq, inArray, isNull, lt } from 'drizzle-orm';
 
 // `programs.listTemplates` (`program-templates/01`) — the Programs tab's
 // default view.
 //
-// **Live-reference, not snapshot** (`program-templates/04`'s resolution): a
+// **Live-reference, not snapshot** (`assignment/00`'s resolution): a
 // template listed here is the same row an assignment will point at, and a
 // later edit to it reaches every client already assigned. Nothing in this
 // query changes because of that — it only means the list a coach sees here
@@ -14,7 +14,7 @@ import { and, count, desc, eq, inArray, isNull, lt } from 'drizzle-orm';
 //
 // Two filters, both mandatory and neither a parameter: `is_template = true`
 // and `archived_at IS NULL` are what this procedure IS
-// (`packages/schemas/src/programs.ts`'s `listTemplatesInput` doc comment).
+// (the `listTemplates` procedure's comment in `apps/api/src/routers/programs.ts`).
 
 export type ProgramTemplateSummary = Pick<
   Program,
@@ -33,7 +33,7 @@ export interface ListProgramTemplatesResult {
 export async function listProgramTemplates(
   db: DbClient,
   coachProfileId: string,
-  input: programsSchemas.ListTemplatesInput,
+  input: PaginationInput,
 ): Promise<ListProgramTemplatesResult> {
   const filters = [
     eq(schema.programs.coachId, coachProfileId),
