@@ -4,8 +4,10 @@
 // clock, so `TZ=<anything> pnpm test` is expected to be a no-op on the
 // results.
 import {
+  addCalendarDays,
   formatLocalDate,
   formatRelativeToNow,
+  isoWeekdayOfCalendarDate,
   localDateRangeUtc,
   localWeekRangeUtc,
   toLocalDate,
@@ -124,4 +126,78 @@ describe('formatRelativeToNow', () => {
     const at = new Date(Date.now() - HOUR_MS);
     expect(formatRelativeToNow(at)).toBe('about 1 hour ago');
   });
+});
+
+describe('addCalendarDays', () => {
+  it('adds within a month', () => {
+    expect(addCalendarDays('2026-08-14', 3)).toBe('2026-08-17');
+  });
+
+  it('subtracts with a negative count', () => {
+    expect(addCalendarDays('2026-08-14', -3)).toBe('2026-08-11');
+  });
+
+  it('rolls forward across a month boundary', () => {
+    expect(addCalendarDays('2026-08-30', 3)).toBe('2026-09-02');
+  });
+
+  it('rolls backward across a year boundary', () => {
+    expect(addCalendarDays('2026-01-01', -1)).toBe('2025-12-31');
+  });
+
+  it('crosses a US spring-forward DST transition uneventfully', () => {
+    // 2026-03-08 is the US spring-forward day (America/New_York) — pure
+    // calendar arithmetic, so it is not even a special case here.
+    expect(addCalendarDays('2026-03-07', 1)).toBe('2026-03-08');
+    expect(addCalendarDays('2026-03-08', 1)).toBe('2026-03-09');
+  });
+
+  it('crosses a US fall-back DST transition uneventfully', () => {
+    expect(addCalendarDays('2026-11-01', 1)).toBe('2026-11-02');
+  });
+
+  it('handles a leap-year February correctly', () => {
+    expect(addCalendarDays('2028-02-28', 1)).toBe('2028-02-29');
+    expect(addCalendarDays('2028-02-29', 1)).toBe('2028-03-01');
+  });
+
+  it('is a no-op for zero days', () => {
+    expect(addCalendarDays('2026-08-14', 0)).toBe('2026-08-14');
+  });
+
+  it('rejects a malformed calendar date', () => {
+    expect(() => addCalendarDays('14-08-2026', 1)).toThrow(RangeError);
+  });
+
+  // No "does not depend on the device timezone" test here, unlike this
+  // file's other describe blocks — this package carries no `@types/node`
+  // (CLAUDE.md §4: "NO node builtins"), so a test can't toggle
+  // `process.env.TZ` to prove it. The guarantee is definitional instead:
+  // `addCalendarDays` takes no timezone parameter at all, and its
+  // implementation (`toCalendarArithmeticDate`/`fromCalendarArithmeticDate`)
+  // is a self-cancelling round trip through the SAME local getters on both
+  // ends, so whatever the runtime's local timezone actually is cancels out
+  // rather than leaking into the result — this file's own top-of-file
+  // comment's "TZ=<anything> pnpm test is expected to be a no-op" promise
+  // already covers this at the suite level.
+});
+
+describe('isoWeekdayOfCalendarDate', () => {
+  it('numbers Monday through Sunday as 1 through 7', () => {
+    // 2026-08-17 through 2026-08-23 is Mon–Sun.
+    expect(isoWeekdayOfCalendarDate('2026-08-17')).toBe(1); // Monday
+    expect(isoWeekdayOfCalendarDate('2026-08-18')).toBe(2); // Tuesday
+    expect(isoWeekdayOfCalendarDate('2026-08-19')).toBe(3); // Wednesday
+    expect(isoWeekdayOfCalendarDate('2026-08-20')).toBe(4); // Thursday
+    expect(isoWeekdayOfCalendarDate('2026-08-21')).toBe(5); // Friday
+    expect(isoWeekdayOfCalendarDate('2026-08-22')).toBe(6); // Saturday
+    expect(isoWeekdayOfCalendarDate('2026-08-23')).toBe(7); // Sunday
+  });
+
+  it('rejects a malformed calendar date', () => {
+    expect(() => isoWeekdayOfCalendarDate('not-a-date')).toThrow(RangeError);
+  });
+
+  // Same note as `addCalendarDays` above: no `process.env.TZ`-toggling test
+  // here, for the same reason — the guarantee is definitional, not runtime.
 });

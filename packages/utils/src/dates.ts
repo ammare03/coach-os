@@ -5,7 +5,7 @@
 // timestamp — so every function here takes a timezone explicitly. None of
 // them reads an ambient device/server timezone; that ambient read is
 // exactly the bug this module exists to prevent.
-import { addDays, endOfWeek, formatDistanceToNow, startOfWeek } from 'date-fns';
+import { addDays, endOfWeek, formatDistanceToNow, getISODay, startOfWeek } from 'date-fns';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 
 /**
@@ -100,6 +100,32 @@ export function localWeekRangeUtc(
   const { start } = localDateRangeUtc(weekStartDate, timeZone);
   const { end } = localDateRangeUtc(weekEndDate, timeZone);
   return { start, end };
+}
+
+/**
+ * Adds (or, for a negative `days`, subtracts) whole calendar days to a
+ * calendar date. Pure date arithmetic — no timezone involved, and none
+ * needed: a calendar date has no instant to convert. This was the one "add
+ * N calendar days" helper this file didn't already have
+ * (`assignment/03-session-materialisation.md`'s walk from
+ * `assignments.start_date`, itself already a client-local calendar day per
+ * DATABASE.md DB§5.2, through a program's week/day structure — there is no
+ * UTC instant anywhere in that walk for a timezone to apply to). Add here,
+ * never reimplement locally — `CLAUDE.md` §25.5's whole point.
+ */
+export function addCalendarDays(date: CalendarDate, days: number): CalendarDate {
+  return fromCalendarArithmeticDate(addDays(toCalendarArithmeticDate(date), days));
+}
+
+/**
+ * The ISO weekday of a calendar date: 1 = Monday … 7 = Sunday. Also pure
+ * calendar arithmetic — used to align `training.program_days.day_number`
+ * (CHECKed 1–7, DB§5.2) to real calendar weekdays rather than treating it
+ * as a sequential offset from an assignment's `start_date`
+ * (`assignment/03`'s resolution of that exact question).
+ */
+export function isoWeekdayOfCalendarDate(date: CalendarDate): number {
+  return getISODay(toCalendarArithmeticDate(date));
 }
 
 /**

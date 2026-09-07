@@ -448,3 +448,95 @@ describe('assignments.assignableClients', () => {
     expect(page.items).toHaveLength(0);
   });
 });
+
+// `assignment/03` — `assignments.create` now also materialises
+// `workout_sessions` (`../../lib/materialise-sessions.ts` owns the
+// date-boundary rigor and decisions (a)-(e); this suite only checks the
+// wiring: that `create` actually calls it, inside the same transaction as
+// the assignment insert).
+describe('assignments.create — session materialisation wiring', () => {
+  async function insertProgramWithOneDay(
+    coachProfileId: string,
+    dayNumber: number,
+  ): Promise<{ id: string }> {
+    const program = await insertProgram(coachProfileId, 'Materialised program', 1);
+    const [week] = await db
+      .insert(schema.programWeeks)
+      .values({ programId: program.id, weekNumber: 1 })
+      .returning({ id: schema.programWeeks.id });
+    if (!week) throw new Error('seed insert into program_weeks did not return a row');
+    await db.insert(schema.programDays).values({
+      programWeekId: week.id,
+      dayNumber,
+      name: 'Day 1',
+      isRestDay: false,
+    });
+    return program;
+  }
+
+  it('materialises a scheduled session for the assigned client on assignments.create', async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const program = await insertProgramWithOneDay(coach.profileId, 1); // Monday
+
+    const assignment = await caller(coach).assignments.create({
+      programId: program.id,
+      clientId: client.profileId,
+      startDate: '2026-08-10', // a Monday
+    });
+
+    const sessions = await db
+      .select()
+      .from(schema.workoutSessions)
+      .where(eq(schema.workoutSessions.assignmentId, assignment.id));
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      clientId: client.profileId,
+      coachId: coach.profileId,
+      scheduledDate: '2026-08-10',
+      status: 'scheduled',
+      totalVolumeKg: null,
+      programSnapshot: null,
+    });
+    expect(sessions[0]?.clientLocalId).not.toBeNull();
+  });
+
+  it('rolls back the assignment row too if materialisation fails', async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const program = await insertProgramWithOneDay(coach.profileId, 1); // Monday
+
+    // Pre-seed a conflicting workout_sessions row so materialisation's own
+    // insert collides with `sessions_client_day_unique`.
+    const [day] = await db
+      .select({ id: schema.programDays.id })
+      .from(schema.programDays)
+      .innerJoin(schema.programWeeks, eq(schema.programWeeks.id, schema.programDays.programWeekId))
+      .where(eq(schema.programWeeks.programId, program.id));
+    if (!day) throw new Error('fixture day missing');
+    await db.insert(schema.workoutSessions).values({
+      clientId: client.profileId,
+      coachId: coach.profileId,
+      programDayId: day.id,
+      scheduledDate: '2026-08-10',
+      status: 'scheduled',
+    });
+
+    await expect(
+      caller(coach).assignments.create({
+        programId: program.id,
+        clientId: client.profileId,
+        startDate: '2026-08-10',
+      }),
+    ).rejects.toThrow();
+
+    // The assignment itself never committed either — atomicity across both
+    // writes, not just across the sessions batch.
+    const rows = await db
+      .select()
+      .from(schema.assignments)
+      .where(eq(schema.assignments.clientId, client.profileId));
+    expect(rows).toHaveLength(0);
+  });
+});

@@ -4,23 +4,35 @@ import { and, eq } from 'drizzle-orm';
 
 import { unwrapDatabaseError } from '../../db/is-database-error.ts';
 import { appError } from '../../lib/app-error.ts';
+import { materialiseSessions } from '../../lib/materialise-sessions.ts';
 
-// `assignments.create` (`assignment/01`) — the first write to
-// `training.assignments`. Live-reference, not snapshot
+// `assignments.create` (`assignment/01`, extended by `assignment/03`) — the
+// first write to `training.assignments`, and the write that turns a
+// program's day/week structure into real `workout_sessions` rows
+// (`../../lib/materialise-sessions.ts`). Live-reference, not snapshot
 // (`../programs/versioning.md`): `program_id` points at the template
 // directly, so nothing here forks a copy. Ownership is
 // `ownsResource('program', …)` AND `ownsResource('client', …)` in the
 // router — both, chained after `.input()`, never inlined here (`CLAUDE.md`
 // §6.2).
 //
-// No `db.transaction`: this is a single-row insert with no second table to
-// keep in step (`code-conventions` §7 requires a transaction only for a
-// multi-table write), so the pre-check and the insert are two separate
-// statements rather than one aborted-on-conflict transaction — which
-// matters here, because a Postgres transaction that has already hit a
-// unique violation refuses every further statement until it is rolled
-// back, and the race-case catch below needs a live connection to re-query
-// on.
+// `db.transaction` now wraps BOTH the assignment insert AND materialisation
+// — `assignment/03`'s own requirement that "all sessions for one
+// assignment materialise in a single transaction," extended here one step
+// further so the assignment row itself and its sessions commit or roll
+// back together: an assignment that exists with zero materialised sessions
+// (because the assignment insert committed but materialisation then
+// failed) is exactly the kind of partial state a transaction exists to
+// rule out, so a plain sequential "insert, then separately materialise" was
+// rejected in favour of this.
+//
+// This does not reopen the race-handling problem the original single-row
+// design was written to avoid: a Postgres transaction that hits a unique
+// violation refuses every further statement until it rolls back, but
+// `db.transaction`'s own rollback-on-throw already leaves the connection
+// pool clean by the time the `catch` below runs — the race-case re-query
+// uses the outer `db` handle (never `tx`), which was never part of the
+// failed transaction and is unaffected by it.
 
 const ONE_ACTIVE_CONSTRAINT = 'assignments_one_active';
 
@@ -80,17 +92,22 @@ export async function createAssignment(
   if (conflict) throw conflictError(conflict);
 
   try {
-    const [assignment] = await db
-      .insert(schema.assignments)
-      .values({
-        programId: input.programId,
-        clientId: input.clientId,
-        coachId: input.coachId,
-        startDate: input.startDate,
-      })
-      .returning({ id: schema.assignments.id });
-    if (!assignment) throw new Error('insert into training.assignments did not return a row');
-    return { id: assignment.id };
+    return await db.transaction(async (tx) => {
+      const [assignment] = await tx
+        .insert(schema.assignments)
+        .values({
+          programId: input.programId,
+          clientId: input.clientId,
+          coachId: input.coachId,
+          startDate: input.startDate,
+        })
+        .returning({ id: schema.assignments.id });
+      if (!assignment) throw new Error('insert into training.assignments did not return a row');
+
+      await materialiseSessions(tx, assignment.id);
+
+      return { id: assignment.id };
+    });
   } catch (error) {
     // The guarantee: a second request that raced the pre-check above and
     // won still cannot leave two active assignments — `assignments_one_active`
