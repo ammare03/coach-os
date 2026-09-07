@@ -149,3 +149,48 @@ Ammar made explicitly. Flagged in `CLAUDE.md` §27 for visibility. The reading i
 well-supported (§8.4 is incoherent under the alternative), but it is worth a second look
 if `assignment/01`'s or `assignment/04`'s real build surfaces a case this document did
 not anticipate.
+
+## `assignment/04` audit result: confirmed, nothing copies a target onto a session
+
+`assignment/04`'s job was to verify, not assume, that no write path anywhere copies a
+target value out of `program_exercises` onto a `workout_sessions` row — because if one
+did, §8.4's bulk-edit criterion would be silently broken for every session already
+materialised before the edit. Audited by tracing every write to `training.workout_sessions`
+in the repo:
+
+- `materialise-sessions.ts`'s own INSERT (decision (c) in that file's header) writes only
+  `clientId`, `coachId`, `assignmentId`, `programDayId`, `scheduledDate`, `status`,
+  `clientLocalId` — every other column, including `name` and `programSnapshot`, is left at
+  its column default (`null`).
+- `updateProgramExercise` (this file's own subject, `./update-program-exercise.ts`) writes
+  only `training.program_exercises` and bumps `programs.version` — it has no reference to
+  `schema.workoutSessions` at all.
+- `recompute-session-volume.ts` (`packages/db/src/aggregates/`) is the only other writer
+  of a `workout_sessions` column outside a test/seed file, and it touches exactly one
+  column, `totalVolumeKg`, on session completion — never a target field.
+- `packages/db/src/seed/training-history.ts` writes historical session rows for
+  `pnpm db:seed`'s fixture data only, outside any request path.
+- No file under `apps/mobile` references `workoutSessions`/`workout_sessions` at all —
+  `phase-09-workout-logger` (the consumer named in this task's Approach step 1) has not
+  been built yet, so there is no client-side cache to hold a stale target either.
+
+**Proven, not just audited**: `apps/api/src/routers/__tests__/assignments.bulk-edit.test.ts`
+assigns one program to three clients, calls the existing `programs.exercises.update`
+procedure once, and asserts (a) `programs.version` bumps, (b) every client's upcoming
+session's live-joined target reflects the new value, and (c) the three clients'
+`workout_sessions` rows are byte-identical — including `updated_at` — before and after the
+edit, proving the edit never wrote to that table. A second test simulates a completed
+session (frozen `program_snapshot`, logged `set_logs`) and asserts a later edit to the same
+`program_exercises` row changes neither — history stays immutable exactly as DB§14.6
+requires.
+
+**The live-reference / `program_snapshot` line, for `phase-09-workout-logger` to build
+against**: a session that has not been started always resolves its target line by joining
+live through `program_day_id` into `program_exercises`, on every read, forever — there is
+no snapshot, no cache, and no point at which that session's displayed target is fixed.
+The instant a session transitions to `started` (writing `startedAt` and, per DB§14.6,
+`program_snapshot`), that one session's target line freezes at whatever `program_snapshot`
+captured and stops resolving live for its own remaining lifetime — a coach's edit made
+after that point lands on the client's _next_ session generated from that program day, not
+on the one already open. No other in-flight or future session is affected by that freeze;
+each resolves live independently until its own Start.
