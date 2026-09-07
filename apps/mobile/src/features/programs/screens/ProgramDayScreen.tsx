@@ -14,7 +14,7 @@ import {
   useTheme,
   useUndoToast,
 } from '@coachos/ui';
-import { ChevronLeft, Dumbbell, Plus, TriangleAlert } from 'lucide-react-native';
+import { ChevronLeft, Dumbbell, Layers, Plus, TriangleAlert, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,9 +28,16 @@ import type { ProgramDayExercise } from '../api/programs.ts';
 import { DraggableExerciseList } from '../components/DraggableExerciseList.tsx';
 import { ExerciseTargetForm } from '../components/ExerciseTargetForm.tsx';
 import { ReorderHintBar } from '../components/ReorderHintBar.tsx';
+import { SupersetActionBar } from '../components/SupersetActionBar.tsx';
 import { newTargetDraft, TARGET_BOUNDS, targetDraftFrom } from '../exercise-targets.ts';
 import { useProgramDayBuilder } from '../hooks/useProgramDayBuilder.ts';
 import { dayFullLabel, dayPillLabel } from '../program-days.ts';
+import {
+  isGroupableSelection,
+  nextSupersetLetter,
+  SUPERSET_BOUNDS,
+  supersetMemberIds,
+} from '../supersets.ts';
 
 // `(coach)/program/[id]/day/[dayId]` — frame 1b (`program-builder/02`).
 //
@@ -65,7 +72,7 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
   const insets = useSafeAreaInsets();
   const showUndoToast = useUndoToast();
 
-  const { day, addExercise, updateExercise, removeExercise, reorderExercises } =
+  const { day, addExercise, updateExercise, removeExercise, reorderExercises, setSupersetGroup } =
     useProgramDayBuilder(programDayId);
 
   const [isPickerOpen, setPickerOpen] = useState(false);
@@ -80,6 +87,11 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
   // the undo window is local, so the row leaves the list immediately and
   // comes back if they take it back (`useUndoToast`'s deferred commit).
   const [pendingRemovalIds, setPendingRemovalIds] = useState<ReadonlySet<string>>(new Set());
+  // `null` is "not grouping" — one piece of state rather than a boolean
+  // beside a set, so "in selection mode" and "what is selected" cannot
+  // disagree (`program-builder/04`, frame 1e).
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string> | null>(null);
+  const [supersetError, setSupersetError] = useState<string | undefined>(undefined);
 
   const screenPadding = { paddingTop: insets.top + spacing(6) };
 
@@ -138,6 +150,71 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
   const blocks = data.exercises.filter((block) => !pendingRemovalIds.has(block.id));
   const isFull = blocks.length >= TARGET_BOUNDS.maxExercisesPerDay;
 
+  const isSelecting = selectedIds !== null;
+  const selection = selectedIds ?? EMPTY_SELECTION;
+  // Day order, not tap order: the server checks that the ids form a
+  // consecutive run, and "consecutive" is a fact about the day.
+  const selectedBlockIds = blocks
+    .filter((block) => selection.has(block.id))
+    .map((block) => block.id);
+  const nextLetter = nextSupersetLetter(blocks);
+  const canGroupSelection = isGroupableSelection(blocks, selection);
+  const canOfferGrouping = blocks.length >= SUPERSET_BOUNDS.minMembers;
+
+  function startSelecting() {
+    setSupersetError(undefined);
+    setSelectedIds(new Set());
+  }
+
+  function stopSelecting() {
+    setSupersetError(undefined);
+    setSelectedIds(null);
+  }
+
+  function toggleSelected(blockId: string) {
+    setSupersetError(undefined);
+    setSelectedIds((current) => {
+      const next = new Set(current ?? []);
+      if (next.has(blockId)) next.delete(blockId);
+      else next.add(blockId);
+      return next;
+    });
+  }
+
+  function commitGroup() {
+    // Unreachable: at the 26-letter ceiling the button is already inert and
+    // the bar says why, which is the whole point of deciding the ceiling
+    // rather than leaving it undefined. This is the type narrow.
+    if (nextLetter === null) return;
+    setSupersetError(undefined);
+    setSupersetGroup.mutate(
+      { programDayId, exerciseIds: selectedBlockIds, group: nextLetter },
+      {
+        // The mode stays open and the selection empties: a coach building a
+        // circuit makes two or three groups in a row, and closing after
+        // each one would charge them a tap for the privilege.
+        onSuccess: () => {
+          setSelectedIds(new Set());
+        },
+        onError: (error) => {
+          setSupersetError(supersetErrorMessage(error));
+        },
+      },
+    );
+  }
+
+  function ungroup(group: string) {
+    setSupersetError(undefined);
+    setSupersetGroup.mutate(
+      { programDayId, exerciseIds: supersetMemberIds(blocks, group), group: null },
+      {
+        onError: (error) => {
+          setSupersetError(supersetErrorMessage(error));
+        },
+      },
+    );
+  }
+
   function handleRemove(block: ProgramDayExercise) {
     setEditing(null);
     setPendingRemovalIds((current) => new Set(current).add(block.id));
@@ -168,11 +245,17 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
       >
         <View style={styles.topbar}>
           <IconButton
-            icon={<ChevronLeft size={17} color={theme.colors.fg.DEFAULT} />}
+            icon={
+              isSelecting ? (
+                <X size={17} color={theme.colors.fg.DEFAULT} />
+              ) : (
+                <ChevronLeft size={17} color={theme.colors.fg.DEFAULT} />
+              )
+            }
             variant="secondary"
             size="sm"
-            onPress={onBack}
-            accessibilityLabel="Back"
+            onPress={isSelecting ? stopSelecting : onBack}
+            accessibilityLabel={isSelecting ? 'Done grouping' : 'Back'}
             testID="day-back"
           />
           <View style={styles.grow}>
@@ -180,17 +263,27 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
               {`Week ${data.weekNumber} · ${dayFullLabel(data.dayNumber)}`}
             </Text>
             <Text size="h2" numberOfLines={2}>
-              {data.name}
+              {isSelecting ? 'Group as superset' : data.name}
             </Text>
+            {isSelecting ? (
+              <Text size="caption" tone="muted">
+                Pick 2 or more, performed back to back
+              </Text>
+            ) : null}
           </View>
-          <Badge
-            tone="neutral"
-            size="sm"
-            label={`${blocks.length} ${blocks.length === 1 ? 'item' : 'items'}`}
-          />
+          {isSelecting ? null : (
+            <Badge
+              tone="neutral"
+              size="sm"
+              label={`${blocks.length} ${blocks.length === 1 ? 'item' : 'items'}`}
+            />
+          )}
         </View>
 
-        <View style={styles.slots}>
+        {/* The day strip is navigation, and selection mode is not a place
+            to navigate from — hidden rather than unmounted so leaving the
+            mode does not re-measure the whole screen. */}
+        <View style={[styles.slots, isSelecting ? styles.hidden : null]}>
           {data.siblingDays.map((slot) => {
             const isCurrent = slot.id === data.id;
             return (
@@ -254,6 +347,10 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
           <>
             <DraggableExerciseList
               blocks={blocks}
+              {...(isSelecting
+                ? { selection: { selectedIds: selection, onToggle: toggleSelected } }
+                : {})}
+              onUngroup={ungroup}
               onOpenBlock={(block) => {
                 setSaveError(undefined);
                 setEditing({ kind: 'edit', block });
@@ -279,7 +376,13 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
               </Text>
             )}
 
-            {isFull ? (
+            {supersetError === undefined ? null : (
+              <Text size="caption" tone="warm" testID="superset-error">
+                {supersetError}
+              </Text>
+            )}
+
+            {isSelecting ? null : isFull ? (
               // The affordance is replaced by the reason it is gone, rather
               // than left inert — `PROGRAM_EXERCISE_LIMIT_REACHED` is then
               // only ever the server's floor under a stale client.
@@ -302,11 +405,41 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
                 </Text>
               </Pressable>
             )}
+
+            {/* Selection mode is reached by a button, never only by a
+                long-press or another gesture (`accessibility` §7). Offered
+                once the day holds enough blocks for a superset to exist. */}
+            {isSelecting || !canOfferGrouping ? null : (
+              <Pressable
+                onPress={startSelecting}
+                accessibilityRole="button"
+                accessibilityLabel="Group as superset"
+                accessibilityHint="Pick 2 or more exercises that run back to back"
+                style={[styles.addExercise, themed.ghostBorder]}
+                testID="start-superset"
+              >
+                <Layers size={16} color={theme.colors.brand.DEFAULT} />
+                <Text size="body-sm" tone="warm">
+                  Group as superset
+                </Text>
+              </Pressable>
+            )}
           </>
         )}
       </ScrollView>
 
       {isReordering ? <ReorderHintBar testID="reorder-hint" /> : null}
+
+      {isSelecting ? (
+        <SupersetActionBar
+          selectedCount={selectedBlockIds.length}
+          nextLetter={nextLetter}
+          isGroupable={canGroupSelection}
+          isSaving={setSupersetGroup.isPending}
+          onGroup={commitGroup}
+          testID="superset-bar"
+        />
+      ) : null}
 
       {isPickerOpen ? (
         <ExercisePickerSheet
@@ -419,6 +552,9 @@ function addExerciseErrorMessage(error: unknown): string {
  */
 function reorderErrorMessage(error: unknown): string {
   const code = getErrorCode(error);
+  if (code === 'PROGRAM_SUPERSET_NOT_ADJACENT') {
+    return 'A superset runs back to back, so its exercises stay next to each other. Move the whole group instead.';
+  }
   if (code === 'PROGRAM_DAY_ORDER_STALE') {
     return 'This day changed on another device, so the move was not saved. We have refreshed it — try again.';
   }
@@ -427,6 +563,31 @@ function reorderErrorMessage(error: unknown): string {
   }
   return "We couldn't save the new order. Check your connection and try again.";
 }
+
+/**
+ * The grouping refusals, said next to the list the coach is looking at
+ * rather than in a toast (`ERRORS.md` ER§0.2). Every branch is a state the
+ * bar already prevents — the button is inert below two selections, inert
+ * when they are not adjacent, and inert with no letters left — so this is
+ * what is said when a stale client reaches one anyway.
+ */
+function supersetErrorMessage(error: unknown): string {
+  const code = getErrorCode(error);
+  if (code === 'PROGRAM_SUPERSET_LIMIT_REACHED') {
+    const details = getErrorDetails(error, code);
+    return `A day can hold ${details?.maxGroups ?? SUPERSET_BOUNDS.maxGroupsPerDay} supersets. Ungroup one to make another.`;
+  }
+  if (code === 'PROGRAM_SUPERSET_NOT_ADJACENT') {
+    return 'Pick 2 or more exercises that sit next to each other.';
+  }
+  if (code === 'PROGRAM_SUPERSET_STALE') {
+    return 'This day changed on another device, so the grouping was not saved. We have refreshed it — try again.';
+  }
+  return "We couldn't save this grouping. Check your connection and try again.";
+}
+
+/** One frozen empty set, so "not selecting" never allocates a new one per render. */
+const EMPTY_SELECTION: ReadonlySet<string> = new Set();
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
@@ -440,6 +601,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing(12),
   },
   slots: { flexDirection: 'row', gap: spacing(5), marginBottom: spacing(6) },
+  hidden: { display: 'none' },
   slot: {
     flex: 1,
     minHeight: 48,

@@ -151,6 +151,30 @@ export const APP_ERROR_CODES = [
   // were offline, and whose recovery is "showing their version" rather than
   // "refetch and make the move again".
   'PROGRAM_DAY_ORDER_STALE',
+  // program-builder/04 — the three ways a superset write can be refused.
+  //
+  // `PROGRAM_SUPERSET_LIMIT_REACHED` is the alphabet running out:
+  // `superset_group` is one uppercase letter (DB§5.2's regex), so a day
+  // holds at most 26 groups. A generous ceiling that will not bind in
+  // practice — but a ceiling, and hitting it must say so rather than
+  // silently doing nothing.
+  //
+  // `PROGRAM_SUPERSET_NOT_ADJACENT` is the product rule underneath the
+  // whole feature: a superset is exercises performed back to back
+  // (`CLAUDE.md` §26), so its members must be two or more, consecutive in
+  // the day's order, and must stay that way. Thrown by BOTH
+  // `setSupersetGroup` (a selection that is short or has a gap in it) and
+  // `reorder` (a move that would pull a member out of its group) — one
+  // rule, one code, because it is the same sentence either way.
+  //
+  // `PROGRAM_SUPERSET_STALE` is the letter having been taken, or a named
+  // block having been grouped or deleted, since the client last read the
+  // day. Same shape and same recovery as `PROGRAM_DAY_ORDER_STALE` —
+  // refetch and make the grouping again — and kept separate from it only
+  // because the two sentences differ.
+  'PROGRAM_SUPERSET_LIMIT_REACHED',
+  'PROGRAM_SUPERSET_NOT_ADJACENT',
+  'PROGRAM_SUPERSET_STALE',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -220,6 +244,9 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   PROGRAM_WEEK_LIMIT_REACHED: 'BAD_REQUEST',
   PROGRAM_EXERCISE_LIMIT_REACHED: 'BAD_REQUEST',
   PROGRAM_DAY_ORDER_STALE: 'CONFLICT',
+  PROGRAM_SUPERSET_LIMIT_REACHED: 'BAD_REQUEST',
+  PROGRAM_SUPERSET_NOT_ADJACENT: 'BAD_REQUEST',
+  PROGRAM_SUPERSET_STALE: 'CONFLICT',
 };
 
 /**
@@ -315,6 +342,15 @@ export interface AppErrorPayloads {
   // whether its own list is short or long without a second round trip.
   // Numbers only, never a name or an id (DB§18).
   PROGRAM_DAY_ORDER_STALE: { exerciseCount: number };
+  // The alphabet's own length, so the copy reads the ceiling from the
+  // server rather than restating 26 on the device.
+  PROGRAM_SUPERSET_LIMIT_REACHED: { maxGroups: number };
+  // How many blocks the call named. Numbers only — never the superset
+  // letter and never a block id (DB§18).
+  PROGRAM_SUPERSET_NOT_ADJACENT: { exerciseCount: number };
+  // How many groups the day actually holds now, which is what a client
+  // with a stale picture is wrong about.
+  PROGRAM_SUPERSET_STALE: { groupCount: number };
 }
 
 /**

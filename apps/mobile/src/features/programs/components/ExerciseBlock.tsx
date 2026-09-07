@@ -38,10 +38,44 @@ const CHIP_MAX_SCALE = 1.3;
 export interface ExerciseBlockProps {
   block: ProgramDayExercise;
   onPress: () => void;
+  /**
+   * L3 tint (`DESIGN.md` §2) — a superset member, or a row picked in
+   * selection mode. One of the four channels frame 1e uses to say
+   * "grouped", and the only one that is a colour at all.
+   */
+  tinted?: boolean | undefined;
+  /**
+   * The member's place in its group: `A1` on the badge, "superset A, 1 of
+   * 2" to a screen reader. Absent on a standalone block, and absent while
+   * the day is being read rather than grouped, when the bare letter still
+   * shows.
+   */
+  supersetPosition?: { position: number; memberCount: number } | undefined;
+  /**
+   * Present only in selection mode, where the row IS the checkbox: the
+   * role becomes `checkbox` and the state is announced. A 22px glyph is
+   * drawn beside the row by the list; this is what makes it operable, and
+   * the whole card is its 44px target.
+   */
+  selected?: boolean | undefined;
+  /**
+   * Selection mode again — a block already in a group cannot join another
+   * one, so it is announced as unavailable rather than silently doing
+   * nothing when pressed.
+   */
+  disabled?: boolean | undefined;
   testID?: string;
 }
 
-export function ExerciseBlock({ block, onPress, testID }: ExerciseBlockProps) {
+export function ExerciseBlock({
+  block,
+  onPress,
+  tinted = false,
+  supersetPosition,
+  selected,
+  disabled = false,
+  testID,
+}: ExerciseBlockProps) {
   const theme = useTheme();
   const themed = useThemedStyles();
   // Display only — the block's `targetWeightKg` is and stays kilograms.
@@ -51,21 +85,26 @@ export function ExerciseBlock({ block, onPress, testID }: ExerciseBlockProps) {
   const reps = repsLabel(block);
   const intensity = formatIntensityShort(block, unit);
   const setRows = chunk(block.targetSets, CHIPS_PER_ROW);
+  const isSelectable = selected !== undefined;
 
   return (
-    <Card elevation="raised" density="coach" {...(testID ? { testID } : {})}>
+    <Card elevation={tinted ? 'tinted' : 'raised'} density="coach" {...(testID ? { testID } : {})}>
       <Pressable
         onPress={onPress}
-        accessibilityRole="button"
+        disabled={disabled}
+        // In selection mode the row is not a button that opens something —
+        // it is the checkbox itself, and the 22px glyph beside it is
+        // decorative. A screen-reader user gets the state, not the glyph.
+        accessibilityRole={isSelectable ? 'checkbox' : 'button'}
+        accessibilityState={isSelectable ? { checked: selected === true, disabled } : { disabled }}
         // The superset letter is folded in here rather than left to the
         // badge, which is `accessibilityElementsHidden` by contract — a
         // standalone focusable "A" tells a screen-reader user nothing
-        // (`Badge`'s own docblock).
-        accessibilityLabel={
-          block.supersetGroup === null
-            ? block.exerciseName
-            : `${block.exerciseName}, superset ${block.supersetGroup}`
-        }
+        // (`Badge`'s own docblock). With a position, it says which of the
+        // pair this is, because "superset A" alone does not tell a
+        // non-sighted coach whether they are on the first movement or the
+        // second (`accessibility` §2).
+        accessibilityLabel={supersetLabel(block, supersetPosition)}
         // The scheme line IS the summary, so a screen reader gets exactly
         // what a sighted coach reads under the name — and the per-set chips
         // below repeat it visually, which is why they are hidden from the
@@ -79,12 +118,22 @@ export function ExerciseBlock({ block, onPress, testID }: ExerciseBlockProps) {
             <Text size="body-sm" numberOfLines={2}>
               {block.exerciseName}
             </Text>
-            {/* `program-builder/04` owns superset grouping — the rail, the
-                tint and the A1/A2 positions. Until then the letter is shown
-                rather than hidden, so a group authored elsewhere is never
-                invisible here. */}
+            {/* Two of frame 1e's four channels: the position badge, and
+                (via `tinted` above) the L3 fill. The rail and the letter
+                tile are the list's, because both span rows. With no
+                position — a day being read rather than grouped — the bare
+                letter still shows, so a group is never invisible. */}
             {block.supersetGroup === null ? null : (
-              <Badge tone="brand" size="sm" label={block.supersetGroup} testID="superset-group" />
+              <Badge
+                tone="brand"
+                size="sm"
+                label={
+                  supersetPosition === undefined
+                    ? block.supersetGroup
+                    : `${block.supersetGroup}${supersetPosition.position}`
+                }
+                testID="superset-group"
+              />
             )}
           </View>
           <Text size="micro" tone="muted" numberOfLines={1}>
@@ -136,6 +185,20 @@ export function ExerciseBlock({ block, onPress, testID }: ExerciseBlockProps) {
       )}
     </Card>
   );
+}
+
+/**
+ * What a screen reader hears. "Superset A, 1 of 2" rather than "superset A"
+ * — the position is the half a sighted coach reads off the `A1` badge, and
+ * without it the announcement cannot tell the two movements apart.
+ */
+function supersetLabel(
+  block: ProgramDayExercise,
+  position: { position: number; memberCount: number } | undefined,
+): string {
+  if (block.supersetGroup === null) return block.exerciseName;
+  if (position === undefined) return `${block.exerciseName}, superset ${block.supersetGroup}`;
+  return `${block.exerciseName}, superset ${block.supersetGroup}, ${position.position} of ${position.memberCount}`;
 }
 
 /** The chip's own top line — the rep range, or an em dash when there is none to show. */

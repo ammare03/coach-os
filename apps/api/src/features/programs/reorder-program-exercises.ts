@@ -3,6 +3,8 @@ import { and, asc, eq, inArray, lt, sql } from 'drizzle-orm';
 
 import { appError } from '../../lib/app-error.ts';
 
+import { contiguousGroups } from './set-superset-group.ts';
+
 // `programs.exercises.reorder` — the drop at the end of a drag
 // (`program-builder/03`, frame 1d). Ownership of the DAY and of every id in
 // `orderedExerciseIds` is established by the two `ownsResource` guards in
@@ -63,9 +65,16 @@ export async function reorderProgramExercises(
     // `FOR UPDATE` so two devices reordering the same day serialise here
     // rather than interleaving their parks and flips.
     const current = await tx
-      .select({ id: schema.programExercises.id })
+      .select({
+        id: schema.programExercises.id,
+        supersetGroup: schema.programExercises.supersetGroup,
+      })
       .from(schema.programExercises)
       .where(eq(schema.programExercises.programDayId, input.programDayId))
+      // Ordered because `program-builder/04` compares the day's grouping
+      // before and after this move, and "before" is a question about the
+      // order the rows are actually in.
+      .orderBy(asc(schema.programExercises.orderIndex))
       .for('update');
 
     const dayIds = new Set(current.map((row) => row.id));
@@ -86,6 +95,29 @@ export async function reorderProgramExercises(
       throw appError('PROGRAM_DAY_ORDER_STALE', 'This day changed somewhere else.', {
         exerciseCount: dayIds.size,
       });
+    }
+
+    // `program-builder/04`'s adjacency decision, enforced rather than
+    // warned. A superset is exercises performed back to back
+    // (`CLAUDE.md` §26), so a move that pulls one member out from between
+    // its partners leaves `superset_group` saying something the order
+    // contradicts. The device already refuses to DROP a card there
+    // (`drag-reorder.ts`'s `constrainedDropIndexFor`); this is the floor
+    // under a stale or patched client.
+    //
+    // Compared before-and-after rather than demanded outright: a day that
+    // somehow already holds a split group must stay reorderable, or one
+    // bad row locks the day forever. Only a group that holds together NOW
+    // and would not after this move is refused.
+    const groupOf = new Map(current.map((row) => [row.id, row.supersetGroup]));
+    const held = contiguousGroups(current.map((row) => row.supersetGroup));
+    const wouldHold = contiguousGroups(requested.map((id) => groupOf.get(id) ?? null));
+    if ([...held].some((group) => !wouldHold.has(group))) {
+      throw appError(
+        'PROGRAM_SUPERSET_NOT_ADJACENT',
+        'A superset is 2 or more exercises, one straight after the other.',
+        { exerciseCount: dayIds.size },
+      );
     }
 
     const parkedIndex = sql.join(

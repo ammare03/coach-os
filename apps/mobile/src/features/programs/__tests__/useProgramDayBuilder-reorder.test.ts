@@ -18,7 +18,7 @@ const DAY_ID = 'day-1';
 // carries the rest and none of it is read here.
 interface CachedDay {
   programId: string;
-  exercises: { id: string; orderIndex: number }[];
+  exercises: { id: string; orderIndex: number; supersetGroup: string | null }[];
 }
 
 type ReorderVariables = { programDayId: string; orderedExerciseIds: string[] };
@@ -34,7 +34,23 @@ interface ReorderOptions {
   onSettled: () => Promise<void>;
 }
 
+// `program-builder/04`'s grouping rides the same seam: the optimistic
+// write, the reconcile against what the server settled on, and the rollback.
+type GroupVariables = { programDayId: string; exerciseIds: string[]; group: string | null };
+type GroupResult = { exercises: { id: string; supersetGroup: string | null }[] };
+interface GroupOptions {
+  onMutate: (variables: GroupVariables) => Promise<{ previous: CachedDay | undefined }>;
+  onSuccess: (result: GroupResult, variables: GroupVariables) => void;
+  onError: (
+    error: unknown,
+    variables: GroupVariables,
+    context: { previous: CachedDay | undefined } | undefined,
+  ) => void;
+  onSettled: () => Promise<void>;
+}
+
 let mockReorderOptions: ReorderOptions;
+let mockGroupOptions: GroupOptions;
 const mockCache = new Map<string, CachedDay>();
 const mockCancel = jest.fn().mockResolvedValue(undefined);
 const mockInvalidateDay = jest.fn().mockResolvedValue(undefined);
@@ -52,6 +68,12 @@ jest.mock('../../../lib/trpc.ts', () => ({
         reorder: {
           useMutation: (options: unknown) => {
             mockReorderOptions = options as ReorderOptions;
+            return { mutate: jest.fn(), isPending: false };
+          },
+        },
+        setSupersetGroup: {
+          useMutation: (options: unknown) => {
+            mockGroupOptions = options as GroupOptions;
             return { mutate: jest.fn(), isPending: false };
           },
         },
@@ -79,9 +101,9 @@ function seedCache(): CachedDay {
   const day: CachedDay = {
     programId: 'program-1',
     exercises: [
-      { id: 'a', orderIndex: 1 },
-      { id: 'b', orderIndex: 2 },
-      { id: 'c', orderIndex: 3 },
+      { id: 'a', orderIndex: 1, supersetGroup: null },
+      { id: 'b', orderIndex: 2, supersetGroup: null },
+      { id: 'c', orderIndex: 3, supersetGroup: null },
     ],
   };
   mockCache.set(DAY_ID, day);
@@ -176,5 +198,73 @@ describe('useProgramDayBuilder — reorder', () => {
 
     expect(mockInvalidateDay).toHaveBeenCalledWith({ programDayId: DAY_ID });
     expect(mockInvalidateProgram).not.toHaveBeenCalled();
+  });
+});
+
+function cachedGroups(): (string | null)[] {
+  return (mockCache.get(DAY_ID)?.exercises ?? []).map((exercise) => exercise.supersetGroup);
+}
+
+describe('useProgramDayBuilder — supersets', () => {
+  it('tints the picked rows before the server answers', async () => {
+    seedCache();
+
+    await mockGroupOptions.onMutate({
+      programDayId: DAY_ID,
+      exerciseIds: ['a', 'b'],
+      group: 'A',
+    });
+
+    expect(cachedGroups()).toEqual(['A', 'A', null]);
+    expect(mockCancel).toHaveBeenCalledWith({ programDayId: DAY_ID });
+  });
+
+  it('clears the letter on an ungroup', async () => {
+    seedCache();
+
+    await mockGroupOptions.onMutate({
+      programDayId: DAY_ID,
+      exerciseIds: ['a', 'b'],
+      group: 'A',
+    });
+    await mockGroupOptions.onMutate({
+      programDayId: DAY_ID,
+      exerciseIds: ['a', 'b'],
+      group: null,
+    });
+
+    expect(cachedGroups()).toEqual([null, null, null]);
+  });
+
+  it('takes the server’s grouping over its own guess', async () => {
+    seedCache();
+    const variables = { programDayId: DAY_ID, exerciseIds: ['a', 'b'], group: 'A' };
+    await mockGroupOptions.onMutate(variables);
+
+    // Another device had already taken A, so the server settled on B.
+    mockGroupOptions.onSuccess(
+      {
+        exercises: [
+          { id: 'a', supersetGroup: 'B' },
+          { id: 'b', supersetGroup: 'B' },
+          { id: 'c', supersetGroup: null },
+        ],
+      },
+      variables,
+    );
+
+    expect(cachedGroups()).toEqual(['B', 'B', null]);
+  });
+
+  it('puts the grouping back exactly as it was when the write is refused', async () => {
+    const before = seedCache();
+    const variables = { programDayId: DAY_ID, exerciseIds: ['a', 'b'], group: 'A' };
+    const context = await mockGroupOptions.onMutate(variables);
+    expect(cachedGroups()).toEqual(['A', 'A', null]);
+
+    mockGroupOptions.onError(new Error('PROGRAM_SUPERSET_STALE'), variables, context);
+
+    expect(mockCache.get(DAY_ID)).toBe(before);
+    expect(cachedGroups()).toEqual([null, null, null]);
   });
 });

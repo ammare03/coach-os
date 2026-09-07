@@ -10,6 +10,7 @@ import { deleteProgramWeek } from '../features/programs/delete-program-week.ts';
 import { getProgramDay } from '../features/programs/get-program-day.ts';
 import { getProgram } from '../features/programs/get-program.ts';
 import { reorderProgramExercises } from '../features/programs/reorder-program-exercises.ts';
+import { setSupersetGroup } from '../features/programs/set-superset-group.ts';
 import { updateProgramDay } from '../features/programs/update-program-day.ts';
 import { updateProgramExercise } from '../features/programs/update-program-exercise.ts';
 import { updateProgram } from '../features/programs/update-program.ts';
@@ -130,6 +131,18 @@ const programExercisesRouter = router({
       ),
     )
     .mutation(({ ctx, input }) => reorderProgramExercises(ctx.db, input)),
+
+  // `program-builder/04`'s grouping and ungrouping. The same two guards as
+  // `reorder`, for the same two reasons: owning the day says nothing about
+  // the ids in the array, and an array selector on `ownsResource` is
+  // all-or-nothing, so one foreign id refuses the whole call. A group
+  // spanning two days of this coach's OWN program is what neither guard can
+  // see, and is refused in the resolver against the day's real contents.
+  setSupersetGroup: coachProcedure
+    .input(programsSchemas.setSupersetGroupInput)
+    .use(ownsResource('programDay', (i: { programDayId: string }) => i.programDayId))
+    .use(ownsResource('programExercise', (i: { exerciseIds: string[] }) => i.exerciseIds))
+    .mutation(({ ctx, input }) => setSupersetGroup(ctx.db, input)),
 });
 
 export const programsRouter = router({

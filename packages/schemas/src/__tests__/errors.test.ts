@@ -73,6 +73,9 @@ function describeCode(code: AppErrorCode): string {
     case 'PROGRAM_WEEK_LIMIT_REACHED':
     case 'PROGRAM_EXERCISE_LIMIT_REACHED':
     case 'PROGRAM_DAY_ORDER_STALE':
+    case 'PROGRAM_SUPERSET_LIMIT_REACHED':
+    case 'PROGRAM_SUPERSET_NOT_ADJACENT':
+    case 'PROGRAM_SUPERSET_STALE':
       return code;
     default:
       return assertNever(code);

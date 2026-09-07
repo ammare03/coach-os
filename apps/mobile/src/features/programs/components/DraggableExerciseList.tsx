@@ -7,15 +7,18 @@
    flags every worklet in this file. Nothing else here is mutated; if this
    file ever grows non-Reanimated state, narrow this to per-line disables. */
 import {
+  Chip,
   createThemedStyles,
   duration,
   easing,
   Pressable,
   radius,
+  spacing,
   tapTarget,
+  Text,
   useTheme,
 } from '@coachos/ui';
-import { Equal } from 'lucide-react-native';
+import { Check, Equal } from 'lucide-react-native';
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   AccessibilityInfo,
@@ -36,7 +39,16 @@ import Animated, {
 
 import { useReducedMotion } from '../../../lib/useReducedMotion.ts';
 import type { ProgramDayExercise } from '../api/programs.ts';
-import { dropIndexFor, moveItem, ROW_GAP, rowShift, rowTop, slotTop } from '../drag-reorder.ts';
+import {
+  constrainedDropIndexFor,
+  moveItem,
+  nextLegalIndex,
+  ROW_GAP,
+  rowShift,
+  rowTop,
+  slotTop,
+} from '../drag-reorder.ts';
+import { supersetSlots, type SupersetSlot } from '../supersets.ts';
 
 import { ExerciseBlock } from './ExerciseBlock.tsx';
 
@@ -88,6 +100,19 @@ const DRAG_HOLD_MS = 220;
  * than `elevation.raised.shadow`: the lift is the one moment in this screen
  * where a card is genuinely off the page rather than on it (`DESIGN.md` §2).
  */
+/**
+ * The gutter frame 1e reserves down the left of a group: a 26px column
+ * carrying the letter tile and the rail, then a 9px gap before the card.
+ * Selection mode gives every row the same gutter so the checkbox lands in
+ * one column rather than on top of the exercise name.
+ */
+const GUTTER_WIDTH = 26;
+const GUTTER_GAP = 9;
+const RAIL_WIDTH = 3;
+const LETTER_TILE = 26;
+/** `.ck` — 22px. The glyph is decorative; the whole card is its 44px target. */
+const CHECK_SIZE = 22;
+
 const LIFT_SHADOW = {
   shadowOpacity: 0.85,
   shadowRadius: 22,
@@ -109,11 +134,31 @@ const MOVE_DOWN_ONLY = [{ name: 'increment', label: 'Move down' }] as const;
 const MOVE_UP_ONLY = [{ name: 'decrement', label: 'Move up' }] as const;
 const MOVE_NEITHER = [] as const;
 
-function actionsFor(index: number, count: number) {
+/**
+ * Which of the two steps this block may actually take. A move that would
+ * split a superset is not offered at all — the same rule the drag enforces
+ * by constraining where the card may land, applied to the button path so
+ * the two cannot disagree (`program-builder/04`).
+ */
+function actionsFor(index: number, count: number, groups: readonly (string | null)[]) {
   if (count < 2) return MOVE_NEITHER;
-  if (index === 0) return MOVE_DOWN_ONLY;
-  if (index === count - 1) return MOVE_UP_ONLY;
-  return MOVE_BOTH;
+  const canMoveUp = nextLegalIndex(groups, index, -1) !== index;
+  const canMoveDown = nextLegalIndex(groups, index, 1) !== index;
+  if (canMoveUp && canMoveDown) return MOVE_BOTH;
+  if (canMoveDown) return MOVE_DOWN_ONLY;
+  if (canMoveUp) return MOVE_UP_ONLY;
+  return MOVE_NEITHER;
+}
+
+/**
+ * Selection mode (`program-builder/04`, frame 1e). Present, the list stops
+ * dragging and every ungrouped row becomes a checkbox; absent, it is the
+ * ordinary day list. One prop rather than an `isSelecting` boolean beside a
+ * set of ids, so "selecting" and "which are selected" cannot disagree.
+ */
+export interface SupersetSelection {
+  selectedIds: ReadonlySet<string>;
+  onToggle: (blockId: string) => void;
 }
 
 export interface DraggableExerciseListProps {
@@ -124,6 +169,9 @@ export interface DraggableExerciseListProps {
   onReorder: (orderedExerciseIds: string[]) => void;
   /** The screen disables its scroll view and shows the reorder hint on `true`. */
   onDragActiveChange?: ((isDragging: boolean) => void) | undefined;
+  selection?: SupersetSelection | undefined;
+  /** The dashed "Ungroup A" chip under each group, offered in selection mode. */
+  onUngroup?: ((group: string) => void) | undefined;
   testID?: string;
 }
 
@@ -132,6 +180,8 @@ export function DraggableExerciseList({
   onOpenBlock,
   onReorder,
   onDragActiveChange,
+  selection,
+  onUngroup,
   testID,
 }: DraggableExerciseListProps) {
   const themed = useThemedStyles();
@@ -145,6 +195,17 @@ export function DraggableExerciseList({
   const dropIndex = useSharedValue(-1);
   const translationY = useSharedValue(0);
   const heights = useSharedValue<number[]>([]);
+
+  // The day's grouping, in order, on the UI thread — what
+  // `constrainedDropIndexFor` reads to refuse a slot that would split a
+  // superset. A shared value for the same reason the heights are one: the
+  // constraint is evaluated once per frame inside the pan handler.
+  const slots = useMemo(() => supersetSlots(blocks), [blocks]);
+  const groups = useMemo(() => blocks.map((block) => block.supersetGroup), [blocks]);
+  const groupLetters = useSharedValue<(string | null)[]>([]);
+  useEffect(() => {
+    groupLetters.value = groups;
+  }, [groups, groupLetters]);
 
   // Row heights vary with the number of set chips, the notes line, and the
   // OS text size, so they are measured rather than assumed.
@@ -236,11 +297,16 @@ export function DraggableExerciseList({
           block={block}
           index={index}
           count={blocks.length}
+          slot={slots[index] ?? null}
+          groups={groups}
+          selection={selection}
+          onUngroup={onUngroup}
           reducedMotion={reducedMotion}
           activeIndex={activeIndex}
           dropIndex={dropIndex}
           translationY={translationY}
           heights={heights}
+          groupLetters={groupLetters}
           onMeasure={handleMeasure}
           onOpen={onOpenBlock}
           onDragStart={handleDragStart}
@@ -256,11 +322,17 @@ interface DraggableRowProps {
   block: ProgramDayExercise;
   index: number;
   count: number;
+  slot: SupersetSlot | null;
+  /** The day's letters in order — what the button path checks a step against. */
+  groups: readonly (string | null)[];
+  selection: SupersetSelection | undefined;
+  onUngroup: ((group: string) => void) | undefined;
   reducedMotion: boolean;
   activeIndex: SharedValue<number>;
   dropIndex: SharedValue<number>;
   translationY: SharedValue<number>;
   heights: SharedValue<number[]>;
+  groupLetters: SharedValue<(string | null)[]>;
   onMeasure: (id: string, height: number) => void;
   onOpen: (block: ProgramDayExercise) => void;
   onDragStart: () => void;
@@ -272,11 +344,16 @@ const DraggableRow = memo(function DraggableRow({
   block,
   index,
   count,
+  slot,
+  groups,
+  selection,
+  onUngroup,
   reducedMotion,
   activeIndex,
   dropIndex,
   translationY,
   heights,
+  groupLetters,
   onMeasure,
   onOpen,
   onDragStart,
@@ -307,7 +384,16 @@ const DraggableRow = memo(function DraggableRow({
         .onUpdate((event) => {
           'worklet';
           translationY.value = event.translationY;
-          dropIndex.value = dropIndexFor(heights.value, ROW_GAP, index, event.translationY);
+          // Constrained, not raw: a slot that would pull a superset member
+          // out from between its partners is never offered, so the dashed
+          // placeholder can only ever appear where the card may land.
+          dropIndex.value = constrainedDropIndexFor(
+            heights.value,
+            ROW_GAP,
+            groupLetters.value,
+            index,
+            event.translationY,
+          );
         })
         .onEnd(() => {
           'worklet';
@@ -336,7 +422,17 @@ const DraggableRow = memo(function DraggableRow({
           dropIndex.value = -1;
           translationY.value = 0;
         }),
-    [index, activeIndex, dropIndex, translationY, heights, onDragStart, onDrop, settle],
+    [
+      index,
+      activeIndex,
+      dropIndex,
+      translationY,
+      heights,
+      groupLetters,
+      onDragStart,
+      onDrop,
+      settle,
+    ],
   );
 
   const rowStyle = useAnimatedStyle(() => {
@@ -394,10 +490,15 @@ const DraggableRow = memo(function DraggableRow({
   const handleAction = useCallback(
     (event: AccessibilityActionEvent) => {
       const { actionName } = event.nativeEvent;
-      if (actionName === 'decrement' && index > 0) onMove(index, index - 1);
-      if (actionName === 'increment' && index < count - 1) onMove(index, index + 1);
+      // `nextLegalIndex`, not `index ± 1`: a step into the middle of a
+      // superset jumps the whole group instead of being refused, so the
+      // button path can reach every position the drag can.
+      const direction = actionName === 'decrement' ? -1 : 1;
+      if (actionName !== 'decrement' && actionName !== 'increment') return;
+      const target = nextLegalIndex(groups, index, direction);
+      if (target !== index) onMove(index, target);
     },
-    [index, count, onMove],
+    [index, groups, onMove],
   );
 
   const handleLayout = useCallback(
@@ -411,51 +512,162 @@ const DraggableRow = memo(function DraggableRow({
     onOpen(block);
   }, [onOpen, block]);
 
+  // Selection mode. A block already in a group cannot join a second one —
+  // that is what "Ungroup A" is for — so it is offered as unavailable
+  // rather than as a control that does nothing.
+  const isSelecting = selection !== undefined;
+  const isMember = slot !== null;
+  const isSelectable = isSelecting && !isMember;
+  const isSelected = isSelectable && selection.selectedIds.has(block.id);
+
+  const toggle = useCallback(() => {
+    selection?.onToggle(block.id);
+  }, [selection, block.id]);
+
+  const ungroup = useCallback(() => {
+    if (slot) onUngroup?.(slot.group);
+  }, [onUngroup, slot]);
+
+  // The gutter carries the rail and the letter in a group, the checkbox in
+  // selection mode, and nothing at all in the ordinary day list — which is
+  // why an ungrouped row only moves when the mode changes.
+  const hasGutter = isMember || isSelecting;
+  const showUngroup = isSelecting && slot?.isLast === true && onUngroup !== undefined;
+
   return (
     <Animated.View onLayout={handleLayout} style={[styles.row, rowStyle]}>
-      <ExerciseBlock block={block} onPress={open} testID={`exercise-block-${block.id}`} />
+      <View style={styles.rowInner}>
+        {hasGutter ? (
+          <View
+            style={styles.gutter}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            {slot === null ? null : (
+              // Channel one of four: a rail down the left of the group. It
+              // bleeds `ROW_GAP` past the row on every member but the last,
+              // so the eight points between two cards do not break it.
+              <View
+                style={[
+                  styles.rail,
+                  themed.rail,
+                  { top: slot.isFirst ? LETTER_TILE + spacing(5) : 0 },
+                  slot.isLast ? null : styles.railBleed,
+                ]}
+                testID={`superset-rail-${block.id}`}
+              />
+            )}
+            {slot?.isFirst === true ? (
+              // Channel two: the letter itself, once per group, on the rail.
+              <View
+                style={[styles.letterTile, themed.letterTile]}
+                testID={`superset-letter-${slot.group}`}
+              >
+                <Text size="label" tone="onBrand" maxFontSizeMultiplier={1.2}>
+                  {slot.group}
+                </Text>
+              </View>
+            ) : null}
+            {isSelectable ? (
+              <View
+                style={[styles.check, isSelected ? themed.checkOn : themed.checkOff]}
+                testID={`superset-check-${block.id}`}
+              >
+                {isSelected ? (
+                  <Check size={13} strokeWidth={3} color={theme.colors.fg.onBrand} />
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
-      <Animated.View
-        pointerEvents="none"
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-        style={[styles.lift, themed.lift, LIFT_SHADOW, liftStyle]}
-      />
+        <View style={styles.grow}>
+          <ExerciseBlock
+            block={block}
+            onPress={isSelectable ? toggle : open}
+            tinted={isMember || isSelected}
+            {...(slot
+              ? { supersetPosition: { position: slot.position, memberCount: slot.memberCount } }
+              : {})}
+            {...(isSelectable ? { selected: isSelected } : {})}
+            disabled={isSelecting && isMember}
+            testID={`exercise-block-${block.id}`}
+          />
 
-      <GestureDetector gesture={pan}>
-        <Animated.View style={[styles.handle, handleStyle]}>
-          {/* `adjustable` with the position as its value is the whole
+          <Animated.View
+            pointerEvents="none"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            style={[styles.lift, themed.lift, LIFT_SHADOW, liftStyle]}
+          />
+
+          {/* The brand ring frame 1e puts on a picked row — the same overlay
+              the drag uses, without the shadow, because a selected card is
+              on the page and a lifted one is off it. */}
+          {isSelected ? (
+            <View
+              pointerEvents="none"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={[styles.lift, themed.lift]}
+            />
+          ) : null}
+
+          {isSelecting ? null : (
+            <GestureDetector gesture={pan}>
+              <Animated.View style={[styles.handle, handleStyle]}>
+                {/* `adjustable` with the position as its value is the whole
               non-gesture path (`accessibility` §7 — never a gesture with no
               button equivalent). `NumberStepper` uses the same shape, and a
               VoiceOver/TalkBack user swipes up and down here to move the
               block rather than hunting for a drag they cannot perform. */}
-          <Pressable
-            accessibilityRole="adjustable"
-            accessibilityLabel={`Position of ${block.exerciseName}`}
-            accessibilityHint="Press and hold to drag"
-            accessibilityValue={{
-              min: 1,
-              max: count,
-              now: index + 1,
-              text: `${index + 1} of ${count}`,
-            }}
-            accessibilityActions={actionsFor(index, count)}
-            onAccessibilityAction={handleAction}
-            // `containerStyle`, not `style`: the outer touchable is what
-            // takes the touch, so `tapTarget.MIN` has to be ITS box and not
-            // the animated inner view's (`Pressable`'s own contract).
-            containerStyle={styles.handleInner}
-            testID={`reorder-handle-${block.id}`}
-          >
-            <View style={styles.glyph}>
-              <Equal size={HANDLE_GLYPH} strokeWidth={2} color={theme.colors.fg.subtle} />
-              <Animated.View style={[styles.glyphOverlay, brandGlyphStyle]}>
-                <Equal size={HANDLE_GLYPH} strokeWidth={2.4} color={theme.colors.brand.DEFAULT} />
+                <Pressable
+                  accessibilityRole="adjustable"
+                  accessibilityLabel={`Position of ${block.exerciseName}`}
+                  accessibilityHint="Press and hold to drag"
+                  accessibilityValue={{
+                    min: 1,
+                    max: count,
+                    now: index + 1,
+                    text: `${index + 1} of ${count}`,
+                  }}
+                  accessibilityActions={actionsFor(index, count, groups)}
+                  onAccessibilityAction={handleAction}
+                  // `containerStyle`, not `style`: the outer touchable is what
+                  // takes the touch, so `tapTarget.MIN` has to be ITS box and not
+                  // the animated inner view's (`Pressable`'s own contract).
+                  containerStyle={styles.handleInner}
+                  testID={`reorder-handle-${block.id}`}
+                >
+                  <View style={styles.glyph}>
+                    <Equal size={HANDLE_GLYPH} strokeWidth={2} color={theme.colors.fg.subtle} />
+                    <Animated.View style={[styles.glyphOverlay, brandGlyphStyle]}>
+                      <Equal
+                        size={HANDLE_GLYPH}
+                        strokeWidth={2.4}
+                        color={theme.colors.brand.DEFAULT}
+                      />
+                    </Animated.View>
+                  </View>
+                </Pressable>
               </Animated.View>
-            </View>
-          </Pressable>
-        </Animated.View>
-      </GestureDetector>
+            </GestureDetector>
+          )}
+        </View>
+      </View>
+
+      {/* Undoing a grouping has to cost what making one did, so this is a
+          chip attached to the group rather than an item in a menu. Dashed,
+          because it removes something (frame 1e). */}
+      {showUngroup && slot ? (
+        <View style={styles.ungroupRow}>
+          <Chip
+            label={`Ungroup ${slot.group}`}
+            onPress={ungroup}
+            testID={`ungroup-${slot.group}`}
+          />
+        </View>
+      ) : null}
     </Animated.View>
   );
 });
@@ -463,6 +675,38 @@ const DraggableRow = memo(function DraggableRow({
 const styles = StyleSheet.create({
   list: { gap: ROW_GAP },
   row: { position: 'relative' },
+  rowInner: { flexDirection: 'row', alignItems: 'stretch' },
+  grow: { flex: 1, minWidth: 0 },
+  gutter: { width: GUTTER_WIDTH, marginRight: GUTTER_GAP, alignItems: 'center' },
+  rail: {
+    position: 'absolute',
+    width: RAIL_WIDTH,
+    borderRadius: RAIL_WIDTH / 2,
+    top: 0,
+    bottom: 0,
+  },
+  railBleed: { bottom: -ROW_GAP },
+  letterTile: {
+    width: LETTER_TILE,
+    height: LETTER_TILE,
+    borderRadius: radius.control,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  check: {
+    marginTop: spacing(14),
+    width: CHECK_SIZE,
+    height: CHECK_SIZE,
+    borderRadius: CHECK_SIZE / 2,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ungroupRow: {
+    flexDirection: 'row',
+    marginTop: spacing(10),
+    marginLeft: GUTTER_WIDTH + GUTTER_GAP,
+  },
   placeholder: {
     position: 'absolute',
     left: 0,
@@ -497,6 +741,10 @@ const styles = StyleSheet.create({
 
 const useThemedStyles = createThemedStyles((t) => ({
   placeholder: { backgroundColor: t.colors.bg.inset, borderColor: t.colors.border.strong },
+  rail: { backgroundColor: t.colors.brand.DEFAULT },
+  letterTile: { backgroundColor: t.colors.brand.DEFAULT },
+  checkOff: { borderColor: t.colors.border.strong, backgroundColor: 'transparent' },
+  checkOn: { borderColor: t.colors.brand.DEFAULT, backgroundColor: t.colors.brand.DEFAULT },
   // The brand ring, and the shadow's ink — the same colour `elevation
   // .raised.shadow` casts, only deeper and further (`.blk.lift`), so a
   // white-label scheme moves both together.

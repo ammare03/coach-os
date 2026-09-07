@@ -18,6 +18,7 @@ import type { createProgramExercise as CreateProgramExercise } from './create-pr
 import type { deleteProgramExercise as DeleteProgramExercise } from './delete-program-exercise.ts';
 import type { getProgramDay as GetProgramDay } from './get-program-day.ts';
 import type { reorderProgramExercises as ReorderProgramExercises } from './reorder-program-exercises.ts';
+import type { setSupersetGroup as SetSupersetGroup } from './set-superset-group.ts';
 import type { updateProgramExercise as UpdateProgramExercise } from './update-program-exercise.ts';
 
 let pgContainer: StartedTestContainer;
@@ -27,6 +28,7 @@ let updateProgramExercise: typeof UpdateProgramExercise;
 let deleteProgramExercise: typeof DeleteProgramExercise;
 let getProgramDay: typeof GetProgramDay;
 let reorderProgramExercises: typeof ReorderProgramExercises;
+let setSupersetGroup: typeof SetSupersetGroup;
 
 beforeAll(async () => {
   pgContainer = await new GenericContainer('postgres:16')
@@ -64,6 +66,7 @@ beforeAll(async () => {
   ({ deleteProgramExercise } = await import('./delete-program-exercise.ts'));
   ({ getProgramDay } = await import('./get-program-day.ts'));
   ({ reorderProgramExercises } = await import('./reorder-program-exercises.ts'));
+  ({ setSupersetGroup } = await import('./set-superset-group.ts'));
 }, 180_000);
 
 afterAll(async () => {
@@ -634,6 +637,337 @@ describe('reorderProgramExercises', () => {
     });
 
     expect((await rowsOfDay(scene.restDayId)).map((row) => row.id)).toEqual([otherDayBlock]);
+  });
+});
+
+// `program-builder/04`. The two decisions this task had to make are the
+// first and last blocks here: the alphabet's ceiling refuses in words
+// rather than doing nothing, and a reorder that would separate a superset's
+// members is refused outright rather than warned about.
+describe('setSupersetGroup', () => {
+  async function seedBlocks(scene: Scene, count: number): Promise<string[]> {
+    const ids: string[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const { id } = await createProgramExercise(db, scene.coachProfileId, {
+        programDayId: scene.programDayId,
+        exerciseId: scene.exerciseId,
+        targetSets: (index % 20) + 1,
+      });
+      ids.push(id);
+    }
+    return ids;
+  }
+
+  async function groupsOfDay(programDayId: string): Promise<(string | null)[]> {
+    return (await rowsOfDay(programDayId)).map((row) => row.supersetGroup);
+  }
+
+  it('writes the letter onto exactly the named blocks, and nothing else', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 4);
+
+    const result = await setSupersetGroup(db, {
+      programDayId: scene.programDayId,
+      exerciseIds: [ids[1] as string, ids[2] as string],
+      group: 'A',
+    });
+
+    expect(await groupsOfDay(scene.programDayId)).toEqual([null, 'A', 'A', null]);
+    // Read back, not echoed - the whole day, in its own order.
+    expect(result.exercises.map((row) => row.supersetGroup)).toEqual([null, 'A', 'A', null]);
+  });
+
+  it('clears the letter back to null on an ungroup', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 3);
+    const members = [ids[0] as string, ids[1] as string];
+
+    await setSupersetGroup(db, {
+      programDayId: scene.programDayId,
+      exerciseIds: members,
+      group: 'A',
+    });
+    await setSupersetGroup(db, {
+      programDayId: scene.programDayId,
+      exerciseIds: members,
+      group: null,
+    });
+
+    expect(await groupsOfDay(scene.programDayId)).toEqual([null, null, null]);
+  });
+
+  it('holds two groups on one day without either touching the other', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 4);
+
+    await setSupersetGroup(db, {
+      programDayId: scene.programDayId,
+      exerciseIds: [ids[0] as string, ids[1] as string],
+      group: 'A',
+    });
+    await setSupersetGroup(db, {
+      programDayId: scene.programDayId,
+      exerciseIds: [ids[2] as string, ids[3] as string],
+      group: 'B',
+    });
+
+    expect(await groupsOfDay(scene.programDayId)).toEqual(['A', 'A', 'B', 'B']);
+  });
+
+  // **Decision 1.** `superset_group` is one uppercase letter (DB5.2), so a
+  // day tops out at 26 groups. At the ceiling the call is refused in words,
+  // never silently ignored - which is the one outcome that would leave the
+  // coach tapping a button that does nothing.
+  it('refuses a 27th group rather than silently doing nothing', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 28);
+
+    // 26 single-member groups, written directly: this is the state, not the
+    // path to it, and grouping 26 legal pairs would need 52 blocks against
+    // a 30-block ceiling.
+    for (let index = 0; index < 26; index += 1) {
+      await db
+        .update(schema.programExercises)
+        .set({ supersetGroup: String.fromCharCode(65 + index) })
+        .where(eq(schema.programExercises.id, ids[index] as string));
+    }
+
+    const error = await setSupersetGroup(db, {
+      programDayId: scene.programDayId,
+      exerciseIds: [ids[26] as string, ids[27] as string],
+      group: 'A',
+    }).catch((caught: unknown) => caught);
+
+    expect(appCodeOf(error)).toBe('PROGRAM_SUPERSET_LIMIT_REACHED');
+    expect((await groupsOfDay(scene.programDayId)).slice(26)).toEqual([null, null]);
+  });
+
+  // `ownsResource('programExercise', ...)` refuses another COACH's id before
+  // this function runs. This is the case ownership cannot see - and a
+  // superset spanning two days is meaningless, because the two blocks can
+  // never be performed back to back.
+  it('refuses a group that would span two days of the coach own program', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 2);
+    const { id: otherDayBlock } = await createProgramExercise(db, scene.coachProfileId, {
+      programDayId: scene.restDayId,
+      exerciseId: scene.exerciseId,
+      targetSets: 3,
+    });
+
+    const error = await setSupersetGroup(db, {
+      programDayId: scene.programDayId,
+      exerciseIds: [ids[0] as string, otherDayBlock],
+      group: 'A',
+    }).catch((caught: unknown) => caught);
+
+    expect(appCodeOf(error)).toBe('PROGRAM_SUPERSET_STALE');
+    expect(await groupsOfDay(scene.programDayId)).toEqual([null, null]);
+    expect(await groupsOfDay(scene.restDayId)).toEqual([null]);
+  });
+
+  it('refuses a single block - a superset of one is not a superset', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 2);
+
+    const error = await setSupersetGroup(db, {
+      programDayId: scene.programDayId,
+      exerciseIds: [ids[0] as string],
+      group: 'A',
+    }).catch((caught: unknown) => caught);
+
+    expect(appCodeOf(error)).toBe('PROGRAM_SUPERSET_NOT_ADJACENT');
+    expect(await groupsOfDay(scene.programDayId)).toEqual([null, null]);
+  });
+
+  it('refuses two blocks with something between them', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 3);
+
+    const error = await setSupersetGroup(db, {
+      programDayId: scene.programDayId,
+      exerciseIds: [ids[0] as string, ids[2] as string],
+      group: 'A',
+    }).catch((caught: unknown) => caught);
+
+    expect(appCodeOf(error)).toBe('PROGRAM_SUPERSET_NOT_ADJACENT');
+    expect(await groupsOfDay(scene.programDayId)).toEqual([null, null, null]);
+  });
+
+  it('refuses a letter another device already used, rather than merging into it', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 4);
+    await setSupersetGroup(db, {
+      programDayId: scene.programDayId,
+      exerciseIds: [ids[0] as string, ids[1] as string],
+      group: 'A',
+    });
+
+    const error = await setSupersetGroup(db, {
+      programDayId: scene.programDayId,
+      exerciseIds: [ids[2] as string, ids[3] as string],
+      group: 'A',
+    }).catch((caught: unknown) => caught);
+
+    expect(appCodeOf(error)).toBe('PROGRAM_SUPERSET_STALE');
+    expect(await groupsOfDay(scene.programDayId)).toEqual(['A', 'A', null, null]);
+  });
+
+  it('refuses to move a block that is already in a group into another one', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 3);
+    await setSupersetGroup(db, {
+      programDayId: scene.programDayId,
+      exerciseIds: [ids[0] as string, ids[1] as string],
+      group: 'A',
+    });
+
+    const error = await setSupersetGroup(db, {
+      programDayId: scene.programDayId,
+      exerciseIds: [ids[1] as string, ids[2] as string],
+      group: 'B',
+    }).catch((caught: unknown) => caught);
+
+    expect(appCodeOf(error)).toBe('PROGRAM_SUPERSET_STALE');
+    expect(await groupsOfDay(scene.programDayId)).toEqual(['A', 'A', null]);
+  });
+
+  // The backstop under a patched client: DB5.2's regex is still standing
+  // behind the Zod enum, so nothing but one uppercase letter can land.
+  it('leaves DB5.2 regex CHECK standing behind the schema', async () => {
+    const scene = await seedScene();
+    const ids = await seedBlocks(scene, 1);
+
+    const constraint = await constraintViolatedBy(
+      db
+        .update(schema.programExercises)
+        .set({ supersetGroup: 'a1' })
+        .where(eq(schema.programExercises.id, ids[0] as string)),
+    );
+
+    expect(constraint).toBe('program_exercises_superset_group_check');
+  });
+});
+
+// **Decision 2.** Adjacency is ENFORCED, not warned about: a reorder that
+// would pull a superset member out from between its partners is refused.
+// The device already refuses to drop a card there; this is the floor.
+describe('reorderProgramExercises - superset adjacency', () => {
+  async function seedGroupedDay(scene: Scene): Promise<[string, string, string, string]> {
+    const ids: string[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      const { id } = await createProgramExercise(db, scene.coachProfileId, {
+        programDayId: scene.programDayId,
+        exerciseId: scene.exerciseId,
+        targetSets: index + 1,
+      });
+      ids.push(id);
+    }
+    await setSupersetGroup(db, {
+      programDayId: scene.programDayId,
+      exerciseIds: [ids[1] as string, ids[2] as string],
+      group: 'A',
+    });
+    return ids as [string, string, string, string];
+  }
+
+  it('refuses a move that would put a standalone block inside a superset', async () => {
+    const scene = await seedScene();
+    const [first, second, third, fourth] = await seedGroupedDay(scene);
+
+    const error = await reorderProgramExercises(db, {
+      programDayId: scene.programDayId,
+      orderedExerciseIds: [first, second, fourth, third],
+    }).catch((caught: unknown) => caught);
+
+    expect(appCodeOf(error)).toBe('PROGRAM_SUPERSET_NOT_ADJACENT');
+    expect((await rowsOfDay(scene.programDayId)).map((row) => row.id)).toEqual([
+      first,
+      second,
+      third,
+      fourth,
+    ]);
+  });
+
+  it('refuses a move that would pull a member out of its own superset', async () => {
+    const scene = await seedScene();
+    const [first, second, third, fourth] = await seedGroupedDay(scene);
+
+    const error = await reorderProgramExercises(db, {
+      programDayId: scene.programDayId,
+      orderedExerciseIds: [second, first, third, fourth],
+    }).catch((caught: unknown) => caught);
+
+    expect(appCodeOf(error)).toBe('PROGRAM_SUPERSET_NOT_ADJACENT');
+    expect((await rowsOfDay(scene.programDayId)).map((row) => row.id)).toEqual([
+      first,
+      second,
+      third,
+      fourth,
+    ]);
+  });
+
+  it('allows the two members to swap places inside their own superset', async () => {
+    const scene = await seedScene();
+    const [first, second, third, fourth] = await seedGroupedDay(scene);
+
+    await reorderProgramExercises(db, {
+      programDayId: scene.programDayId,
+      orderedExerciseIds: [first, third, second, fourth],
+    });
+
+    expect((await rowsOfDay(scene.programDayId)).map((row) => row.id)).toEqual([
+      first,
+      third,
+      second,
+      fourth,
+    ]);
+  });
+
+  it('allows the whole superset to move together', async () => {
+    const scene = await seedScene();
+    const [first, second, third, fourth] = await seedGroupedDay(scene);
+
+    await reorderProgramExercises(db, {
+      programDayId: scene.programDayId,
+      orderedExerciseIds: [second, third, first, fourth],
+    });
+
+    expect((await rowsOfDay(scene.programDayId)).map((row) => row.supersetGroup)).toEqual([
+      'A',
+      'A',
+      null,
+      null,
+    ]);
+  });
+
+  // A day that somehow already holds a split group must stay reorderable,
+  // or one bad row freezes it forever - which is why the check compares the
+  // before and after rather than demanding contiguity outright.
+  it('does not freeze a day whose group is already split', async () => {
+    const scene = await seedScene();
+    const [first, second, third, fourth] = await seedGroupedDay(scene);
+    // Split A behind the procedure back.
+    await db
+      .update(schema.programExercises)
+      .set({ supersetGroup: 'A' })
+      .where(eq(schema.programExercises.id, fourth));
+    await db
+      .update(schema.programExercises)
+      .set({ supersetGroup: null })
+      .where(eq(schema.programExercises.id, third));
+
+    await reorderProgramExercises(db, {
+      programDayId: scene.programDayId,
+      orderedExerciseIds: [fourth, first, second, third],
+    });
+
+    expect((await rowsOfDay(scene.programDayId)).map((row) => row.id)).toEqual([
+      fourth,
+      first,
+      second,
+      third,
+    ]);
   });
 });
 

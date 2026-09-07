@@ -76,5 +76,64 @@ export function useProgramDayBuilder(programDayId: string) {
     },
   });
 
-  return { day, addExercise, updateExercise, removeExercise, reorderExercises };
+  // `program-builder/04`'s grouping and ungrouping. Optimistic for the same
+  // reason the reorder is: the tint, the rail and the badges are what the
+  // coach is looking at when they tap, and a round trip's worth of
+  // unchanged list would read as a dropped tap. Only this day's key is
+  // touched — grouping changes no count, so `programs.get`'s "5 exercises"
+  // line is not stale.
+  const setSupersetGroup = api.programs.exercises.setSupersetGroup.useMutation({
+    onMutate: async ({ programDayId: dayId, exerciseIds, group }) => {
+      await utils.programs.days.get.cancel({ programDayId: dayId });
+      const previous = utils.programs.days.get.getData({ programDayId: dayId });
+      if (previous) {
+        const touched = new Set(exerciseIds);
+        utils.programs.days.get.setData(
+          { programDayId: dayId },
+          {
+            ...previous,
+            exercises: previous.exercises.map((exercise) =>
+              touched.has(exercise.id) ? { ...exercise, supersetGroup: group } : exercise,
+            ),
+          },
+        );
+      }
+      return { previous };
+    },
+    // Reconciled against what the server actually settled on: a letter
+    // taken by another device comes back as the server holds it, not as we
+    // guessed it.
+    onSuccess: (result, { programDayId: dayId }) => {
+      const current = utils.programs.days.get.getData({ programDayId: dayId });
+      if (!current) return;
+      const settled = new Map(result.exercises.map((exercise) => [exercise.id, exercise]));
+      utils.programs.days.get.setData(
+        { programDayId: dayId },
+        {
+          ...current,
+          exercises: current.exercises.map((exercise) => {
+            const row = settled.get(exercise.id);
+            return row ? { ...exercise, supersetGroup: row.supersetGroup } : exercise;
+          }),
+        },
+      );
+    },
+    onError: (_error, { programDayId: dayId }, context) => {
+      if (context?.previous) {
+        utils.programs.days.get.setData({ programDayId: dayId }, context.previous);
+      }
+    },
+    onSettled: async () => {
+      await utils.programs.days.get.invalidate({ programDayId });
+    },
+  });
+
+  return {
+    day,
+    addExercise,
+    updateExercise,
+    removeExercise,
+    reorderExercises,
+    setSupersetGroup,
+  };
 }

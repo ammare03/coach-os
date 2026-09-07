@@ -104,6 +104,51 @@ const MAX_REPS = 32767;
 const MAX_EXERCISES_PER_DAY = 30;
 
 /**
+ * `program_exercises_superset_group_check` — `~ '^[A-Z]$'`. One uppercase
+ * letter is the whole column, so **the alphabet is the ceiling**: a day
+ * holds at most 26 supersets. Written out as a tuple rather than derived
+ * from a string at module load, because `z.enum` needs the literal union
+ * to type `group` as `'A' | … | 'Z'` and not `string`.
+ */
+export const SUPERSET_LETTERS = [
+  'A',
+  'B',
+  'C',
+  'D',
+  'E',
+  'F',
+  'G',
+  'H',
+  'I',
+  'J',
+  'K',
+  'L',
+  'M',
+  'N',
+  'O',
+  'P',
+  'Q',
+  'R',
+  'S',
+  'T',
+  'U',
+  'V',
+  'W',
+  'X',
+  'Y',
+  'Z',
+] as const;
+
+export type SupersetGroup = (typeof SUPERSET_LETTERS)[number];
+
+/**
+ * `CLAUDE.md` §26: a superset is *two or more* exercises performed back to
+ * back. A group of one is not a smaller superset, it is a plain exercise
+ * wearing a letter — so two is a product floor, not a UI nicety.
+ */
+const MIN_SUPERSET_MEMBERS = 2;
+
+/**
  * The bounds the builder UI prints as sub-labels *before* the coach can
  * reach them — "1–104 weeks" under the length stepper, seven day slots and
  * no eighth. A constraint a coach can read in advance is guidance; the same
@@ -136,6 +181,12 @@ export const PROGRAM_BOUNDS = {
   maxRestSeconds: MAX_REST_SECONDS,
   tempoDigits: TEMPO_DIGITS,
   maxExercisesPerDay: MAX_EXERCISES_PER_DAY,
+  // Printed before the coach can reach either, the same way the week and
+  // set bounds are: the commit button says how many blocks it is about to
+  // group, and the day says when it has no letters left
+  // (`program-builder/04`, frame 1e).
+  minSupersetMembers: MIN_SUPERSET_MEMBERS,
+  maxSupersetGroupsPerDay: SUPERSET_LETTERS.length,
   /**
    * Step sizes, not database bounds — the columns permit one decimal
    * (`NUMERIC_SCALE_1_STEP`) and these are what a coach actually writes.
@@ -440,3 +491,51 @@ export type ReorderProgramExercisesInput = z.infer<typeof reorderProgramExercise
  */
 export const getProgramDayInput = strictObject({ programDayId: id });
 export type GetProgramDayInput = z.infer<typeof getProgramDayInput>;
+
+// ---------------------------------------------------------------------------
+// Supersets — `programs.exercises.setSupersetGroup` (`program-builder/04`)
+// ---------------------------------------------------------------------------
+
+/**
+ * `programs.exercises.setSupersetGroup` — one selection committed, or one
+ * group taken apart (`program-builder/04`, frame 1e).
+ *
+ * **`group` is a letter the CLIENT picked, not a request for the server to
+ * pick one.** The action bar tells the coach which letter they are about to
+ * create ("They'll run back to back as superset B") before they commit, so
+ * the letter has to exist on the device first; the server's job is to
+ * refuse it if the day has moved on since (`PROGRAM_SUPERSET_STALE`). This
+ * is exactly `reorder`'s bargain — the client sends the picture it acted
+ * on, the server refuses a stale one — and it is why neither procedure can
+ * silently do something other than what the coach was shown.
+ *
+ * `null` clears the letter: ungrouping is the same procedure, so undoing a
+ * grouping costs exactly what making one did.
+ *
+ * **Three rules are NOT expressible here** and are checked in the resolver
+ * against the day's real contents, for the same reason `reorder`'s
+ * membership check is:
+ *   - every id belongs to THIS day (a group may not span two days),
+ *   - a grouping names at least `minSupersetMembers` blocks, and they are
+ *     consecutive in the day's order (`PROGRAM_SUPERSET_NOT_ADJACENT`),
+ *   - the letter is still free, and the day has one to spare
+ *     (`PROGRAM_SUPERSET_STALE` / `PROGRAM_SUPERSET_LIMIT_REACHED`).
+ *
+ * The distinctness refinement sits on the OBJECT, and `exerciseIds` is
+ * `.min(1)` rather than `.min(2)`, for one shared reason: the authorisation
+ * enumeration test synthesises an input for every procedure, refuses to
+ * guess a value for a custom check on an array, and fills an array to its
+ * minimum length with the SAME synthesised uuid
+ * (`apps/api/src/__tests__/authz/synthesise-input.ts`). A `.min(2)` here
+ * would hand that test two identical ids and a refinement that rejects
+ * them, which would make this procedure unprobeable.
+ */
+export const setSupersetGroupInput = strictObject({
+  programDayId: id,
+  exerciseIds: z.array(id).min(1).max(MAX_EXERCISES_PER_DAY),
+  group: z.enum(SUPERSET_LETTERS).nullable(),
+}).refine((value) => new Set(value.exerciseIds).size === value.exerciseIds.length, {
+  message: DUPLICATE_ORDER_MESSAGE,
+  path: ['exerciseIds'],
+});
+export type SetSupersetGroupInput = z.infer<typeof setSupersetGroupInput>;
