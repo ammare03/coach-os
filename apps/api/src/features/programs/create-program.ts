@@ -24,7 +24,16 @@ export interface CreateProgramDay {
 
 export interface CreateProgramInput {
   name: string;
-  days: readonly CreateProgramDay[];
+  description?: string | undefined;
+  /**
+   * The program's declared length. Onboarding omits it and gets one week;
+   * the builder's details sheet (frame 1h) sets it with a stepper. Weeks 2..n
+   * are authored afterwards through `programs.weeks.create` — declaring
+   * twelve weeks does not write twelve empty rows, it states the plan
+   * (`program-builder/01`).
+   */
+  durationWeeks?: number | undefined;
+  days?: readonly CreateProgramDay[] | undefined;
 }
 
 /**
@@ -32,7 +41,7 @@ export interface CreateProgramInput {
  * weeks 2..n to this same program, which is why `duration_weeks` is a real
  * 1 rather than a placeholder.
  */
-const ONBOARDING_DURATION_WEEKS = 1;
+const DEFAULT_DURATION_WEEKS = 1;
 
 export async function createProgram(
   db: DbClient,
@@ -48,7 +57,8 @@ export async function createProgram(
       .values({
         coachId: coachProfileId,
         name: input.name,
-        durationWeeks: ONBOARDING_DURATION_WEEKS,
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        durationWeeks: input.durationWeeks ?? DEFAULT_DURATION_WEEKS,
         // `is_template` keeps its DB§5.2 default of true: this is a program
         // in the coach's library, not one assigned to a client. Assignment
         // is P07's, and it is what produces a non-template program.
@@ -65,18 +75,26 @@ export async function createProgram(
     // `dayNumber` and `orderIndex` are both 1-based, matching the seed
     // (`packages/db/src/seed/programs.ts`) and DB§5.2's
     // `program_days_day_number_check (BETWEEN 1 AND 7)`.
-    const days = await tx
-      .insert(schema.programDays)
-      .values(
-        input.days.map((day, index) => ({
-          programWeekId: week.id,
-          dayNumber: index + 1,
-          name: day.name,
-        })),
-      )
-      .returning({ id: schema.programDays.id });
+    // A program with no days at all is valid: the builder creates the shell
+    // from the details sheet and fills week 1 through "Add day". Drizzle
+    // rejects an insert with no values, so the empty case skips the
+    // statement rather than sending one.
+    const inputDays = input.days ?? [];
+    const days =
+      inputDays.length > 0
+        ? await tx
+            .insert(schema.programDays)
+            .values(
+              inputDays.map((day, index) => ({
+                programWeekId: week.id,
+                dayNumber: index + 1,
+                name: day.name,
+              })),
+            )
+            .returning({ id: schema.programDays.id })
+        : [];
 
-    const exerciseRows = input.days.flatMap((day, dayIndex) => {
+    const exerciseRows = inputDays.flatMap((day, dayIndex) => {
       const programDay = days[dayIndex];
       if (!programDay) {
         throw new Error(`programs.create: no program_days row returned for day ${dayIndex + 1}`);

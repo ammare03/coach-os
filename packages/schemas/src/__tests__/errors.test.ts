@@ -67,6 +67,17 @@ function describeCode(code: AppErrorCode): string {
     case 'EXERCISE_NOT_FOUND':
     case 'EXERCISE_NAME_TAKEN':
     case 'EXERCISE_NOT_EDITABLE':
+    case 'PROGRAM_WEEK_EXISTS':
+    case 'PROGRAM_DAY_TAKEN':
+    case 'PROGRAM_DURATION_TOO_SHORT':
+    case 'PROGRAM_WEEK_LIMIT_REACHED':
+    case 'PROGRAM_EXERCISE_LIMIT_REACHED':
+    case 'PROGRAM_DAY_ORDER_STALE':
+    case 'PROGRAM_SUPERSET_LIMIT_REACHED':
+    case 'PROGRAM_SUPERSET_NOT_ADJACENT':
+    case 'PROGRAM_SUPERSET_STALE':
+    case 'PROGRAM_ALTERNATIVE_IS_ORIGIN':
+    case 'PROGRAM_COPY_CROSS_PROGRAM':
       return code;
     default:
       return assertNever(code);

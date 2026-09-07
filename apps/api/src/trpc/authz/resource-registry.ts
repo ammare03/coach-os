@@ -17,6 +17,9 @@ export type ResourceKind =
   | 'coachNote'
   | 'invite'
   | 'program'
+  | 'programWeek'
+  | 'programDay'
+  | 'programExercise'
   | 'workoutSession'
   | 'setLog'
   | 'meal'
@@ -162,6 +165,95 @@ export const RESOURCE_REGISTRY: Record<ResourceKind, ResourceKindEntry> = {
     // it, this entry's client branch. Not a P02 concern; `null` until then.
     clientOwnedIds: null,
     // A coach's own authored template, not client content — no grace window.
+    formerCoachOwnedIds: null,
+    historySharedOwnedIds: null,
+    nutritionSharedOwnedIds: null,
+  },
+
+  // One join up to `programs.coach_id` — the same one-level shape `setLog`
+  // uses, and for the same reason: `program_weeks` carries no denormalised
+  // owner of its own (DB§5.2), and DB§6's rule is "coach_id and/or
+  // client_id", never a walk up the whole tree.
+  programWeek: {
+    coachOwnedIds: async (db, { coachProfileId }, ids) =>
+      idsOf(
+        await db
+          .select({ id: schema.programWeeks.id })
+          .from(schema.programWeeks)
+          .innerJoin(schema.programs, eq(schema.programs.id, schema.programWeeks.programId))
+          .where(
+            and(inArray(schema.programWeeks.id, ids), eq(schema.programs.coachId, coachProfileId)),
+          ),
+      ),
+    // A client never addresses a week by id — they see a scheduled session,
+    // not the template it came from. `null`, not a function returning an
+    // empty set, exactly as `program` above (`03-owns-resource.md` step 8).
+    clientOwnedIds: null,
+    // A coach's own authored template, not client content — no grace
+    // window, no returning-client re-grant. Same as `program`.
+    formerCoachOwnedIds: null,
+    historySharedOwnedIds: null,
+    nutritionSharedOwnedIds: null,
+  },
+
+  // Two joins, not one — `program_days` reaches its owner through
+  // `program_weeks`. Still a bounded, indexed lookup (both FKs are indexed
+  // per DB§7), not a recursive walk.
+  programDay: {
+    coachOwnedIds: async (db, { coachProfileId }, ids) =>
+      idsOf(
+        await db
+          .select({ id: schema.programDays.id })
+          .from(schema.programDays)
+          .innerJoin(
+            schema.programWeeks,
+            eq(schema.programWeeks.id, schema.programDays.programWeekId),
+          )
+          .innerJoin(schema.programs, eq(schema.programs.id, schema.programWeeks.programId))
+          .where(
+            and(inArray(schema.programDays.id, ids), eq(schema.programs.coachId, coachProfileId)),
+          ),
+      ),
+    clientOwnedIds: null,
+    formerCoachOwnedIds: null,
+    historySharedOwnedIds: null,
+    nutritionSharedOwnedIds: null,
+  },
+
+  // Three joins — one further than `programDay`, and the deepest kind in
+  // the registry. Still bounded and indexed (every FK on this path is,
+  // per DB§7), and still `programs.coach_id` at the end of it: an
+  // exercise block has no owner of its own, it inherits the program's
+  // (`program-builder/02`).
+  programExercise: {
+    coachOwnedIds: async (db, { coachProfileId }, ids) =>
+      idsOf(
+        await db
+          .select({ id: schema.programExercises.id })
+          .from(schema.programExercises)
+          .innerJoin(
+            schema.programDays,
+            eq(schema.programDays.id, schema.programExercises.programDayId),
+          )
+          .innerJoin(
+            schema.programWeeks,
+            eq(schema.programWeeks.id, schema.programDays.programWeekId),
+          )
+          .innerJoin(schema.programs, eq(schema.programs.id, schema.programWeeks.programId))
+          .where(
+            and(
+              inArray(schema.programExercises.id, ids),
+              eq(schema.programs.coachId, coachProfileId),
+            ),
+          ),
+      ),
+    // A client never addresses a program exercise by id — they see a
+    // scheduled session's exercises, not the template rows behind them.
+    // `null`, not a function returning an empty set, exactly as `program`,
+    // `programWeek` and `programDay` above.
+    clientOwnedIds: null,
+    // A coach's own authored template, not client content — no grace
+    // window, no returning-client re-grant. Same as its three ancestors.
     formerCoachOwnedIds: null,
     historySharedOwnedIds: null,
     nutritionSharedOwnedIds: null,

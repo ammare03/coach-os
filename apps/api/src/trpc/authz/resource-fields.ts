@@ -11,6 +11,18 @@ export const RESOURCE_FIELD_KIND: Record<string, ResourceKind> = {
   coachNoteId: 'coachNote',
   inviteId: 'invite',
   programId: 'program',
+  programWeekId: 'programWeek',
+  programDayId: 'programDay',
+  programExerciseId: 'programExercise',
+  // `programs.days.duplicate` / `programs.weeks.duplicate`
+  // (`program-builder/06`). A copy names a SOURCE and a DESTINATION, so one
+  // field name could not carry both — and both are real rows this coach
+  // either owns or does not. Registering them here is what makes the
+  // enumeration test probe each side independently; without it, a coach
+  // could copy their own day into another coach's week.
+  sourceDayId: 'programDay',
+  targetWeekId: 'programWeek',
+  sourceWeekId: 'programWeek',
   workoutSessionId: 'workoutSession',
   setLogId: 'setLog',
   mealId: 'meal',

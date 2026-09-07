@@ -30,7 +30,14 @@ export type SegmentedOptions<V extends string> =
 
 export interface SegmentedControlProps<V extends string> {
   options: SegmentedOptions<V>;
-  value: V;
+  /**
+   * `null` selects nothing — no pill, no segment claiming to be chosen.
+   * For the control whose options are four ways of saying something and
+   * whose fifth state is saying nothing at all (the target sheet's
+   * intensity: RPE, RIR, % 1RM, Weight — or no intensity target). A
+   * consumer that always has a selection passes `V` and is unaffected.
+   */
+  value: V | null;
   onChange: (value: V) => void;
   /**
    * Accepted for interface consistency (CONTRACT.md rule 4); DESIGN.md §9
@@ -78,7 +85,9 @@ function useReducedMotion(): boolean {
  * A two-to-four-option single-select switcher with a sliding selection
  * pill (DESIGN.md §9). One choice from a fixed, always-visible small set —
  * the whole difference from `Chip`, which is zero-or-more from an open set
- * that may wrap.
+ * that may wrap. `value={null}` is the one exception: at most one choice,
+ * for a consumer whose "none of these" is a real state rather than a fifth
+ * option (see `value`).
  *
  * The pill animates on the UI thread via Reanimated, `duration.state` +
  * `easing.fill`. Under reduced motion it jumps to the new position instead
@@ -95,10 +104,15 @@ export function SegmentedControl<V extends string>({
   const { selectionPill } = useTheme();
   const themed = useThemedStyles();
   const count = options.length;
-  const selectedIndex = Math.max(
-    0,
-    options.findIndex((option) => option.value === value),
-  );
+  // -1 is "nothing selected" and is rendered as such. A non-null value that
+  // names no option still falls back to the first, as it always has.
+  const selectedIndex =
+    value === null
+      ? -1
+      : Math.max(
+          0,
+          options.findIndex((option) => option.value === value),
+        );
   const reducedMotion = useReducedMotion();
 
   const [trackWidth, setTrackWidth] = useState(0);
@@ -106,6 +120,10 @@ export function SegmentedControl<V extends string>({
   const pillX = useSharedValue(0);
 
   useEffect(() => {
+    // Nothing to move to, and nothing to move: the pill is not rendered,
+    // and leaving it where it was means re-selecting slides from the last
+    // real position rather than jumping in from the left edge.
+    if (selectedIndex < 0) return;
     const target = selectedIndex * segmentWidth;
     if (reducedMotion) {
       pillX.value = target;
@@ -143,7 +161,7 @@ export function SegmentedControl<V extends string>({
         },
       ]}
     >
-      {segmentWidth > 0 ? (
+      {segmentWidth > 0 && selectedIndex >= 0 ? (
         <Animated.View
           pointerEvents="none"
           style={[

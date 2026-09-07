@@ -28,6 +28,7 @@ interface ZodCheck {
 }
 interface ZodDef {
   type: string;
+  format?: string;
   checks?: { _zod: { def: ZodCheck } }[];
   innerType?: z.ZodType;
   element?: z.ZodType;
@@ -52,7 +53,15 @@ function assertNoCustomCheck(def: ZodDef, path: string): void {
 
 function synthesiseString(def: ZodDef, path: string): string {
   assertNoCustomCheck(def, path);
-  const format = checksOf(def).find((c) => c.format)?.format;
+  // zod v4 puts a string's format on the def itself (`z.uuid()` is a
+  // `ZodUUID` whose `def.format` is `'uuid'`) and only ever in `checks`
+  // when a format-carrying schema was composed into another. Reading only
+  // the checks silently synthesised `'probe-value'` for any `z.uuid()`
+  // that had also been `.max()`ed — which is every `id` in
+  // `packages/schemas`. It went unnoticed until a procedure took two ids
+  // at once (`programs.exercises.create`), because the one id a probe
+  // targets is overwritten after synthesis and never validated.
+  const format = def.format ?? checksOf(def).find((c) => c.format)?.format;
   switch (format) {
     case 'uuid':
       return '00000000-0000-7000-8000-000000000001';

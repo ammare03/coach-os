@@ -11,12 +11,13 @@ import {
   Pressable,
   radius,
   Sheet,
+  SheetFooter,
   SheetHeader,
   spacing,
   Text,
   useTheme,
 } from '@coachos/ui';
-import { Dumbbell, Play, Plus, WifiOff } from 'lucide-react-native';
+import { Check, Dumbbell, Play, Plus, WifiOff } from 'lucide-react-native';
 import { useState, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,9 +34,29 @@ import { useExercisePickerSearch, type PickerExercise } from '../../api/exercise
 //
 // Three decisions from the approved design, each load-bearing:
 //
-// 1. **No commit footer.** This picker is SINGLE-select: the tap is the
-//    commit and the sheet leaves immediately. A footer would add a second
-//    tap to the most repeated action in program authoring.
+// 1. **No commit footer, by default.** This picker is SINGLE-select: the
+//    tap is the commit and the sheet leaves immediately. A footer would add
+//    a second tap to the most repeated action in program authoring.
+//
+//    **`selection` opts one consumer into multi-select** — the approved-
+//    swaps sheet (`program-builder/05`, frame 1f), whose own design note
+//    says in as many words that it is "ExercisePicker in multi-select, not
+//    a second search: same rows, same badges, same ordering". Approving a
+//    SET is not the same act as choosing ONE, so it gets a checkbox, a
+//    counting footer (`DESIGN.md` §10.8) and no auto-dismiss.
+//
+//    That is a mode, not a fork: the search, the ranking, the three-tier
+//    match hint, the filters, the badges, the offline note and the empty
+//    state are one implementation with one branch in the row's affordance.
+//    The props are a discriminated union, so a consumer gets exactly one of
+//    `onSelect` and `selection` and never both — the "component whose every
+//    part forks on a `mode` prop" this file warned about is what a union
+//    prevents rather than what it is.
+//
+//    `features/onboarding/components/ExercisePickerSheet.tsx` (P06) still
+//    stays a SEPARATE component. It is not this picker with a flag: it has
+//    no pattern filters, no ranking tiers, no create row, and it hands back
+//    `AddedExercise` drafts rather than library rows.
 //
 //    `features/onboarding/components/ExercisePickerSheet.tsx` (P06) stays a
 //    SEPARATE component and is not merged into this one. It is multi-select
@@ -93,24 +114,64 @@ const SEARCH_DEBOUNCE_MS = 200;
  */
 const SHEET_FRACTION = 0.9;
 const SHEET_CHROME = 210;
+/**
+ * Multi-select stands two more things above and below the list — the
+ * consumer's header slot and the commit footer — so the ceiling drops by
+ * roughly their combined height. An estimate, like `SHEET_CHROME` itself:
+ * both exist so a long list scrolls instead of running past the sheet's
+ * bottom edge, and being a few points conservative costs nothing.
+ */
+const SELECTION_CHROME = 190;
 const MIN_LIST_HEIGHT = 220;
+
+/** The design's `.ck` — 22px of box inside a 44px row, per frame 1f. */
+const CHECKBOX = 22;
 
 /** Stable identity, so a caller that omits the prop does not re-render the list. */
 const NO_IDS: readonly string[] = [];
 
-export interface ExercisePickerSheetProps {
+/**
+ * Multi-select, opted into by one consumer at a time. Shaped as an object
+ * rather than five loose props for the reason `DraggableExerciseList`'s own
+ * `selection` prop is (`program-builder/04`): "is this picker selecting"
+ * and "what is selected" are one fact, and two props can disagree about it.
+ */
+export interface PickerSelection {
+  /** The pending selection, in the order the coach built it. */
+  selectedIds: readonly string[];
+  onToggle: (exercise: PickerExercise) => void;
+  /**
+   * The commit's own words, and they **count** — "Approve 3 swaps", never
+   * "Save" (`DESIGN.md` §10.8). Owned by the consumer because only the
+   * consumer knows what is being counted.
+   */
+  actionLabel: string;
+  onCommit: () => void;
+  /** Nothing to save, or a bound already reached — the consumer decides which. */
+  isCommitDisabled?: boolean | undefined;
+  isCommitting?: boolean | undefined;
+}
+
+export interface ExercisePickerSheetBaseProps {
   isOpen: boolean;
-  /** Names what the choice is for — "Add to Day 3", "Swap Barbell Back Squat". */
+  /** Names what the choice is for — "Add to Day 3", "Approved swaps". */
   title: string;
   /** Says what a tap does, because the tap is the commit. */
   subtitle?: string | undefined;
+  /**
+   * Rendered between the header and the search field — the note and the
+   * removable chips frame 1f puts above the picker, so the current answer
+   * stays on screen while the coach edits it. A slot rather than a prop per
+   * element: what stands there is the consumer's business, and the picker
+   * has no opinion about it beyond where it goes.
+   */
+  header?: ReactNode;
   /** Opens with a pattern pre-applied — a swap already knows what it is replacing. */
   initialMovementPattern?: MovementPattern | null | undefined;
   /** Already on the target. Shown dimmed and inert, never offered twice. */
   alreadyAdded?: readonly string[] | undefined;
   /** What the dimmed rows are badged with. "On this day" for a program day. */
   alreadyAddedLabel?: string | undefined;
-  onSelect: (exercise: PickerExercise) => void;
   /**
    * Omit to hide every create affordance — a consumer that cannot author an
    * exercise (a mid-session swap, before P09 wires authoring into the
@@ -120,13 +181,35 @@ export interface ExercisePickerSheetProps {
   onDismiss: () => void;
 }
 
+/** The default: the tap IS the commit, and the sheet leaves with it. */
+interface SingleSelectProps {
+  selection?: undefined;
+  onSelect: (exercise: PickerExercise) => void;
+}
+
+/** Opted in: the tap toggles, and a counting footer commits the set. */
+interface MultiSelectProps {
+  selection: PickerSelection;
+  onSelect?: undefined;
+}
+
+/**
+ * A union, not two optional props: a consumer supplies exactly one of
+ * `onSelect` and `selection`, and "both" and "neither" both fail to
+ * compile rather than silently rendering a picker whose rows do nothing.
+ */
+export type ExercisePickerSheetProps = ExercisePickerSheetBaseProps &
+  (SingleSelectProps | MultiSelectProps);
+
 export function ExercisePickerSheet({
   isOpen,
   title,
-  subtitle = 'Tap one to add it',
+  subtitle,
+  header,
   initialMovementPattern = null,
   alreadyAdded = NO_IDS,
   alreadyAddedLabel = 'On this day',
+  selection,
   onSelect,
   onCreate,
   onDismiss,
@@ -149,9 +232,15 @@ export function ExercisePickerSheet({
     }
   }
 
+  // Two modes, two sentences about what a tap does, because in one of them
+  // it commits and in the other it does not.
+  const resolvedSubtitle = subtitle ?? (selection ? 'Tap to add or remove' : 'Tap one to add it');
+
   return (
     <Sheet isOpen={isOpen} onDismiss={onDismiss} snap="full" testID="exercise-picker">
-      <SheetHeader title={title} subtitle={subtitle} onClose={onDismiss} density="coach" />
+      <SheetHeader title={title} subtitle={resolvedSubtitle} onClose={onDismiss} density="coach" />
+
+      {header === undefined ? null : <View style={styles.header}>{header}</View>}
 
       {/* Field and filters are live from the first frame — only the list is
           unknown while the first search runs. */}
@@ -201,6 +290,7 @@ export function ExercisePickerSheet({
         pattern={pattern}
         alreadyAdded={alreadyAdded}
         alreadyAddedLabel={alreadyAddedLabel}
+        selection={selection}
         onSelect={onSelect}
         onCreate={onCreate}
         onDismiss={onDismiss}
@@ -208,6 +298,19 @@ export function ExercisePickerSheet({
           setQuery('');
         }}
       />
+
+      {/* Multi-select only. In single-select the tap already committed, and
+          a footer under it would be a button for something that has
+          happened. */}
+      {selection === undefined ? null : (
+        <SheetFooter
+          actionLabel={selection.actionLabel}
+          onAction={selection.onCommit}
+          isActionDisabled={selection.isCommitDisabled ?? false}
+          isActionLoading={selection.isCommitting ?? false}
+          density="coach"
+        />
+      )}
     </Sheet>
   );
 }
@@ -217,7 +320,8 @@ interface PickerResultsProps {
   pattern: MovementPattern | null;
   alreadyAdded: readonly string[];
   alreadyAddedLabel: string;
-  onSelect: (exercise: PickerExercise) => void;
+  selection: PickerSelection | undefined;
+  onSelect: ((exercise: PickerExercise) => void) | undefined;
   onCreate: ((prefilledName: string) => void) | undefined;
   onDismiss: () => void;
   onClearSearch: () => void;
@@ -228,6 +332,7 @@ function PickerResults({
   pattern,
   alreadyAdded,
   alreadyAddedLabel,
+  selection,
   onSelect,
   onCreate,
   onDismiss,
@@ -248,7 +353,7 @@ function PickerResults({
   const typed = query.trim();
   const maxHeight = Math.max(
     MIN_LIST_HEIGHT,
-    height * SHEET_FRACTION - SHEET_CHROME - insets.bottom,
+    height * SHEET_FRACTION - SHEET_CHROME - (selection ? SELECTION_CHROME : 0) - insets.bottom,
   );
 
   let body: ReactNode;
@@ -292,8 +397,16 @@ function PickerResults({
                   exercise={exercise}
                   isLast={index === results.length - 1}
                   disabledLabel={alreadyAdded.includes(exercise.id) ? alreadyAddedLabel : null}
+                  // `null` is single-select; a boolean is multi-select and
+                  // says which way the checkbox points.
+                  isSelected={selection ? selection.selectedIds.includes(exercise.id) : null}
                   onSelect={(chosen) => {
-                    onSelect(chosen);
+                    if (selection) {
+                      selection.onToggle(chosen);
+                      return;
+                    }
+                    // The tap IS the commit, and the sheet leaves with it.
+                    onSelect?.(chosen);
                     onDismiss();
                   }}
                 />
@@ -330,7 +443,10 @@ function PickerResults({
   return (
     <ScrollView
       style={{ maxHeight }}
-      contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + spacing(22) }]}
+      contentContainerStyle={[
+        styles.list,
+        { paddingBottom: insets.bottom + spacing(selection ? 8 : 22) },
+      ]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
       testID="exercise-picker-results"
@@ -397,19 +513,23 @@ interface ExerciseRowProps {
   isLast: boolean;
   /** Non-null means "already on the target": dimmed, badged, and not selectable. */
   disabledLabel: string | null;
+  /** `null` in single-select; a boolean is multi-select and the checkbox's state. */
+  isSelected: boolean | null;
   onSelect: (exercise: PickerExercise) => void;
 }
 
-function ExerciseRow({ exercise, isLast, disabledLabel, onSelect }: ExerciseRowProps) {
+function ExerciseRow({ exercise, isLast, disabledLabel, isSelected, onSelect }: ExerciseRowProps) {
   const theme = useTheme();
   const themed = useThemedStyles();
   const isDisabled = disabledLabel !== null;
   const hasDemo = exercise.demoAssetId !== null;
+  const isMultiSelect = isSelected !== null;
 
-  // Both badges and the demo pip are silent to a screen reader by
-  // construction (`Badge`'s own contract), so the row folds them into its
-  // own label. A shape or a colour that carries meaning has to say it in
-  // words too (`accessibility` §2, `DESIGN.md` §8).
+  // Both badges, the demo pip and the checkbox are silent to a screen
+  // reader by construction, so the row folds them into its own label. A
+  // shape or a colour that carries meaning has to say it in words too
+  // (`accessibility` §2, `DESIGN.md` §8) — the tick is exactly that, and
+  // `accessibilityState.checked` below is what actually announces it.
   const label = [
     exercise.name,
     exercise.isCustom ? 'your exercise' : null,
@@ -425,10 +545,21 @@ function ExerciseRow({ exercise, isLast, disabledLabel, onSelect }: ExerciseRowP
       onPress={() => {
         onSelect(exercise);
       }}
-      accessibilityRole="button"
+      // A checkbox is a checkbox, and a row that commits is a button. The
+      // role is what tells a screen-reader user which of the two this tap
+      // is about to be, before they make it.
+      accessibilityRole={isMultiSelect ? 'checkbox' : 'button'}
       accessibilityLabel={label}
-      accessibilityHint={isDisabled ? undefined : 'Chooses this exercise and closes the picker'}
-      accessibilityState={{ disabled: isDisabled }}
+      accessibilityHint={
+        isDisabled
+          ? undefined
+          : isMultiSelect
+            ? 'Adds this to the list, or takes it back off'
+            : 'Chooses this exercise and closes the picker'
+      }
+      accessibilityState={
+        isMultiSelect ? { disabled: isDisabled, checked: isSelected } : { disabled: isDisabled }
+      }
       style={[styles.row, isDisabled ? styles.rowDimmed : null, isLast ? null : themed.divider]}
       testID={`picker-exercise-${exercise.id}`}
     >
@@ -457,6 +588,22 @@ function ExerciseRow({ exercise, isLast, disabledLabel, onSelect }: ExerciseRowP
 
       {exercise.isCustom ? <Badge tone="brand" size="sm" label="Yours" /> : null}
       {isDisabled ? <Badge tone="neutral" size="sm" label={disabledLabel} /> : null}
+
+      {/* The dimmed row keeps its badge and loses its box — an inert
+          checkbox is a checkbox that looks broken, and frame 1f draws the
+          origin exercise with the badge alone. */}
+      {isMultiSelect && !isDisabled ? (
+        <View
+          style={[styles.checkbox, isSelected ? themed.checkboxOn : themed.checkboxOff]}
+          // The row's own `accessibilityState.checked` already announces
+          // this; a second element here would say it twice.
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+          testID={`picker-check-${exercise.id}`}
+        >
+          {isSelected ? <Check size={13} strokeWidth={3} color={theme.colors.fg.onBrand} /> : null}
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -527,6 +674,7 @@ function StaleNote() {
 }
 
 const styles = StyleSheet.create({
+  header: { paddingHorizontal: GUTTER, paddingTop: spacing(12) },
   controls: {
     paddingHorizontal: GUTTER,
     paddingTop: spacing(12),
@@ -550,6 +698,15 @@ const styles = StyleSheet.create({
     gap: spacing(12),
   },
   rowDimmed: { opacity: 0.5 },
+  checkbox: {
+    width: CHECKBOX,
+    height: CHECKBOX,
+    borderRadius: radius.full,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
   rowText: { flex: 1, minWidth: 0 },
   tileWrap: { position: 'relative' },
   tile: {
@@ -608,4 +765,8 @@ const useThemedStyles = createThemedStyles((t) => ({
     borderColor: t.colors.brand.shade,
   },
   note: { backgroundColor: t.control.surface },
+  // Selected reads as filled-and-ticked, unselected as an empty outline:
+  // shape and fill, never hue alone (`accessibility` §4, `DESIGN.md` §8).
+  checkboxOn: { backgroundColor: t.colors.brand.DEFAULT, borderColor: t.colors.brand.DEFAULT },
+  checkboxOff: { backgroundColor: 'transparent', borderColor: t.colors.border.strong },
 }));

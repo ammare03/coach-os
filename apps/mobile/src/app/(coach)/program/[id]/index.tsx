@@ -1,13 +1,22 @@
-import { Text, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
-// Placeholder route (`phase-05-app-shell/router-skeleton/01`). Structure
-// only — it renders its own route path and nothing else, deliberately. The
-// phase that owns this screen designs and builds it; anything added here
-// first would have to be deleted then (P05 README, "Risks").
+import { ProgramBuilderScreen } from '../../../../features/programs/screens/ProgramBuilderScreen.tsx';
+
+// Composition only (`CLAUDE.md` §9.2) — the screen owns its own query and
+// its four states; this file owns where a tap goes.
 export default function CoachProgramScreen() {
+  const router = useRouter();
+  const { id } = useLocalSearchParams<{ id: string }>();
+
   return (
-    <View>
-      <Text>(coach)/program/[id]/index</Text>
-    </View>
+    <ProgramBuilderScreen
+      programId={id}
+      onBack={() => {
+        router.back();
+      }}
+      onOpenDay={(dayId) => {
+        router.push({ pathname: '/(coach)/program/[id]/day/[dayId]', params: { id, dayId } });
+      }}
+    />
   );
 }

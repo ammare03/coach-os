@@ -36,5 +36,19 @@ module.exports = function reanimatedDouble() {
     cancelAnimation: () => undefined,
     runOnJS: (fn) => fn,
     interpolate: (value) => value,
+    // The three members `react-native-gesture-handler`'s own
+    // `handlers/gestures/reanimatedWrapper.ts` probes for before it will
+    // mount a `<GestureDetector>` (`program-builder/03`'s draggable list is
+    // the first real one in the app). Without them RNGH either throws
+    // `Reanimated.useEvent is not a function` or silently drops to its
+    // non-Reanimated path — and the second is worse, because the tree still
+    // renders and the failure only shows up as a gesture that never fires.
+    //
+    // No-ops on purpose: a drag is a UI-thread, native-driven interaction
+    // and is verified on hardware, exactly as `@gorhom/bottom-sheet`'s is
+    // below. What a component test owns is the tree the detector wraps —
+    // its labels, its roles, and its non-gesture path.
+    useEvent: () => () => undefined,
+    setGestureState: () => undefined,
   };
 };

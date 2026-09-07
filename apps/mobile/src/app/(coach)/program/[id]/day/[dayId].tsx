@@ -1,13 +1,29 @@
-import { Text, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
-// Placeholder route (`phase-05-app-shell/router-skeleton/01`). Structure
-// only — it renders its own route path and nothing else, deliberately. The
-// phase that owns this screen designs and builds it; anything added here
-// first would have to be deleted then (P05 README, "Risks").
+import { ProgramDayScreen } from '../../../../../features/programs/screens/ProgramDayScreen.tsx';
+
+// Composition only (`CLAUDE.md` §9.2) — the screen owns its own query and
+// its four states; this file owns where a tap goes.
 export default function CoachProgramDayScreen() {
+  const router = useRouter();
+  const { id, dayId } = useLocalSearchParams<{ id: string; dayId: string }>();
+
   return (
-    <View>
-      <Text>(coach)/program/[id]/day/[dayId]</Text>
-    </View>
+    <ProgramDayScreen
+      programDayId={dayId}
+      onBack={() => {
+        router.back();
+      }}
+      // A sibling slot REPLACES this screen rather than stacking on it: the
+      // day strip is lateral movement inside one week, and pushing would
+      // build a back stack of days a coach then has to unwind one tap at a
+      // time to reach the builder.
+      onOpenDay={(nextDayId) => {
+        router.replace({
+          pathname: '/(coach)/program/[id]/day/[dayId]',
+          params: { id, dayId: nextDayId },
+        });
+      }}
+    />
   );
 }

@@ -22,6 +22,9 @@ interface CoachFixture {
   userId: string;
   profileId: string;
   programId: string;
+  programWeekId: string;
+  programDayId: string;
+  programExerciseId: string;
   inviteId: string;
 }
 
@@ -65,6 +68,51 @@ async function insertCoach(db: DbClient, emailLocal: string): Promise<CoachFixtu
     .returning({ id: schema.programs.id });
   if (!program) throw new Error('seed insert into programs did not return a row');
 
+  // `program-builder/01` adds `programWeek`/`programDay` to the registry,
+  // so the enumeration needs a foreign one of each to probe against.
+  const [week] = await db
+    .insert(schema.programWeeks)
+    .values({ programId: program.id, weekNumber: 1 })
+    .returning({ id: schema.programWeeks.id });
+  if (!week) throw new Error('seed insert into program_weeks did not return a row');
+
+  const [day] = await db
+    .insert(schema.programDays)
+    .values({ programWeekId: week.id, dayNumber: 1, name: 'Fixture Day' })
+    .returning({ id: schema.programDays.id });
+  if (!day) throw new Error('seed insert into program_days did not return a row');
+
+  // `program-builder/02` adds `programExercise` to the registry, so the
+  // enumeration needs a foreign one to probe against — and it needs an
+  // exercise of this coach's own to hang it on, because the block's owner
+  // is resolved three joins up to `programs.coach_id`, never from here.
+  const [coachExercise] = await db
+    .insert(schema.exercises)
+    .values({
+      coachId: profile.id,
+      name: `Fixture Coach Exercise ${emailLocal}`,
+      primaryMuscle: 'quads',
+      equipment: 'barbell',
+      movementPattern: 'squat',
+    })
+    .returning({ id: schema.exercises.id });
+  if (!coachExercise) throw new Error('seed insert into exercises did not return a row');
+
+  const [programExercise] = await db
+    .insert(schema.programExercises)
+    .values({
+      programDayId: day.id,
+      exerciseId: coachExercise.id,
+      orderIndex: 1,
+      targetSets: 3,
+      targetRepsMin: 8,
+      targetRepsMax: 10,
+    })
+    .returning({ id: schema.programExercises.id });
+  if (!programExercise) {
+    throw new Error('seed insert into program_exercises did not return a row');
+  }
+
   const [invite] = await db
     .insert(schema.invites)
     .values({
@@ -75,7 +123,15 @@ async function insertCoach(db: DbClient, emailLocal: string): Promise<CoachFixtu
     .returning({ id: schema.invites.id });
   if (!invite) throw new Error('seed insert into invites did not return a row');
 
-  return { userId, profileId: profile.id, programId: program.id, inviteId: invite.id };
+  return {
+    userId,
+    profileId: profile.id,
+    programId: program.id,
+    programWeekId: week.id,
+    programDayId: day.id,
+    programExerciseId: programExercise.id,
+    inviteId: invite.id,
+  };
 }
 
 async function insertClient(

@@ -118,6 +118,90 @@ export const APP_ERROR_CODES = [
   // so there is no oracle to close, and "you can't edit this" is the true
   // and more useful answer.
   'EXERCISE_NOT_EDITABLE',
+  // program-builder/01 — the three refusals a coach can walk into while
+  // building the week/day hierarchy, each mapping to one DB§5.2 constraint
+  // the builder would otherwise surface as a raw Postgres unique violation.
+  // `PROGRAM_WEEK_EXISTS` and `PROGRAM_DAY_TAKEN` are pre-checked in the
+  // resolver rather than translated from the constraint name, because both
+  // payloads carry the number that collided and the stateless database
+  // boundary cannot fabricate that (`../../apps/api/src/db/constraint-map.ts`
+  // documents the same rule for `CHECKIN_ALREADY_SUBMITTED`).
+  'PROGRAM_WEEK_EXISTS',
+  'PROGRAM_DAY_TAKEN',
+  // program-builder/01 — the length stepper cannot be driven below the
+  // weeks that already exist. Refusing is the only non-destructive answer:
+  // the alternative is silently orphaning weeks 9-12 of a twelve-week
+  // program the coach has already written.
+  'PROGRAM_DURATION_TOO_SHORT',
+  // program-builder/01 — "Add week" at the `programs_duration_weeks_check`
+  // ceiling. The builder hides the affordance at 104, so this is the
+  // server's own floor under a stale client, never the normal path.
+  'PROGRAM_WEEK_LIMIT_REACHED',
+  // program-builder/02 — "Add exercise" at the day's ceiling. The day
+  // screen hides the affordance once the day is full, so this is the
+  // server's own floor under a stale client, never the normal path.
+  // Exactly the shape `PROGRAM_WEEK_LIMIT_REACHED` above has, and for the
+  // same reason.
+  'PROGRAM_EXERCISE_LIMIT_REACHED',
+  // program-builder/03 — the drop. `reorder` takes the day's COMPLETE new
+  // order, so a list that no longer matches the day (a block added or
+  // deleted on another device between the read and the drop) is a stale
+  // picture, not a malformed request. Distinct from `SYNC_CONFLICT`, whose
+  // copy is written for a client whose coach changed something while they
+  // were offline, and whose recovery is "showing their version" rather than
+  // "refetch and make the move again".
+  'PROGRAM_DAY_ORDER_STALE',
+  // program-builder/04 — the three ways a superset write can be refused.
+  //
+  // `PROGRAM_SUPERSET_LIMIT_REACHED` is the alphabet running out:
+  // `superset_group` is one uppercase letter (DB§5.2's regex), so a day
+  // holds at most 26 groups. A generous ceiling that will not bind in
+  // practice — but a ceiling, and hitting it must say so rather than
+  // silently doing nothing.
+  //
+  // `PROGRAM_SUPERSET_NOT_ADJACENT` is the product rule underneath the
+  // whole feature: a superset is exercises performed back to back
+  // (`CLAUDE.md` §26), so its members must be two or more, consecutive in
+  // the day's order, and must stay that way. Thrown by BOTH
+  // `setSupersetGroup` (a selection that is short or has a gap in it) and
+  // `reorder` (a move that would pull a member out of its group) — one
+  // rule, one code, because it is the same sentence either way.
+  //
+  // `PROGRAM_SUPERSET_STALE` is the letter having been taken, or a named
+  // block having been grouped or deleted, since the client last read the
+  // day. Same shape and same recovery as `PROGRAM_DAY_ORDER_STALE` —
+  // refetch and make the grouping again — and kept separate from it only
+  // because the two sentences differ.
+  'PROGRAM_SUPERSET_LIMIT_REACHED',
+  'PROGRAM_SUPERSET_NOT_ADJACENT',
+  'PROGRAM_SUPERSET_STALE',
+  // program-builder/05 — a block offered as its own approved swap. The
+  // sheet renders the origin exercise dimmed, badged "This one" and
+  // without a checkbox, so this is the server's own floor under a stale or
+  // patched client, never the normal path.
+  //
+  // It is the ONLY refusal `setAlternatives` needed a new code for. An id
+  // that names nothing, and an id that names another coach's custom
+  // exercise, both answer the existing `EXERCISE_NOT_FOUND` — deliberately
+  // indistinguishable from each other, because a distinct code for the
+  // second would confirm that row exists and hand back the enumeration
+  // oracle `exercises.get` and `createProgramExercise` already close
+  // (`ERRORS.md` ER§2.1). A count over the ceiling and a list naming one
+  // exercise twice are both refused by the schema itself, as
+  // `VALIDATION_FAILED`.
+  'PROGRAM_ALTERNATIVE_IS_ORIGIN',
+  // program-builder/06 — a day copied into a week of a DIFFERENT program.
+  // Cross-program duplication is out of that task's scope (it belongs to
+  // `program-templates`), and `programs.days.duplicate` names two rows the
+  // caller may legitimately own without them belonging together: both
+  // `ownsResource` guards can pass on a pair this procedure does not
+  // offer to copy. BAD_REQUEST, not NOT_FOUND: both rows are the caller's
+  // own and `programs.get` returns each of them happily, so there is no
+  // existence to conceal and no oracle to close (`ERRORS.md` ER§2.1's test
+  // applied, not skipped). The copy-to sheet lists only the weeks of the
+  // program it is already showing, so this is the floor under a stale or
+  // patched client, never the normal path.
+  'PROGRAM_COPY_CROSS_PROGRAM',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -181,6 +265,17 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   EXERCISE_NOT_FOUND: 'NOT_FOUND',
   EXERCISE_NAME_TAKEN: 'CONFLICT',
   EXERCISE_NOT_EDITABLE: 'FORBIDDEN',
+  PROGRAM_WEEK_EXISTS: 'CONFLICT',
+  PROGRAM_DAY_TAKEN: 'CONFLICT',
+  PROGRAM_DURATION_TOO_SHORT: 'BAD_REQUEST',
+  PROGRAM_WEEK_LIMIT_REACHED: 'BAD_REQUEST',
+  PROGRAM_EXERCISE_LIMIT_REACHED: 'BAD_REQUEST',
+  PROGRAM_DAY_ORDER_STALE: 'CONFLICT',
+  PROGRAM_SUPERSET_LIMIT_REACHED: 'BAD_REQUEST',
+  PROGRAM_SUPERSET_NOT_ADJACENT: 'BAD_REQUEST',
+  PROGRAM_SUPERSET_STALE: 'CONFLICT',
+  PROGRAM_ALTERNATIVE_IS_ORIGIN: 'BAD_REQUEST',
+  PROGRAM_COPY_CROSS_PROGRAM: 'BAD_REQUEST',
 };
 
 /**
@@ -262,6 +357,35 @@ export interface AppErrorPayloads {
   // sent it), and DB§18 keeps user-authored text out of error payloads.
   EXERCISE_NAME_TAKEN: { existingExerciseId: string };
   EXERCISE_NOT_EDITABLE: EmptyErrorPayload;
+  // The colliding number, never the colliding row's name — DB§18 keeps
+  // coach-authored text out of error payloads, and the number is what the
+  // copy needs anyway ("Week 3 already exists").
+  PROGRAM_WEEK_EXISTS: { weekNumber: number };
+  PROGRAM_DAY_TAKEN: { dayNumber: number };
+  // How many weeks are actually written, so the stepper can clamp itself to
+  // the truth rather than re-fetching to find out.
+  PROGRAM_DURATION_TOO_SHORT: { weekCount: number };
+  PROGRAM_WEEK_LIMIT_REACHED: { maxWeeks: number };
+  PROGRAM_EXERCISE_LIMIT_REACHED: { maxExercises: number };
+  // How many blocks the day actually holds, so the client can decide
+  // whether its own list is short or long without a second round trip.
+  // Numbers only, never a name or an id (DB§18).
+  PROGRAM_DAY_ORDER_STALE: { exerciseCount: number };
+  // The alphabet's own length, so the copy reads the ceiling from the
+  // server rather than restating 26 on the device.
+  PROGRAM_SUPERSET_LIMIT_REACHED: { maxGroups: number };
+  // How many blocks the call named. Numbers only — never the superset
+  // letter and never a block id (DB§18).
+  PROGRAM_SUPERSET_NOT_ADJACENT: { exerciseCount: number };
+  // How many groups the day actually holds now, which is what a client
+  // with a stale picture is wrong about.
+  PROGRAM_SUPERSET_STALE: { groupCount: number };
+  // Nothing to carry. The client already knows which block it is editing
+  // and which exercise that block is — echoing either back would add a
+  // second, copyable statement of the same id for no recovery value, and
+  // DB§18's rule is that a payload carries only what the copy needs.
+  PROGRAM_ALTERNATIVE_IS_ORIGIN: EmptyErrorPayload;
+  PROGRAM_COPY_CROSS_PROGRAM: EmptyErrorPayload;
 }
 
 /**
