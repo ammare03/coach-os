@@ -1555,7 +1555,7 @@ parallel makes source 1 more likely. That is worth knowing before P09 adds ~100 
 
 ## 10. Step 2 findings
 
-Twenty-three findings, severity-tagged. **Blocking** = must not ship / must not be built on.
+Twenty-three findings — 2 Blocking, 11 Should-fix-before-09, 10 Nice-to-have. **Blocking** = must not ship / must not be built on.
 **Should-fix-before-09** = Phase 09 will make it worse, or will trip over it.
 **Nice-to-have** = real, but nothing before P09 depends on it.
 
@@ -1595,7 +1595,7 @@ tests, returns **only the two function definitions** (`jobs/age-sweep.ts:41`,
 unchanged and confirmed. **Why it matters for P09:** it does not, mechanically — but P09 is the
 natural moment to add the scheduler, because it is small and every later phase assumes it exists.
 
-### 10.2 Should-fix-before-09 — 10
+### 10.2 Should-fix-before-09 — 11
 
 **F23 · `pnpm check` no longer exits 0, and the cause is a test-isolation leak rather than Step 1's
 Docker contention.** The Step 2 re-run (`turbo run check --force --concurrency=1`, Docker up, 17m)
