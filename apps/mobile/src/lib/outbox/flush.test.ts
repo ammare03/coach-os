@@ -6,290 +6,36 @@ import { enqueueMutation } from './enqueue.ts';
 import {
   claimReadyEntries,
   flushOutbox,
+  MAX_ATTEMPTS,
   resetOutboxFlushStateForTests,
   runFlushPass,
   type OutboxSender,
 } from './flush.ts';
 
-// `expo-sqlite` has no Jest-side native module, so this is `enqueue.test.ts`'s
-// hand-built fake — same structure, same idioms — extended with exactly what
-// this task's statements need and task 01's did not: `begin`/`commit`/
-// `rollback` (the claim runs in a transaction), `UPDATE`, a `WHERE` grammar
-// beyond one equality, `ORDER BY`/`LIMIT`, and `executeForRawResultSync`,
-// which is what Drizzle calls for a *builder* select (it maps columns
-// positionally) rather than the raw-`sql` path task 01 exercised.
-//
-// A second, divergent fake would be worse than a shared one, but a shared one
-// would mean rewriting `enqueue.test.ts` — task 01's file, and not this
-// task's to refactor. The compromise: this is a strict superset, written to
-// the same shape, so extracting both to one helper later is a move, not a
-// merge.
-//
-// Jest hoists `jest.mock()` above every import and its factory may not close
-// over an out-of-scope value, so the fake is built inside the factory.
+// `trackEvent` fires on the ceiling transition (`ANALYTICS.md` AN§3.8's
+// `sync_failed`). Mocked rather than exercised: the real module reaches
+// PostHog's native client, and what this file is asserting is that the
+// event fires once with the right shape, which is the seam's whole job.
+jest.mock('../analytics/index.ts', () => ({
+  trackEvent: jest.fn(),
+  asProcedureName: (path: string) => path,
+}));
+
+// `expo-sqlite` has no Jest-side native module, so these tests run against
+// the hand-built fake in `__fixtures__/sqlite-fake.ts` — see its header for
+// what it does and does not implement. Jest hoists `jest.mock()` above every
+// import and its factory may not close over an out-of-scope value, but it
+// may `require`, which is how one definition serves two suites.
 type Row = Record<string, unknown>;
 
-jest.mock('expo-sqlite', () => {
-  const tables = new Map<string, Row[]>();
-  let snapshot: Map<string, Row[]> | null = null;
-
-  function tableRows(name: string): Row[] {
-    let rows = tables.get(name);
-    if (!rows) {
-      rows = [];
-      tables.set(name, rows);
-    }
-    return rows;
-  }
-
-  function copyTables(): Map<string, Row[]> {
-    return new Map([...tables].map(([name, rows]) => [name, rows.map((r) => ({ ...r }))]));
-  }
-
-  function makeResult(rows: Row[], columns: string[] | null, changes = 0, lastInsertRowId = 0) {
-    return {
-      changes,
-      lastInsertRowId,
-      getFirstSync: () => rows[0],
-      // Drizzle's builder selects go through `executeForRawResultSync`, which
-      // returns positional arrays; raw `sql` selects go through
-      // `executeSync`, which returns objects.
-      getAllSync: () => (columns ? rows.map((r) => columns.map((c) => r[c])) : rows),
-    };
-  }
-
-  const stripQuotes = (token: string) => token.replace(/"/g, '').trim();
-  const columnOf = (token: string) => {
-    const parts = stripQuotes(token).split('.');
-    return parts[parts.length - 1] ?? '';
-  };
-
-  function splitTopLevel(text: string, separator: string): string[] {
-    const parts: string[] = [];
-    let depth = 0;
-    let start = 0;
-    for (let i = 0; i < text.length; i += 1) {
-      const char = text[i];
-      if (char === '(') depth += 1;
-      else if (char === ')') depth -= 1;
-      else if (depth === 0 && text.startsWith(separator, i)) {
-        parts.push(text.slice(start, i));
-        i += separator.length - 1;
-        start = i + 1;
-      }
-    }
-    parts.push(text.slice(start));
-    return parts.map((p) => p.trim()).filter((p) => p.length > 0);
-  }
-
-  // Compiles the `WHERE` subset this module's queries actually emit —
-  // `col in (?, …)`, `col <op> ?`, joined by `and`. Placeholders are consumed
-  // through `take()` in statement order, which is how the driver binds them.
-  function compileWhere(text: string, take: () => unknown): (row: Row) => boolean {
-    let body = text.trim();
-    while (
-      body.startsWith('(') &&
-      splitTopLevel(body, ' and ').length === 1 &&
-      body.endsWith(')')
-    ) {
-      const inner = body.slice(1, -1).trim();
-      if (splitTopLevel(inner, ')').length > 1 && !inner.startsWith('(')) break;
-      body = inner;
-    }
-    const predicates = splitTopLevel(body, ' and ').map((term) => {
-      const inMatch = /^(\S+)\s+in\s*\(([^)]*)\)$/i.exec(term);
-      if (inMatch?.[1] && inMatch[2] !== undefined) {
-        const column = columnOf(inMatch[1]);
-        const values = inMatch[2].split(',').map(() => take());
-        return (row: Row) => values.includes(row[column]);
-      }
-      const nullMatch = /^(\S+)\s+is\s+(not\s+)?null$/i.exec(term);
-      if (nullMatch?.[1]) {
-        const column = columnOf(nullMatch[1]);
-        const negated = Boolean(nullMatch[2]);
-        return (row: Row) => (row[column] === null || row[column] === undefined) !== negated;
-      }
-      const compare = /^(\S+)\s*(<=|>=|!=|<>|<|>|=)\s*\?$/.exec(term);
-      if (!compare?.[1] || !compare[2]) {
-        throw new Error(`Unhandled WHERE term in fake expo-sqlite: ${term}`);
-      }
-      const column = columnOf(compare[1]);
-      const operator = compare[2];
-      const value = take();
-      return (row: Row) => {
-        const actual = row[column];
-        switch (operator) {
-          case '=':
-            return actual === value;
-          case '!=':
-          case '<>':
-            return actual !== value;
-          case '<':
-            return Number(actual) < Number(value);
-          case '<=':
-            return Number(actual) <= Number(value);
-          case '>':
-            return Number(actual) > Number(value);
-          default:
-            return Number(actual) >= Number(value);
-        }
-      };
-    });
-    return (row: Row) => predicates.every((predicate) => predicate(row));
-  }
-
-  function keywordIndex(text: string, keyword: RegExp): number {
-    const match = keyword.exec(text);
-    return match ? match.index : -1;
-  }
-
-  let failNextWrite: string | null = null;
-
-  function execute(sqlText: string, params: unknown[], columnsWanted: boolean) {
-    const statement = sqlText.trim();
-    let cursor = 0;
-    const take = () => params[cursor++];
-
-    if (/^begin/i.test(statement)) {
-      snapshot = copyTables();
-      return makeResult([], null);
-    }
-    if (/^commit/i.test(statement)) {
-      snapshot = null;
-      return makeResult([], null);
-    }
-    if (/^rollback/i.test(statement)) {
-      if (snapshot) {
-        tables.clear();
-        for (const [name, rows] of snapshot) tables.set(name, rows);
-        snapshot = null;
-      }
-      return makeResult([], null);
-    }
-
-    const createTable = /^CREATE TABLE(?: IF NOT EXISTS)?\s+(\w+)/i.exec(statement);
-    if (createTable?.[1]) {
-      tableRows(createTable[1]);
-      return makeResult([], null);
-    }
-    if (/^CREATE INDEX/i.test(statement)) {
-      return makeResult([], null);
-    }
-
-    const insertInto =
-      /^INSERT\s+INTO\s+"?(\w+)"?\s*\(([\s\S]*?)\)\s*VALUES\s*\(([\s\S]*?)\)/i.exec(statement);
-    if (insertInto?.[1] && insertInto[2] && insertInto[3] !== undefined) {
-      if (failNextWrite !== null) {
-        const message = failNextWrite;
-        failNextWrite = null;
-        throw new Error(message);
-      }
-      const columns = insertInto[2].split(',').map((c) => stripQuotes(c));
-      const values = insertInto[3].split(',').map((v) => v.trim());
-      const row: Row = {};
-      columns.forEach((column, i) => {
-        const token = values[i];
-        if (token === '?') row[column] = take();
-        else if (token === undefined || /^null$/i.test(token)) row[column] = null;
-        else row[column] = token.replace(/^'|'$/g, '');
-      });
-      const rows = tableRows(insertInto[1]);
-      rows.push(row);
-      return makeResult([row], null, 1, rows.length);
-    }
-
-    const update = /^update\s+"?(\w+)"?\s+set\s/i.exec(statement);
-    if (update?.[1]) {
-      if (failNextWrite !== null) {
-        const message = failNextWrite;
-        failNextWrite = null;
-        throw new Error(message);
-      }
-      const afterSet = statement.slice(update[0].length);
-      const whereAt = keywordIndex(afterSet, /\swhere\s/i);
-      const setText = whereAt === -1 ? afterSet : afterSet.slice(0, whereAt);
-      const assignments = splitTopLevel(setText, ',').map((pair) => {
-        const [left, right] = pair.split('=').map((s) => s.trim());
-        if (!left || right !== '?') {
-          throw new Error(`Unhandled SET clause in fake expo-sqlite: ${pair}`);
-        }
-        return [columnOf(left), take()] as const;
-      });
-      const matches =
-        whereAt === -1
-          ? () => true
-          : compileWhere(afterSet.slice(whereAt + ' where '.length), take);
-      let changes = 0;
-      for (const row of tableRows(update[1])) {
-        if (!matches(row)) continue;
-        for (const [column, value] of assignments) row[column] = value;
-        changes += 1;
-      }
-      return makeResult([], null, changes);
-    }
-
-    const select = /^select\s+([\s\S]*?)\s+from\s+"?(\w+)"?/i.exec(statement);
-    if (select?.[1] && select[2]) {
-      const columnList = select[1].trim();
-      const columns =
-        columnList === '*' ? null : columnList.split(',').map((c) => columnOf(c.trim()));
-      const tail = statement.slice(select[0].length);
-      const whereAt = keywordIndex(tail, /\swhere\s/i);
-      const orderAt = keywordIndex(tail, /\sorder\s+by\s/i);
-      const limitAt = keywordIndex(tail, /\slimit\s/i);
-      const endOfWhere = [orderAt, limitAt].filter((i) => i !== -1).sort((a, b) => a - b)[0];
-      let rows = [...tableRows(select[2])];
-      if (whereAt !== -1) {
-        const whereText = tail.slice(
-          whereAt + ' where '.length,
-          endOfWhere === undefined ? undefined : endOfWhere,
-        );
-        const matches = compileWhere(whereText, take);
-        rows = rows.filter(matches);
-      }
-      if (orderAt !== -1) {
-        const orderText = tail.slice(
-          orderAt + ' order by '.length,
-          limitAt === -1 ? undefined : limitAt,
-        );
-        const [columnToken = '', direction = 'asc'] = orderText.trim().split(/\s+/);
-        const column = columnOf(columnToken);
-        const sign = direction.toLowerCase() === 'desc' ? -1 : 1;
-        rows.sort((a, b) => (Number(a[column]) - Number(b[column])) * sign);
-      }
-      if (limitAt !== -1) {
-        rows = rows.slice(0, Number(take()));
-      }
-      return makeResult(rows, columnsWanted ? columns : null);
-    }
-
-    throw new Error(`Unhandled SQL in fake expo-sqlite: ${statement}`);
-  }
-
-  const database = {
-    prepareSync: (sqlText: string) => ({
-      executeSync: (params: unknown[] = []) => execute(sqlText, params, false),
-      executeForRawResultSync: (params: unknown[] = []) => execute(sqlText, params, true),
-    }),
-  };
-
-  return {
-    openDatabaseAsync: jest.fn(async () => database),
-    __reset: () => {
-      tables.clear();
-      snapshot = null;
-      failNextWrite = null;
-    },
-    __failNextWrite: (message: string) => {
-      failNextWrite = message;
-    },
-  };
-});
+jest.mock('expo-sqlite', () => require('./__fixtures__/sqlite-fake.ts').createSqliteFake());
 
 const sqliteFake = jest.requireMock('expo-sqlite') as {
   __reset: () => void;
   __failNextWrite: (message: string) => void;
 };
+
+const analytics = jest.requireMock('../analytics/index.ts') as { trackEvent: jest.Mock };
 
 // Ahead of the wall clock `enqueueMutation` stamps rows with, so an
 // freshly-enqueued row is always due by the time the flush loop looks.
@@ -340,10 +86,40 @@ function failingSender(message: string) {
   });
 }
 
+/**
+ * A sender that answers with a genuine conflict. Shaped like what the tRPC
+ * client actually throws — `data.httpStatus` and `data.code` come from
+ * tRPC's own shape, `appCode` from `apps/api`'s error formatter — rather
+ * than a bespoke marker the production code could only recognise here.
+ */
+function conflictingSender(data: Record<string, unknown>) {
+  return jest.fn<ReturnType<OutboxSender>, Parameters<OutboxSender>>(async () => {
+    throw Object.assign(new Error('conflict'), { data });
+  });
+}
+
+/** A device-mirror set log, the row a conflict has to mark. Raw SQL, as the rest of this file's fixtures are. */
+async function seedMirrorSetLog(clientLocalId: string): Promise<void> {
+  const db = await getLocalDb();
+  db.run(
+    sql`INSERT INTO local_workout_sessions (id, client_local_id, scheduled_date, status, payload_json, sync_state, updated_at) VALUES (${'session-1'}, ${'session-1'}, ${'2026-09-08'}, ${'in_progress'}, ${'{}'}, ${'pending'}, ${1_757_000_000_000})`,
+  );
+  db.run(
+    sql`INSERT INTO local_set_logs (id, client_local_id, session_local_id, exercise_id, set_number, logged_at, sync_state) VALUES (${clientLocalId}, ${clientLocalId}, ${'session-1'}, ${'exercise-1'}, ${1}, ${1_757_000_000_500}, ${'pending'})`,
+  );
+}
+
+async function readMirrorSetLog(clientLocalId: string): Promise<Row | undefined> {
+  const db = await getLocalDb();
+  const rows = db.all<Row>(sql`SELECT * FROM local_set_logs`);
+  return rows.find((r) => r.client_local_id === clientLocalId);
+}
+
 beforeEach(() => {
   resetLocalDbForTests();
   resetOutboxFlushStateForTests();
   sqliteFake.__reset();
+  analytics.trackEvent.mockClear();
 });
 
 describe('claimReadyEntries', () => {
@@ -667,5 +443,144 @@ describe('flushOutbox', () => {
       failed: 0,
     });
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe('backoff and the attempt ceiling (DB§14.4)', () => {
+  // The ceiling logs one loud line by design (`observability-ops` §3);
+  // silenced so a passing run stays readable, and asserted below.
+  let warn: jest.SpyInstance;
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+  afterEach(() => warn.mockRestore());
+
+  it('waits 1s, 2s, 4s, 8s… doubling after every failed attempt', async () => {
+    const send = failingSender('network down');
+    const enqueued = await enqueueMutation({ procedure: 'workouts.logSet', payload: {} });
+
+    // No `backoffMs` override: this asserts the DEFAULT the flush loop
+    // ships with, which is the acceptance criterion. The clock advances to
+    // exactly the row's own `next_attempt_at`, so each run is the moment
+    // the previous backoff expired.
+    const delays: number[] = [];
+    let clock = FIXED_NOW;
+    for (let attempt = 1; attempt < MAX_ATTEMPTS; attempt += 1) {
+      await flushOutbox({ send, now: () => clock });
+      const row = await readRow(enqueued.outboxId);
+      delays.push(Number(row?.next_attempt_at) - clock);
+      clock = Number(row?.next_attempt_at);
+    }
+
+    expect(delays).toEqual([1_000, 2_000, 4_000, 8_000, 16_000, 32_000, 64_000, 128_000, 256_000]);
+    expect(send).toHaveBeenCalledTimes(MAX_ATTEMPTS - 1);
+  });
+
+  it('stops after exactly ten attempts and leaves the row failed, never dropped', async () => {
+    const send = failingSender('network down');
+    const enqueued = await enqueueMutation({ procedure: 'workouts.logSet', payload: {} });
+
+    // Well past the 5-minute cap each time, so the row is always due and
+    // the only thing that can stop the loop is the ceiling itself.
+    let clock = FIXED_NOW;
+    for (let run = 0; run < MAX_ATTEMPTS + 3; run += 1) {
+      await flushOutbox({ send, now: () => clock });
+      clock += 600_000;
+    }
+
+    expect(send).toHaveBeenCalledTimes(MAX_ATTEMPTS);
+    expect(await readRow(enqueued.outboxId)).toMatchObject({
+      status: 'failed',
+      attempts: MAX_ATTEMPTS,
+    });
+    // Codes and ids only — never the error message, which can echo a payload.
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('outbox.permanently_failed', {
+      outboxId: enqueued.outboxId,
+      procedure: 'workouts.logSet',
+      attempts: MAX_ATTEMPTS,
+      errorCode: 'NETWORK_ERROR',
+    });
+  });
+
+  it('fires sync_failed once, at the ceiling and not before', async () => {
+    const send = failingSender('network down');
+    await enqueueMutation({ procedure: 'workouts.logSet', payload: {} });
+
+    let clock = FIXED_NOW;
+    for (let run = 0; run < MAX_ATTEMPTS + 2; run += 1) {
+      await flushOutbox({ send, now: () => clock });
+      clock += 600_000;
+    }
+
+    expect(analytics.trackEvent).toHaveBeenCalledTimes(1);
+    expect(analytics.trackEvent).toHaveBeenCalledWith('sync_failed', {
+      procedure: 'workouts.logSet',
+      attempts: MAX_ATTEMPTS,
+    });
+  });
+});
+
+describe('conflict routing (a 409 is not a retryable failure)', () => {
+  const CONFLICT_DATA = { code: 'CONFLICT', httpStatus: 409, appCode: 'SYNC_CONFLICT' };
+
+  it('routes a 409 straight to sync_state=conflict without consuming an attempt', async () => {
+    const send = conflictingSender(CONFLICT_DATA);
+    const enqueued = await enqueueMutation({ procedure: 'workouts.logSet', payload: {} });
+    await seedMirrorSetLog(enqueued.clientLocalId);
+
+    const result = await flushOutbox({ send, now: () => FIXED_NOW });
+
+    expect(result).toMatchObject({ claimed: 1, sent: 0, failed: 1 });
+    expect((await readMirrorSetLog(enqueued.clientLocalId))?.sync_state).toBe('conflict');
+    expect(await readRow(enqueued.outboxId)).toMatchObject({
+      attempts: 0,
+      last_error: 'SYNC_CONFLICT',
+    });
+  });
+
+  it('recognises a bare 409 with no app code, since the status alone is definitive', async () => {
+    const send = conflictingSender({ httpStatus: 409 });
+    const enqueued = await enqueueMutation({ procedure: 'workouts.logSet', payload: {} });
+
+    await flushOutbox({ send, now: () => FIXED_NOW });
+
+    expect(await readRow(enqueued.outboxId)).toMatchObject({ attempts: 0 });
+  });
+
+  it('never re-sends a conflicted row on a later flush', async () => {
+    const send = conflictingSender(CONFLICT_DATA);
+    await enqueueMutation({ procedure: 'workouts.logSet', payload: {} });
+
+    await flushOutbox({ send, now: () => FIXED_NOW });
+    await flushOutbox({ send, now: () => FIXED_NOW + 600_000 });
+
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('never counts a conflict toward the failure surface, however many times it happens', async () => {
+    const send = conflictingSender(CONFLICT_DATA);
+    const enqueued = await enqueueMutation({ procedure: 'workouts.logSet', payload: {} });
+
+    await flushOutbox({ send, now: () => FIXED_NOW });
+
+    // The banner keys on `status='failed'` at the ceiling. A conflict that
+    // landed there would be reported to the client as "couldn't be saved"
+    // when the server has in fact answered definitively.
+    expect((await readRow(enqueued.outboxId))?.status).not.toBe('failed');
+    expect(analytics.trackEvent).not.toHaveBeenCalled();
+  });
+
+  it('still backs off a 5xx, which is retryable however conflict-shaped its body is', async () => {
+    const send = conflictingSender({ code: 'INTERNAL_SERVER_ERROR', httpStatus: 500 });
+    const enqueued = await enqueueMutation({ procedure: 'workouts.logSet', payload: {} });
+
+    await flushOutbox({ send, now: () => FIXED_NOW });
+
+    expect(await readRow(enqueued.outboxId)).toMatchObject({
+      status: 'failed',
+      attempts: 1,
+      next_attempt_at: FIXED_NOW + 1_000,
+    });
   });
 });

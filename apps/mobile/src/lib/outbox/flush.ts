@@ -5,9 +5,13 @@ import type { AppRouter } from 'api/src/routers/index.ts';
 import { and, asc, eq, inArray, lt, lte } from 'drizzle-orm';
 
 import { getLocalDb, type LocalDb } from '../../db/client.ts';
+import { localMeals } from '../../db/schema/local-nutrition.ts';
+import { localSetLogs, localWorkoutSessions } from '../../db/schema/local-training.ts';
 import { outbox } from '../../db/schema/sync.ts';
+import { asProcedureName, trackEvent } from '../analytics/index.ts';
 import { getErrorCode } from '../error-code.ts';
 
+import { computeBackoff } from './backoff.ts';
 import { deserializeOutboxPayload } from './enqueue.ts';
 
 // The engine of the outbox (DB§14.1, DB§14.2): read the rows that are ready,
@@ -21,19 +25,26 @@ import { deserializeOutboxPayload } from './enqueue.ts';
 // first has read it but before the first has claimed it. Adding an `await`
 // inside that function silently removes the guarantee.
 
-/** DB§14.4's ceiling. A row at this many attempts is never claimed again; task 03 owns the UI that surfaces it. */
+/**
+ * DB§14.4's ceiling. A row at this many attempts is never claimed again —
+ * it is terminal, not lost: `lib/outbox/failed-entries.ts` reads it back
+ * and `features/sync` surfaces it with a manual retry.
+ */
 export const MAX_ATTEMPTS = 10;
 
 /** How many rows one pass claims. Bounds concurrent in-flight sends; the loop keeps passing until nothing is ready. */
 export const FLUSH_BATCH_SIZE = 20;
 
 /**
- * Placeholder retry delay, replaced by `computeBackoff()` in
- * `outbox/backoff.ts` when `outbox/03` lands — that task owns the 1s/2s/4s…
- * 5-minute curve, and duplicating it here would only mean deleting it again.
- * The value is DB§14.4's first step, so the seam is not wrong, only flat.
+ * The device-mirror tables a conflict has to mark (DB§13). Every writable
+ * one carries `client_local_id` and `sync_state`, and the id is a UUIDv7,
+ * so at most one row across all three can match — which is why this is a
+ * sweep rather than a `procedure` → table map. A map would have to be
+ * edited by every feature that adds a mutation, and the failure mode of
+ * forgetting is a silent no-op: a conflicted row still rendering as if it
+ * had synced.
  */
-export const DEFAULT_RETRY_DELAY_MS = 1_000;
+const CONFLICTABLE_MIRRORS = [localWorkoutSessions, localSetLogs, localMeals] as const;
 
 type OutboxStatus = (typeof outbox.$inferSelect)['status'];
 
@@ -233,6 +244,58 @@ function describeSendFailure(error: unknown): string {
   return 'NETWORK_ERROR';
 }
 
+/**
+ * Whether the server answered with a genuine conflict.
+ *
+ * Keyed on the **transport status**, not on our own `SYNC_CONFLICT` code:
+ * a 409 is the server saying "I understood you and the answer is no", and
+ * no number of retries changes that (DB§14.4, `offline-sync` §5). Retrying
+ * one would burn all ten attempts and then tell the client their set could
+ * not be saved, which is both wrong and the most damaging thing this
+ * subsystem can say.
+ *
+ * Reads `error.data` structurally rather than requiring a
+ * `TRPCClientError`, because the sender is an injected seam and the shape
+ * is what matters, not the class.
+ */
+function isConflictFailure(error: unknown): boolean {
+  if (error instanceof OutboxDispatchError) return false;
+  if (getErrorCode(error) === 'SYNC_CONFLICT') return true;
+  const data: unknown = isRecord(error) ? error.data : null;
+  if (!isRecord(data)) return false;
+  return data.httpStatus === 409 || data.code === 'CONFLICT';
+}
+
+/**
+ * Hands the row to conflict resolution and takes it out of the retry loop.
+ *
+ * The mirror row goes to `sync_state='conflict'`, which is where
+ * `sync-engine` picks it up — this task deliberately stops there and
+ * resolves nothing (`outbox/03` Scope).
+ *
+ * The outbox row goes to `'done'` with `SYNC_CONFLICT` in `last_error`,
+ * and `attempts` is left exactly where it was. `'done'` reads oddly until
+ * you ask what it means: the outbox is finished with this row. The
+ * mutation *reached* the server and got a definitive answer, so it must
+ * not be retried (`'failed'` would be re-claimed the moment its backoff
+ * elapsed) and must not count toward the failure banner, which tells a
+ * client their work never left the device. DB§14's status set is closed —
+ * queued/inflight/failed/done — so a fifth value is not this task's to
+ * invent (`CLAUDE.md` rule 4).
+ */
+function markConflicted(db: LocalDb, entry: OutboxEntry): void {
+  for (const mirror of CONFLICTABLE_MIRRORS) {
+    db.update(mirror)
+      .set({ syncState: 'conflict' })
+      .where(eq(mirror.clientLocalId, entry.clientLocalId))
+      .run();
+  }
+  db.update(outbox)
+    .set({ status: 'done', lastError: 'SYNC_CONFLICT' })
+    .where(eq(outbox.id, entry.id))
+    .run();
+}
+
 function markDone(db: LocalDb, entryId: string): void {
   // Left in place rather than deleted: DB§14 does not call for deletion, and a
   // recently-synced row is what answers "did my workout upload?" without
@@ -260,6 +323,25 @@ function scheduleRetry(
     })
     .where(eq(outbox.id, entry.id))
     .run();
+
+  // DB§14.4's terminal state. `claimReadyEntries` already refuses a row at
+  // the ceiling, so nothing more is needed to stop the retrying — what is
+  // needed is that it stops SILENTLY nowhere. This is the moment the
+  // failure becomes user-visible (`features/sync`) and operator-visible.
+  if (attempts >= MAX_ATTEMPTS) {
+    // Fixed message, ids and codes only (`observability-ops` §1, §3). A
+    // permanently-failed outbox row is a P1 integrity signal (§4).
+    console.warn('outbox.permanently_failed', {
+      outboxId: entry.id,
+      procedure: entry.procedure,
+      attempts,
+      errorCode: describeSendFailure(error),
+    });
+    trackEvent('sync_failed', {
+      procedure: asProcedureName(entry.procedure),
+      attempts,
+    });
+  }
 }
 
 async function sendEntry(
@@ -284,6 +366,10 @@ async function sendEntry(
         errorCode: error.code,
       });
     }
+    if (isConflictFailure(error)) {
+      markConflicted(db, entry);
+      return false;
+    }
     scheduleRetry(db, entry, error, nowMs, backoffMs);
     return false;
   }
@@ -305,7 +391,7 @@ export async function runFlushPass(
   options: FlushOutboxOptions = {},
 ): Promise<FlushOutboxResult> {
   const send = options.send ?? sendViaTrpc;
-  const backoffMs = options.backoffMs ?? (() => DEFAULT_RETRY_DELAY_MS);
+  const backoffMs = options.backoffMs ?? computeBackoff;
 
   const claimed = claimReadyEntries(db, nowMs);
   if (claimed.length === 0) return { claimed: 0, sent: 0, failed: 0 };
