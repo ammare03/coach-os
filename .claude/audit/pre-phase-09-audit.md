@@ -1,6 +1,6 @@
 # Pre-Phase-09 Audit — CoachOS
 
-`Step 1: complete · Step 2: in progress — **verified: P00, P01** · not yet reached: P02–P08 · Step 3: not started · Step 4: not started`
+`Step 1: complete · Step 2: in progress — **verified: P00–P02** · not yet reached: P03–P08 · Step 3: not started · Step 4: not started`
 
 > **Resuming Step 2?** Read the line above, then start at the lowest phase listed as "not yet
 > reached". Step 2's verdicts live in [§8](#step2); its findings in [§10](#step2-findings) and
@@ -784,6 +784,7 @@ Later steps record here any change to a Step 1 verdict, rather than editing §3 
 
 | Step | Date       | Row revised (Phase/Feature/Task)     | From → To                      | Why                                                                                                                                                                                                                                                             |
 | ---- | ---------- | ------------------------------------ | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2    | 2026-09-08 | P02 / authorization-middleware / 05  | ⚠️ Partial → ✅ Verified       | R3 resolved by Ammar: the P02 task document is stale, the allowlist entry stands. Task doc corrected in the same commit.                                                                                                                                        |
 | 2    | 2026-09-08 | P01 (phase-level AC 2 and 5)         | ✅ implied → ❌ Not satisfied  | Step 1 did not check DB§7 or the FK-index rule against a live catalogue. Step 2 did: 6 named DB§7 indexes are missing and 31 FKs are unindexed. See [§8.1](#step2).                                                                                             |
 | 2    | 2026-09-08 | P01 / nutrition-schema / 02          | ✅ → ⚠️ Partial                | Three DB§7 indexes on `meals` / `daily_nutrition_summary` were never created and no document defers them.                                                                                                                                                       |
 | 2    | 2026-09-08 | P01 / seed-and-fixtures / 01         | 1 → 3 non-deterministic tables | Two live seed runs show `workout_sessions`, `daily_nutrition_summary`, and `storage_usage` all differ on `updated_at`; Step 1 recorded only the first.                                                                                                          |
@@ -936,3 +937,82 @@ carry a `CLAUDE.md` §3 entry. No user-reachable failure is introduced here, so 
 N/A.
 
 📱 **Device-only in P01:** none.
+
+---
+
+### 8.2 P02 — api-foundation · **Step 2: verified**
+
+**Exit gate** (`phase-02/README.md`): _"tRPC serves a health route; the §18.3 authz enumeration
+test runs and **fails** on an unguarded procedure."_
+
+| Exit-gate half                                           | Verdict                      | Evidence                                                                                                                                                                                                          |
+| -------------------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| tRPC serves a health route                               | ✅ Confirmed                 | `apps/api/src/__tests__/health.test.ts` plus `__tests__/trpc-mount.test.ts`; `trpc/init.ts:22` is the repo's only `initTRPC` call.                                                                                |
+| The enumeration test **fails** on an unguarded procedure | ✅ **Confirmed by doing it** | Two deliberately unguarded `coachProcedure`s were added to `apps/api/src/routers/habits.ts` and `authz.test.ts` was run. Result below. The probe router was reverted immediately (`git checkout --`, tree clean). |
+
+**The unguarded-procedure experiment** — the AC says _"verified by doing it, not by assuming it"_,
+so it was done:
+
+| Probe procedure                                                                    | Enumeration result                                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `habits.auditUnguardedSingular` — input `{ clientId: string }`, no `ownsResource`  | ❌ **Failed the build**, as designed: `habits.auditUnguardedSingular.clientId as coach A (against coach B's client): expected NOT_FOUND/NOT_YOUR_CLIENT, got answered — resolved: {"ok":"01a08202-…"}`. `Tests: 1 failed, 84 passed`. |
+| `habits.auditUnguardedPlural` — input `{ clientIds: string[] }`, no `ownsResource` | ⚠️ **PASSED.** The enumeration never probed it.                                                                                                                                                                                       |
+
+That second row is the material finding of this phase. `probeOneProcedure` selects fields with
+`field.endsWith('Id')` (`authz.test.ts:220`), so **every plural array-of-ids field is invisible to
+the test**: `clientIds` (`packages/schemas/src/assignments.ts:52`, the real `assignments.bulkCreate`
+input), `orderedExerciseIds`, `exerciseIds`, `alternativeExerciseIds`. Today's behaviour is
+nevertheless correct — `routers/assignments.ts:75` does chain
+`ownsResource('client', (i) => i.clientIds)`, and `owns-resource.ts:59-64` enforces all-or-nothing
+(`Partial ownership is total failure`) — so this is a **hole in the guard, not a live vulnerability**.
+It matters for P09, which will add array-shaped offline-sync inputs. Finding **F10**.
+
+**What the enumeration test does prove** (read line by line, not skimmed): it is behavioural, never
+structural — `probeOneProcedure` calls each procedure through `appRouter.createCaller` inside a
+rolled-back transaction. It fails on a procedure reachable with no token that is not allowlisted; it
+fails on any `*Id` field absent from both `RESOURCE_FIELD_KIND` and `NON_RESOURCE_ID_FIELDS`; and for
+every registered field it probes **as both a coach and a client** against the other coach's fixture
+row, requiring verdict `refused`. `authz/probe-result.ts` is the part that makes this honest: only
+`NOT_YOUR_CLIENT` and `ROLE_REQUIRED` count as refusals; a bare `NOT_FOUND` is explicitly classified
+`answered` ("existence oracle, not a refusal"), and so are `BAD_REQUEST`/`PAYLOAD_TOO_LARGE` ("this
+procedure's coverage is still unproven, so it fails rather than passing on a technicality"). It
+cannot pass by accident.
+
+**Phase-level acceptance criteria:**
+
+| #   | Criterion                                                                      | Verdict                       | Evidence                                                                                                                                                                                                                                                                                                                                                                                          |
+| --- | ------------------------------------------------------------------------------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `health.ping` returns a typed result through the mounted handler               | ✅ Confirmed                  | `trpc-mount.test.ts`; `routers/index.ts` registers `health` first.                                                                                                                                                                                                                                                                                                                                |
+| 2   | Mobile gets an end-to-end typed result, no `any` in the chain                  | ✅ Confirmed                  | `@typescript-eslint/no-explicit-any` is `error` in `eslint.base.js:141` across every workspace, and `pnpm check` is green — so no `any` exists to find.                                                                                                                                                                                                                                           |
+| 3   | The three middlewares exist and are never inlined                              | ✅ Confirmed                  | `trpc/middleware/{is-authed,has-role,owns-resource}.ts`; every guard in `routers/*.ts` is attached with `.use(...)` after `.input()`.                                                                                                                                                                                                                                                             |
+| 4   | `authz.test.ts` enumerates every procedure and fails an unguarded one          | ✅ Confirmed (with F10)       | See the experiment above.                                                                                                                                                                                                                                                                                                                                                                         |
+| 5   | Adding an unguarded procedure makes the check exit non-zero                    | ✅ **Confirmed by doing it**  | See the experiment above. Scoped to singular id fields (F10).                                                                                                                                                                                                                                                                                                                                     |
+| 6   | Every client-visible error carries a stable `cause.code`                       | ✅ Confirmed                  | `packages/schemas/src/errors.ts` holds the catalogue; `eslint.base.js:107` bans `new TRPCError` via `NewExpression[callee.name='TRPCError']`, so `appError()` is the only construction path.                                                                                                                                                                                                      |
+| 7   | No raw Postgres text, constraint name, or stack reaches a client in production | ✅ Confirmed                  | `trpc/error-formatter.ts:31` defaults to production behaviour "whenever `isDevelopment` isn't `true`"; `:114` spreads `stack` **only** in the development branch; `:121` returns `Something went wrong. Contact support with this reference.` otherwise. `apps/api/src/db/error-boundary.ts` + `__tests__/db-error-boundary.test.ts` cover the DB half.                                           |
+| 8   | §6.5 rate limits enforced from Redis on DB§15 key patterns                     | ✅ Confirmed                  | `lib/redis-keys.ts` emits `rl:${route}:${userId}`, `rl:auth:${ip}`, `rl:auth.requestReset.email:${emailHash}`, `rl:guardianConsentResend:${userId}`, `rl:guardianConsentResend.email:${emailHash}` — matching DB§15 exactly. DB§15's remaining two are the generic route form and `rl:{assetId}:{userId}` (P11, unbuilt).                                                                         |
+| 9   | Request logs carry no PII, health values, food names, media URLs               | ✅ **Confirmed structurally** | This is not enforced by review but by construction: `lib/logger.ts:27` declares `LogFields` as a closed 16-field interface and `:48` `ALLOWED_KEYS` repeats it as a runtime tuple; `buildEntry` at `:86` **copies key by key** — the comment at `:82` calls out that it is "never `{ ...fields }` or `JSON.stringify(fields)`". No field in the list can hold a name, a food, a metric, or a URL. |
+| 10  | `/health` and `/ready` behave differently                                      | ✅ Confirmed                  | `health.test.ts` asserts `/ready` returns **503** with `status: 'degraded'` when a dependency is unreachable while `/health` is unconditionally 200.                                                                                                                                                                                                                                              |
+| 11  | A job enqueued twice with the same derived `jobId` executes once               | ✅ Confirmed (at the queue)   | `queues/enqueue.test.ts` runs against **real Redis via Testcontainers** ("a mock can't" — its own header) and asserts, for eight queues, both `second.id === first.id` **and** `getJobCounts('waiting').waiting === 1`. Note the assertion is "one job is queued", not "a worker ran once" — the mechanism, which is the right level.                                                             |
+| 12  | `pnpm check` exits 0                                                           | ✅ Confirmed                  | [§9](#step2-check).                                                                                                                                                                                                                                                                                                                                                                               |
+
+**Task-level verification** (rows Step 2 adds to or changes):
+
+| Feature                  | Task                      | Step 1     | Step 2                      | Evidence                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------ | ------------------------- | ---------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| authorization-middleware | 03 owns-resource          | ✅         | ✅ Confirmed (array-safe)   | `owns-resource.ts:18` normalises a selector result to an array, `:59-64` requires `ids.every(owned)` and throws `NOT_YOUR_CLIENT` otherwise, with the binary-search-oracle reasoning written out. One nuance: `:49` returns `next()` for an **empty** array without a check — safe today only because every array input carries `.min(1)` in `packages/schemas`. Worth keeping true.                         |
+| authorization-middleware | 04 authz-enumeration-test | ✅         | ✅ Confirmed — **with F10** | See above. One stale comment: `authz.test.ts:80` still says "No procedure mutates anything today (every router is still a P07+ stub)", which P07 made untrue; the rollback mechanism it describes is still correct and still in place.                                                                                                                                                                       |
+| authorization-middleware | 05 public-allowlist       | ⚠️ Partial | ✅ **Resolved — R3 closed** | Ammar's decision (2026-09-08): the P02 task document is the stale one. `invites.accept` **is** the client sign-up — `features/invites/accept-invite.ts` is the only place a client account is created — so it cannot require a prior session; the returning-client path `accept-invite-as-existing-client.ts` is protected, which is what the doc's paragraph was reaching for. Doc corrected in fix **X2**. |
+| background-jobs          | 01 bullmq-setup           | ⚠️ Partial | ⚠️ Partial (unchanged)      | Registry/DB§15 drift stands as Step 1 recorded it.                                                                                                                                                                                                                                                                                                                                                           |
+| background-jobs          | 03 worker-process         | ⚠️ Partial | ⚠️ Partial (unchanged)      | `worker.ts` constructs exactly three `new Worker(...)` — `account-deletion`, `data-export`, `exercise-reconcile` — and one repeatable, `scheduleWeeklyExerciseReconcile()` at `:96`.                                                                                                                                                                                                                         |
+| background-jobs          | (cross-cutting)           | ❌ Missing | ❌ **Confirmed decisively** | `grep -rn 'runAgeSweep\|sweepDeletionRequests' apps/api/src --include=*.ts` excluding tests returns **only the two function definitions** (`jobs/age-sweep.ts:41`, `jobs/sweep-deletion-requests.ts:34`). Zero call sites. R1 stands exactly as written: §21.5's daily minor→adult sweep never fires and §21.4's 7-day deletion grace never becomes a purge. Finding **F11**.                                |
+
+**Definition of Done (§23) for P02.** No screen and no user-facing copy — those rows are N/A.
+`ERRORS.md`: the phase creates the catalogue itself (`packages/schemas/src/errors.ts`, 50 codes)
+rather than adding a failure to it. `ANALYTICS.md`: no event is emitted server-side in this phase.
+Offline: N/A (P08 owns it). Types inferred: ✅ (criterion 2). Tests per the `testing` skill: the
+two load-bearing suites (`authz.test.ts`, `enqueue.test.ts`) both use real Postgres and real Redis
+containers rather than mocks, which is what §4 requires. New dependencies (`hono`, `@trpc/*`,
+`superjson` pinned to 1.x, `ioredis`, `bullmq`, `@sentry/node`, `pino`-style hand-rolled logger)
+each carry a `CLAUDE.md` §3.2 entry; no new paid service.
+
+📱 **Device-only in P02:** none.
