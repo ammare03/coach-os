@@ -16,6 +16,7 @@ import { SchemaVersionResetDialog } from '../features/offline/SchemaVersionReset
 import { useSchemaVersionGate } from '../features/offline/useSchemaVersionGate.ts';
 import { GuardianConsentRedirect } from '../features/onboarding/GuardianConsentRedirect.tsx';
 import { AnalyticsProvider } from '../lib/analytics/index.ts';
+import { ensureFlushOnRegain } from '../lib/connectivity/flush-on-regain.ts';
 import { queryClient, queryPersistence } from '../lib/query/client.ts';
 import { initSentry } from '../lib/sentry.ts';
 import { TRPCProvider } from '../lib/trpc-provider.tsx';
@@ -42,6 +43,14 @@ SplashScreen.preventAutoHideAsync().catch(() => {
   // Rejects only when the splash is already gone, which is the state we
   // wanted anyway. Nothing to recover.
 });
+
+// `connectivity/02` — the outbox flushes as soon as the radio comes back.
+// Module scope for the same reason `initSentry()` is: it installs one
+// process-wide subscriber, and an effect would re-run it if this layout
+// remounted. Any further app-start flush trigger (`prefetch/03`'s foreground
+// pass) belongs beside this line — `flushOutbox` is single-flight, so two
+// independent triggers join one run rather than duplicating work.
+ensureFlushOnRegain();
 
 export default function RootLayout() {
   const [isNativeChromeReady, setIsNativeChromeReady] = useState(false);
