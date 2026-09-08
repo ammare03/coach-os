@@ -1,3 +1,5 @@
+import { ensureLocalDatabaseBelongsTo } from '../../db/user-scope.ts';
+
 import { useAuthStore } from './store.ts';
 import { setDeviceId, setTokens } from './token-store.ts';
 
@@ -28,6 +30,12 @@ export async function commitOpenedSession(session: OpenedSessionLike): Promise<v
     refreshToken: session.refreshToken,
     accessExpiresAt: session.expiresAt.toISOString(),
   });
+  // DB§13: the device mirror must belong to `session.user.id` before the
+  // store reports `authenticated` — see `db/user-scope.ts`. A throw here
+  // (the local database couldn't be wiped for a different user) propagates
+  // to every caller's existing catch block rather than authenticating over
+  // a database that might still hold someone else's rows.
+  await ensureLocalDatabaseBelongsTo(session.user.id);
   useAuthStore.getState().setAuthenticated({
     userId: session.user.id,
     role: session.user.role,

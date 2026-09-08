@@ -1,0 +1,116 @@
+// `local_workout_sessions`, `local_set_logs`, `local_exercises_cache` — DB§13.
+// Device cache, not a mirror of `packages/db/src/schema/training.ts`: no soft
+// delete, no coach_id denormalisation, no audit trail (../README.md).
+import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+
+export const localWorkoutSessions = sqliteTable('local_workout_sessions', {
+  id: text('id').primaryKey(), // server uuid, or a local uuidv7 before sync confirms it
+  clientLocalId: text('client_local_id').notNull().unique(),
+  serverId: text('server_id'), // null until confirmed by server
+  scheduledDate: text('scheduled_date').notNull(), // ISO date
+  programDayId: text('program_day_id'),
+  name: text('name'),
+  status: text('status').notNull(),
+  startedAt: integer('started_at'), // epoch ms
+  completedAt: integer('completed_at'), // epoch ms
+  payloadJson: text('payload_json').notNull(), // full denormalised session, for rendering
+  syncState: text('sync_state', { enum: ['synced', 'pending', 'conflict'] })
+    .notNull()
+    .default('synced'),
+  updatedAt: integer('updated_at').notNull(), // epoch ms
+});
+
+export const localSetLogs = sqliteTable('local_set_logs', {
+  id: text('id').primaryKey(),
+  clientLocalId: text('client_local_id').notNull().unique(),
+  // References the PARENT SESSION'S client_local_id, never its server id — a
+  // set logged offline may belong to a session with no server_id at all yet
+  // (task 02 Approach step 3; DB§13; DB§14.2's depends_on ordering).
+  sessionLocalId: text('session_local_id')
+    .notNull()
+    .references(() => localWorkoutSessions.clientLocalId),
+  exerciseId: text('exercise_id').notNull(),
+  setNumber: integer('set_number').notNull(),
+  reps: integer('reps'),
+  // REAL, not the string-numeric discipline `packages/db`'s Postgres
+  // `numeric` columns use (`code-conventions` §3's "numeric trap") — SQLite
+  // has no equivalent fixed-precision type. Deliberate, accepted precision
+  // trade-off for this local cache only; the server row stays the
+  // precision-authoritative copy (task 02 spec, DB§13).
+  weightKg: real('weight_kg'),
+  rpe: real('rpe'),
+  isWarmup: integer('is_warmup', { mode: 'boolean' }).notNull().default(false),
+  notes: text('notes'),
+  loggedAt: integer('logged_at').notNull(), // epoch ms, captured at action time
+  syncState: text('sync_state', { enum: ['synced', 'pending', 'conflict'] })
+    .notNull()
+    .default('pending'),
+});
+
+// Read-only lookup cache, same role as `local_foods_cache` below but for the
+// exercise library. Derived from `packages/db/src/schema/training.ts`'s
+// `exercises` table, kept to only what the offline logger renders: no
+// coachId (a custom exercise is looked up the same way as a global one on
+// device), no searchVector (a few hundred cached rows don't need full-text),
+// no archivedAt/timestamps — a cache, not a mirror (task 02 decision #3).
+export const localExercisesCache = sqliteTable('local_exercises_cache', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  primaryMuscle: text('primary_muscle'),
+  equipment: text('equipment'),
+  movementPattern: text('movement_pattern'),
+  isBodyweight: integer('is_bodyweight', { mode: 'boolean' }).notNull().default(false),
+  defaultIncrementKg: real('default_increment_kg'), // plate-math default, §8.4
+  cuesJson: text('cues_json'), // JSON array of coaching cue strings
+  lastUsedAt: integer('last_used_at'), // epoch ms — cache ranking, mirrors local_foods_cache
+});
+
+// Bootstrap DDL for the tables above, hand-transcribed rather than generated
+// (see `../client.ts`'s "table creation" decision comment for why). Keep
+// this in lockstep with the Drizzle definitions above — they describe the
+// same tables to two different consumers (typed queries vs. the raw
+// `CREATE TABLE` the device actually runs). This is enforced, not just
+// asked for: `../__tests__/schema-ddl-drift.test.ts` reconstructs both
+// sides independently and fails, naming the table and column, the moment
+// they disagree. If you break it, that file is where the guard lives.
+export const LOCAL_TRAINING_SCHEMA_SQL: string[] = [
+  `CREATE TABLE IF NOT EXISTS local_workout_sessions (
+    id TEXT PRIMARY KEY,
+    client_local_id TEXT NOT NULL UNIQUE,
+    server_id TEXT,
+    scheduled_date TEXT NOT NULL,
+    program_day_id TEXT,
+    name TEXT,
+    status TEXT NOT NULL,
+    started_at INTEGER,
+    completed_at INTEGER,
+    payload_json TEXT NOT NULL,
+    sync_state TEXT NOT NULL DEFAULT 'synced',
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS local_set_logs (
+    id TEXT PRIMARY KEY,
+    client_local_id TEXT NOT NULL UNIQUE,
+    session_local_id TEXT NOT NULL REFERENCES local_workout_sessions(client_local_id),
+    exercise_id TEXT NOT NULL,
+    set_number INTEGER NOT NULL,
+    reps INTEGER,
+    weight_kg REAL,
+    rpe REAL,
+    is_warmup INTEGER NOT NULL DEFAULT 0,
+    notes TEXT,
+    logged_at INTEGER NOT NULL,
+    sync_state TEXT NOT NULL DEFAULT 'pending'
+  )`,
+  `CREATE TABLE IF NOT EXISTS local_exercises_cache (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    primary_muscle TEXT,
+    equipment TEXT,
+    movement_pattern TEXT,
+    is_bodyweight INTEGER NOT NULL DEFAULT 0,
+    default_increment_kg REAL,
+    cues_json TEXT,
+    last_used_at INTEGER
+  )`,
+];

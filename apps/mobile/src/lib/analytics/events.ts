@@ -324,6 +324,19 @@ export interface AnalyticsEventRegistry {
   health_sync_enabled: Record<string, never>;
   health_sync_disabled: Record<string, never>;
   sync_failed: { procedure: ProcedureName; attempts: number };
+  /**
+   * `local-database/04`'s schema-version mismatch resolving — silently
+   * (empty outbox) or after the blocking dialog's confirmation. Fires at
+   * most once per device per version bump; without it a schema bump
+   * silently destroying unsynced sets would be invisible (`ANALYTICS.md`
+   * AN§3.8).
+   */
+  local_cache_reset: {
+    had_pending_outbox: boolean;
+    entry_count: number;
+    from_version: number;
+    to_version: number;
+  };
 }
 
 export type AnalyticsEventName = keyof AnalyticsEventRegistry;
@@ -386,6 +399,7 @@ export const ANALYTICS_EVENT_NAMES = [
   'health_sync_enabled',
   'health_sync_disabled',
   'sync_failed',
+  'local_cache_reset',
 ] as const satisfies readonly AnalyticsEventName[];
 
 type MutuallyAssignable<TLeft, TRight> = [TLeft] extends [TRight]

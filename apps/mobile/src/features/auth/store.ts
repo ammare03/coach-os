@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 
+import { wipeLocalDatabase, type WipeResult } from '../../db/wipe.ts';
+import { clearPersistedQueryCache } from '../../lib/query/persister.ts';
+
 import type { AccessTokenRole } from './jwt.ts';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
@@ -57,3 +60,27 @@ export const useAuthStore = create<AuthState>((set) => ({
   setSignedOut: () =>
     set({ status: 'unauthenticated', userId: null, role: null, isOnboarded: false }),
 }));
+
+/**
+ * `local-database/03-wipe-on-logout.md`: attempts the device-mirror wipe
+ * (`db/wipe.ts`) and, unless it was blocked by unsynced outbox rows, also
+ * clears the persisted query cache (`lib/query/persister.ts`) — the two
+ * on-device stores DB§13 and the `offline-sync` skill §8 require gone
+ * before a different user can trust this device.
+ *
+ * Deliberately does not touch this store. `useSignOut` (voluntary) and
+ * `bootstrap`'s involuntary `onSignOutRequired` listener disagree on what to
+ * do once this resolves — the former refuses to sign out at all when
+ * `blocked`, the latter always flips because a dead refresh token leaves no
+ * session to remain "authenticated" against — so the store flip stays at
+ * each call site rather than being decided here.
+ */
+export async function wipeLocalDataOnSignOut(
+  options: { force?: boolean } = {},
+): Promise<WipeResult> {
+  const result = await wipeLocalDatabase({ force: options.force ?? false });
+  if (result.outcome !== 'blocked') {
+    await clearPersistedQueryCache();
+  }
+  return result;
+}

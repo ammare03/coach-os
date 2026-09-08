@@ -15,12 +15,14 @@ import { keys } from './keys.ts';
 // *reads* durable, and neither substitutes for the other (`offline-sync`
 // skill §6).
 //
-// ⚠️ P08 dependency, recorded rather than assumed. `phase-08-offline-core/
-// local-database` owns the app's real SQLite connection and its Drizzle
-// schema. It does not exist yet, so this file opens its own connection to
-// its own file, deliberately kept to one key/value table with no Drizzle
-// dependency: P08 consolidates it by replacing `openCacheDatabase()` with
-// its own handle and changing nothing else here.
+// The device mirror now exists at `apps/mobile/src/db/` (`local-database/
+// 01`–`03`), and this file's connection stays separate from it on purpose,
+// permanently — not a pending consolidation. `local-database/03`'s
+// sign-out wipe clears this cache without waiting on the mirror's
+// outbox-empty gate, and `04`'s schema-version mismatch drops the mirror
+// without touching this cache; merging the two files would couple those
+// two independent invalidation schemes together for no benefit. See
+// `db/client.ts`'s own comment on the same decision.
 
 /**
  * A dedicated file, not the app's future main database. Keeping the query
@@ -207,15 +209,11 @@ export async function createSQLitePersister(): Promise<Persister> {
  * user's data may survive an account switch on a shared device, and coaches
  * do hand phones to clients.
  *
- * ⚠️ Still unwired, and the owner moved. This said `providers-and-gates/03`
- * wires it in; that task built the route gate and deliberately did not,
- * because the app has no user-initiated sign-out yet and the only existing
- * trigger — `signalSignOutRequired` — is already consumed inside
- * `features/auth/bootstrap.ts`. `phase-08-offline-core/local-database/03-
- * wipe-on-logout.md` owns the sign-out wipe: it modifies `features/auth/
- * store.ts` so the wipe runs before or with the store's own sign-out, which
- * is the ordering this call needs and which a listener added afterwards
- * cannot give it. Call this from there, alongside the mirror and the outbox.
+ * Wired in by `local-database/03-wipe-on-logout.md`: `features/auth/
+ * store.ts`'s `wipeLocalDataOnSignOut` calls this once the device-mirror
+ * wipe (`db/wipe.ts`) isn't blocked by unsynced outbox rows, and both sign-
+ * out paths (`useSignOut`, `bootstrap`'s involuntary listener) go through
+ * that function rather than calling this directly.
  */
 export async function clearPersistedQueryCache(): Promise<void> {
   const database = await openCacheDatabase();

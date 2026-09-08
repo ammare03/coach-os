@@ -408,7 +408,19 @@ export function GuardianConsentPendingScreen() {
             variant="ghost"
             size="lg"
             fullWidth
-            onPress={() => void signOut()}
+            onPress={() => {
+              // Same gap as `auth/screens/InviteArrival.tsx`'s
+              // `handleWrongSessionSignOut` — see that comment.
+              // `local-database/03-wipe-on-logout.md` refuses the sign-out
+              // when unsynced outbox rows exist; unreachable until
+              // `phase-08-offline-core/outbox` ships, and the confirm-discard
+              // prompt it then needs is design-gated.
+              void signOut().then((result) => {
+                if (result.outcome === 'blocked') {
+                  // Intentionally unhandled — see above.
+                }
+              });
+            }}
             loading={isSigningOut}
           >
             Sign out
