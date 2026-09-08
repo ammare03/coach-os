@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
 import { createDbClient, schema, type DbClient } from '@coachos/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 
 import { offlineUpsert } from './offline-upsert.ts';
@@ -268,6 +268,126 @@ describe('device wins — meals (DB§14.3)', () => {
   });
 });
 
+describe('device wins — body_metrics (DB§14.3)', () => {
+  it('replaces every field the device resubmits, including the ones it cleared', async () => {
+    const clientLocalId = randomUUID();
+    const target = [schema.bodyMetrics.clientId, schema.bodyMetrics.clientLocalId];
+    const identity = { clientId: clientProfileId, clientLocalId };
+
+    // Before `body_metrics_client_local` existed this first call raised
+    // 42P10: DB§14.3 named the table device-wins while DB§14.1's unique
+    // index was missing, so there was nothing for `ON CONFLICT` to infer.
+    const stored = await offlineUpsert(db, {
+      table: schema.bodyMetrics,
+      values: {
+        ...identity,
+        recordedAt: new Date('2026-09-16T07:00:00.000Z'),
+        recordedDate: '2026-09-16',
+        weightKg: '80.00',
+        bodyFatPct: '18.0',
+        waistCm: '84.0',
+        hipCm: '99.0',
+        chestCm: '104.0',
+        armCm: '36.0',
+        thighCm: '58.0',
+        neckCm: '39.0',
+        source: 'manual',
+      },
+      target,
+      onConflict: 'update',
+    });
+
+    const corrected = await offlineUpsert(db, {
+      table: schema.bodyMetrics,
+      values: {
+        ...identity,
+        recordedAt: new Date('2026-09-17T06:30:00.000Z'),
+        recordedDate: '2026-09-17',
+        weightKg: '79.50',
+        bodyFatPct: null,
+        waistCm: null,
+        hipCm: null,
+        chestCm: null,
+        armCm: null,
+        thighCm: null,
+        neckCm: null,
+        source: 'coach',
+      },
+      target,
+      onConflict: 'update',
+    });
+
+    expect(corrected.id).toBe(stored.id);
+    expect(corrected.recordedAt).toEqual(new Date('2026-09-17T06:30:00.000Z'));
+    expect(corrected.recordedDate).toBe('2026-09-17');
+    expect(corrected.weightKg).toBe('79.50');
+    expect(corrected.source).toBe('coach');
+    expect(corrected.bodyFatPct).toBeNull();
+    expect(corrected.waistCm).toBeNull();
+    expect(corrected.hipCm).toBeNull();
+    expect(corrected.chestCm).toBeNull();
+    expect(corrected.armCm).toBeNull();
+    expect(corrected.thighCm).toBeNull();
+    expect(corrected.neckCm).toBeNull();
+
+    const rows = await db
+      .select()
+      .from(schema.bodyMetrics)
+      .where(
+        and(
+          eq(schema.bodyMetrics.clientId, clientProfileId),
+          eq(schema.bodyMetrics.clientLocalId, clientLocalId),
+        ),
+      );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual(corrected);
+  });
+
+  it('inserts every row whose clientLocalId is null — the partial index excludes them', async () => {
+    // A check-in-sourced metric never passes through the outbox and carries
+    // no key, so two of them on one day must both survive. Postgres would
+    // give that under a plain unique index too — NULLs are distinct by
+    // default — so what this pins is that the index was not declared
+    // `NULLS NOT DISTINCT`, under which the second row would collide.
+    const values = {
+      clientId: clientProfileId,
+      recordedAt: new Date('2026-09-18T07:00:00.000Z'),
+      recordedDate: '2026-09-18',
+      weightKg: '80.00',
+      source: 'checkin',
+      clientLocalId: null,
+    } as const;
+    const target = [schema.bodyMetrics.clientId, schema.bodyMetrics.clientLocalId];
+
+    const one = await offlineUpsert(db, {
+      table: schema.bodyMetrics,
+      values,
+      target,
+      onConflict: 'update',
+    });
+    const two = await offlineUpsert(db, {
+      table: schema.bodyMetrics,
+      values,
+      target,
+      onConflict: 'update',
+    });
+
+    expect(two.id).not.toBe(one.id);
+
+    const rows = await db
+      .select()
+      .from(schema.bodyMetrics)
+      .where(
+        and(
+          eq(schema.bodyMetrics.clientId, clientProfileId),
+          isNull(schema.bodyMetrics.clientLocalId),
+          eq(schema.bodyMetrics.recordedDate, '2026-09-18'),
+        ),
+      );
+    expect(rows).toHaveLength(2);
+  });
+});
+
 describe('device wins — habit_logs (DB§14.3)', () => {
   // `habit_logs` carries no `client_local_id`; its idempotency key is the
   // natural one the table already declares, `habit_logs_habit_date_unique`
@@ -348,10 +468,9 @@ describe('device wins — a selective `set` is refused (DB§14.3)', () => {
   });
 
   it('rejects a caller-supplied `set` on body_metrics', async () => {
-    // Guarded ahead of the write path existing: `body_metrics` has a
-    // `client_local_id` column but no unique index on it yet, so nothing
-    // can upsert against it until phase-18 adds one. The rule is in place
-    // for whoever does.
+    // Guarded ahead of the write path existing: `body_metrics_client_local`
+    // exists, but no procedure upserts against it until phase-18. The rule
+    // is in place for whoever writes that path.
     await expect(
       offlineUpsert(db, {
         table: schema.bodyMetrics,

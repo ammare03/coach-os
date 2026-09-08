@@ -339,6 +339,18 @@ export const bodyMetrics = coachingSchema.table(
     weightBound: check('body_metrics_weight_kg_check', sql`${t.weightKg} BETWEEN 20 AND 400`),
     bodyFatBound: check('body_metrics_body_fat_pct_check', sql`${t.bodyFatPct} BETWEEN 1 AND 70`),
     clientDateIdx: index('body_metrics_client_date').on(t.clientId, t.recordedDate.desc()),
+    // DB§14.1's idempotency index — `body_metrics` is a DB§14.3 device-wins
+    // table, and `ON CONFLICT (client_id, client_local_id) DO UPDATE` has
+    // nothing to infer against without it (42P10). Partial, exactly like
+    // `sessions_client_local` (training.ts) and unlike the plain
+    // `set_logs_client_local`, because this column is nullable: the upsert
+    // helper derives its inference clause from target nullability, and
+    // Postgres matches a partial index only when the statement repeats the
+    // index's own predicate. It also keeps the check-in-sourced rows, which
+    // never carry a key, out of the index entirely.
+    clientLocalUnique: uniqueIndex('body_metrics_client_local')
+      .on(t.clientId, t.clientLocalId)
+      .where(sql`${t.clientLocalId} IS NOT NULL`),
   }),
 );
 
