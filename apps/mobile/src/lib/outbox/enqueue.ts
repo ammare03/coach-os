@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { parse as superjsonParse, stringify as superjsonStringify } from 'superjson';
 import { uuidv7 } from 'uuidv7';
 
@@ -24,6 +25,48 @@ import { outbox } from '../../db/schema/sync.ts';
 // `phase-09-workout-logger/session-runtime/08-device-claim.md`, which owns
 // the rule — not to a speculative optional parameter here that every other
 // call site could then misuse.
+
+// ─── Building a dependency chain (DB§14.2) ───────────────────────────────
+//
+// The pattern every feature follows, and the whole of it:
+//
+//   const session = await enqueueMutation({ procedure: 'workouts.startSession', payload });
+//   // …persist session.outboxId alongside the draft, then for each set:
+//   await enqueueMutation({ procedure: 'workouts.logSet', payload, dependsOn: session.outboxId });
+//
+// Four rules, each with a consequence worth knowing before you break it:
+//
+// 1. `dependsOn` is the parent's **`outboxId`**, never its `clientLocalId`.
+//    The two arrive together in `EnqueuedMutation`, and passing the wrong one
+//    would queue a row nothing could ever send — so it throws, below.
+//
+// 2. **Persist the parent's `outboxId` next to the draft it belongs to**
+//    (for P09, on the `local_workout_sessions` row), not in Zustand. A client
+//    force-quits mid-workout and comes back; sets logged after the restart
+//    still need the session's id, and a chain broken at that seam sends sets
+//    for a session the server has never heard of.
+//
+// 3. **Chain only what genuinely depends on the parent.** Ordering is not
+//    free — a chain is the one thing that makes the flush loop serialise, and
+//    an unrelated mutation hung off a session waits behind it for no reason.
+//    Two sessions, or a session and a meal, are separate chains and flush
+//    concurrently (`flush.ts`, `drainOutbox`).
+//
+// 4. Children of one parent are **siblings, not a queue**: three sets hanging
+//    off one session all become claimable together and send concurrently.
+//    That is correct — each is an independent upsert keyed on its own
+//    `clientLocalId`. A feature that needs strict order *between* two writes
+//    must chain the second to the first, not to their shared parent.
+//
+// Depth is not limited, and P09 uses that. `flush.ts`'s exclusion tests one
+// level, and is transitively correct because a row only reaches `'done'` by
+// being sent and is only sent once its own parent is `'done'` — so a
+// grandchild cannot outrun a grandparent. That is not hypothetical:
+// `session-runtime/07` chains the completion mutation to the session start,
+// and `session-summary/03` chains the RPE/notes update to that completion,
+// which is three levels in the ordinary path of finishing a workout.
+// P13 chains nothing — `diary/02` states a meal has no parent and meals may
+// sync in any order relative to each other.
 
 export interface EnqueueMutationArgs<TPayload> {
   /** The tRPC path the flush loop will call, e.g. `'workouts.logSet'`. */
@@ -84,6 +127,22 @@ export async function enqueueMutation<TPayload>({
   const outboxId = uuidv7();
   const now = Date.now();
   const db = await getLocalDb();
+
+  // The `depends_on` foreign key is declared in `db/schema/sync.ts` but SQLite
+  // does not enforce one unless `PRAGMA foreign_keys = ON`, which this
+  // database does not set. So the check is here, and it is not decorative: a
+  // child pointing at a row that does not exist is never claimable, and
+  // `failed-entries.ts` reads only rows at the attempt ceiling, so it never
+  // surfaces in the "couldn't sync" banner either. Silently stranded work is
+  // the worst outcome this subsystem has (`offline-sync` §4). Failing at the
+  // call site instead turns it into an obvious bug in the feature that
+  // mis-wired the chain.
+  if (dependsOn !== undefined) {
+    const parent = db.select({ id: outbox.id }).from(outbox).where(eq(outbox.id, dependsOn)).get();
+    if (!parent) {
+      throw new Error(`enqueueMutation: dependsOn ${dependsOn} is not an outbox id`);
+    }
+  }
 
   // The typed Drizzle insert, not the raw `sql` the rest of `src/db` uses:
   // this is the one chokepoint every offline mutation passes through, so a

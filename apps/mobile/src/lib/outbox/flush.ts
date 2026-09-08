@@ -376,14 +376,13 @@ async function sendEntry(
 }
 
 /**
- * One claim-and-send batch. Exported because it is the unit the single-flight
- * guard protects: calling it directly bypasses the promise in `flushOutbox`
- * and leaves only the `inflight` claim standing, which is exactly what the
- * concurrency test needs to prove.
+ * One claim-and-send batch, awaited to completion.
  *
- * Every row in one batch is independent by construction — a row whose parent
- * has not synced was excluded by the claim — so they send concurrently, which
- * is DB§14.2's "parallel across chains" (elaborated in task 04).
+ * Exported for one job only: it is the unit the single-flight guard protects,
+ * so calling it directly bypasses the promise in `flushOutbox` and leaves the
+ * `inflight` claim as the sole defence — which is exactly what the concurrency
+ * test needs to prove. `runFlush` below deliberately does NOT use it, because
+ * awaiting a whole batch is the barrier task 04 exists to remove.
  */
 export async function runFlushPass(
   db: LocalDb,
@@ -401,6 +400,59 @@ export async function runFlushPass(
   );
   const sent = outcomes.filter(Boolean).length;
   return { claimed: claimed.length, sent, failed: outcomes.length - sent };
+}
+
+/**
+ * Sends everything ready, re-claiming as each send settles (DB§14.2).
+ *
+ * The scheduling rule is one line: **a send starts the moment its row becomes
+ * claimable, and never waits on a row it does not depend on.** That is both
+ * halves of DB§14.2 at once — a child is unclaimable until its parent is
+ * `'done'`, which is the strict order within a chain, and nothing else
+ * synchronises, which is the parallelism across chains.
+ *
+ * Why a race and not a batch loop. The obvious shape — claim a batch, await
+ * the batch, claim again — is correct but installs a barrier at every batch
+ * boundary: one slow session holds up the sets of every *other* session in
+ * the queue, which is precisely the artificial serialisation DB§14.2's
+ * "parallel across chains" exists to forbid. Racing instead means one settled
+ * send immediately re-opens the claim, so an unrelated chain advances on its
+ * own schedule.
+ *
+ * It terminates. A claimed row is `'inflight'`, and every exit from a send
+ * leaves it `'done'` or `'failed'` with `next_attempt_at > startedAt`, so no
+ * row is claimed twice in one run; each turn of the loop either consumes rows
+ * or retires an in-flight send, and it stops when neither is possible.
+ */
+async function drainOutbox(
+  db: LocalDb,
+  startedAt: number,
+  options: FlushOutboxOptions,
+): Promise<FlushOutboxResult> {
+  const send = options.send ?? sendViaTrpc;
+  const backoffMs = options.backoffMs ?? computeBackoff;
+  const total: FlushOutboxResult = { claimed: 0, sent: 0, failed: 0 };
+  const inFlight = new Set<Promise<void>>();
+
+  for (;;) {
+    // `FLUSH_BATCH_SIZE` bounds sends in flight, not sends per claim — a
+    // device on hotel wifi opening 60 sockets because its queue is 60 deep
+    // helps nobody.
+    const capacity = FLUSH_BATCH_SIZE - inFlight.size;
+    for (const entry of capacity > 0 ? claimReadyEntries(db, startedAt, capacity) : []) {
+      total.claimed += 1;
+      const settled = sendEntry(db, entry, startedAt, send, backoffMs).then((wasSent) => {
+        if (wasSent) total.sent += 1;
+        else total.failed += 1;
+      });
+      inFlight.add(settled);
+      void settled.then(() => inFlight.delete(settled));
+    }
+
+    if (inFlight.size === 0) return total;
+    // Any one completion may have unblocked a child; go and look.
+    await Promise.race(inFlight);
+  }
 }
 
 /**
@@ -425,22 +477,10 @@ async function runFlush(options: FlushOutboxOptions): Promise<FlushOutboxResult>
   }
 
   // One clock for the whole run. A row rescheduled by a failure during this
-  // run is dated after `startedAt` and so cannot be re-claimed by a later pass
-  // of the same run — which is what makes the loop terminate.
+  // run is dated after `startedAt` and so cannot be re-claimed later in the
+  // same run — which is what makes the loop terminate.
   const startedAt = (options.now ?? Date.now)();
-  const total: FlushOutboxResult = { claimed: 0, sent: 0, failed: 0 };
-
-  for (;;) {
-    const pass = await runFlushPass(db, startedAt, options);
-    total.claimed += pass.claimed;
-    total.sent += pass.sent;
-    total.failed += pass.failed;
-    // A pass that claimed nothing means nothing is left that is both ready and
-    // unblocked; a pass that claimed rows may have unblocked their children.
-    if (pass.claimed === 0) break;
-  }
-
-  return total;
+  return drainOutbox(db, startedAt, options);
 }
 
 /**

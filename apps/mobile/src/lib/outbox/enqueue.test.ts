@@ -26,12 +26,20 @@ jest.mock('expo-sqlite', () => {
     return rows;
   }
 
-  function makeResult(rows: Row[], changes = 0, lastInsertRowId = 0) {
+  // `columns` is set only for the raw-result path: Drizzle's builder selects
+  // go through `executeForRawResultSync` and want positional arrays, while
+  // raw `sql` selects go through `executeSync` and want objects.
+  function makeResult(
+    rows: Row[],
+    changes = 0,
+    lastInsertRowId = 0,
+    columns: string[] | null = null,
+  ) {
     return {
       changes,
       lastInsertRowId,
       getFirstSync: () => rows[0],
-      getAllSync: () => rows,
+      getAllSync: () => (columns ? rows.map((r) => columns.map((c) => r[c])) : rows),
     };
   }
 
@@ -39,67 +47,78 @@ jest.mock('expo-sqlite', () => {
 
   const database = {
     prepareSync: (sqlText: string) => ({
-      executeSync: (params: unknown[] = []) => {
-        const createTable = /^CREATE TABLE(?: IF NOT EXISTS)?\s+(\w+)/i.exec(sqlText);
-        const createTableName = createTable?.[1];
-        if (createTableName) {
-          tableRows(createTableName);
-          return makeResult([]);
-        }
-        if (/^CREATE INDEX/i.test(sqlText)) {
-          return makeResult([]);
-        }
-        // Handles both statement shapes this file produces: a raw `sql`
-        // template (unquoted identifiers, one `?` per interpolation) and
-        // Drizzle's own insert builder, which quotes every identifier,
-        // lower-cases the keywords, and emits omitted nullable columns as a
-        // literal `null` rather than a placeholder — so the params are
-        // walked against the `?`s, never against the column positions.
-        const insertInto =
-          /^INSERT\s+INTO\s+"?(\w+)"?\s*\(([\s\S]*?)\)\s*VALUES\s*\(([\s\S]*?)\)/i.exec(sqlText);
-        const insertTableName = insertInto?.[1];
-        const insertColumnList = insertInto?.[2];
-        const insertValueList = insertInto?.[3];
-        if (insertTableName && insertColumnList && insertValueList !== undefined) {
-          if (failNextWrite !== null) {
-            const message = failNextWrite;
-            failNextWrite = null;
-            throw new Error(message);
-          }
-          const columns = insertColumnList.split(',').map((c) => c.trim().replace(/"/g, ''));
-          const values = insertValueList.split(',').map((v) => v.trim());
-          const row: Row = {};
-          let paramIndex = 0;
-          columns.forEach((column, i) => {
-            const token = values[i];
-            if (token === '?') {
-              row[column] = params[paramIndex];
-              paramIndex += 1;
-            } else if (token === undefined || /^null$/i.test(token)) {
-              row[column] = null;
-            } else {
-              row[column] = token.replace(/^'|'$/g, '');
-            }
-          });
-          const rows = tableRows(insertTableName);
-          rows.push(row);
-          return makeResult([row], 1, rows.length);
-        }
-        const selectFrom = /^SELECT[\s\S]*?FROM\s+"?(\w+)"?/i.exec(sqlText);
-        const selectTableName = selectFrom?.[1];
-        if (selectTableName) {
-          let rows = tableRows(selectTableName);
-          const whereEq = /WHERE\s+"?(\w+)"?\s*=\s*\?/i.exec(sqlText);
-          const whereColumn = whereEq?.[1];
-          if (whereColumn) {
-            rows = rows.filter((r) => r[whereColumn] === params[0]);
-          }
-          return makeResult(rows);
-        }
-        throw new Error(`Unhandled SQL in fake expo-sqlite: ${sqlText}`);
-      },
+      executeSync: (params: unknown[] = []) => execute(sqlText, params, false),
+      executeForRawResultSync: (params: unknown[] = []) => execute(sqlText, params, true),
     }),
   };
+
+  function execute(sqlText: string, params: unknown[], columnsWanted: boolean) {
+    const createTable = /^CREATE TABLE(?: IF NOT EXISTS)?\s+(\w+)/i.exec(sqlText);
+    const createTableName = createTable?.[1];
+    if (createTableName) {
+      tableRows(createTableName);
+      return makeResult([]);
+    }
+    if (/^CREATE INDEX/i.test(sqlText)) {
+      return makeResult([]);
+    }
+    // Handles both statement shapes this file produces: a raw `sql`
+    // template (unquoted identifiers, one `?` per interpolation) and
+    // Drizzle's own insert builder, which quotes every identifier,
+    // lower-cases the keywords, and emits omitted nullable columns as a
+    // literal `null` rather than a placeholder — so the params are
+    // walked against the `?`s, never against the column positions.
+    const insertInto =
+      /^INSERT\s+INTO\s+"?(\w+)"?\s*\(([\s\S]*?)\)\s*VALUES\s*\(([\s\S]*?)\)/i.exec(sqlText);
+    const insertTableName = insertInto?.[1];
+    const insertColumnList = insertInto?.[2];
+    const insertValueList = insertInto?.[3];
+    if (insertTableName && insertColumnList && insertValueList !== undefined) {
+      if (failNextWrite !== null) {
+        const message = failNextWrite;
+        failNextWrite = null;
+        throw new Error(message);
+      }
+      const columns = insertColumnList.split(',').map((c) => c.trim().replace(/"/g, ''));
+      const values = insertValueList.split(',').map((v) => v.trim());
+      const row: Row = {};
+      let paramIndex = 0;
+      columns.forEach((column, i) => {
+        const token = values[i];
+        if (token === '?') {
+          row[column] = params[paramIndex];
+          paramIndex += 1;
+        } else if (token === undefined || /^null$/i.test(token)) {
+          row[column] = null;
+        } else {
+          row[column] = token.replace(/^'|'$/g, '');
+        }
+      });
+      const rows = tableRows(insertTableName);
+      rows.push(row);
+      return makeResult([row], 1, rows.length);
+    }
+    const selectFrom = /^SELECT\s+([\s\S]*?)\s+FROM\s+"?(\w+)"?/i.exec(sqlText);
+    const selectTableName = selectFrom?.[2];
+    if (selectFrom?.[1] && selectTableName) {
+      const columnList = selectFrom[1].trim();
+      const columns =
+        columnList === '*'
+          ? null
+          : columnList.split(',').map((c) => {
+              const parts = c.trim().replace(/"/g, '').split('.');
+              return parts[parts.length - 1] ?? '';
+            });
+      let rows = tableRows(selectTableName);
+      const whereEq = /WHERE\s+"?[\w.]*?"?\.?"?(\w+)"?\s*=\s*\?/i.exec(sqlText);
+      const whereColumn = whereEq?.[1];
+      if (whereColumn) {
+        rows = rows.filter((r) => r[whereColumn] === params[0]);
+      }
+      return makeResult(rows, 0, 0, columnsWanted ? columns : null);
+    }
+    throw new Error(`Unhandled SQL in fake expo-sqlite: ${sqlText}`);
+  }
 
   return {
     openDatabaseAsync: jest.fn(async () => database),
