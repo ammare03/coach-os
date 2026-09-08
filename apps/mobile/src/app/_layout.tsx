@@ -17,6 +17,7 @@ import { useSchemaVersionGate } from '../features/offline/useSchemaVersionGate.t
 import { GuardianConsentRedirect } from '../features/onboarding/GuardianConsentRedirect.tsx';
 import { AnalyticsProvider } from '../lib/analytics/index.ts';
 import { ensureFlushOnRegain } from '../lib/connectivity/flush-on-regain.ts';
+import { ensurePrefetchOnForeground } from '../lib/prefetch/scheduler.ts';
 import { queryClient, queryPersistence } from '../lib/query/client.ts';
 import { initSentry } from '../lib/sentry.ts';
 import { TRPCProvider } from '../lib/trpc-provider.tsx';
@@ -51,6 +52,14 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 // pass) belongs beside this line — `flushOutbox` is single-flight, so two
 // independent triggers join one run rather than duplicating work.
 ensureFlushOnRegain();
+
+// `prefetch/03` — the foreground half of `CLAUDE.md` §11.2: today's and
+// tomorrow's sessions, the exercises they reference, the most-used foods,
+// and 30 days of history, fetched while there is signal so the gym basement
+// has nothing left to ask for. Module scope for the same reason as the line
+// above, and it carries the foreground `flushOutbox()` pass that comment
+// anticipated. Both are fire-and-forget: nothing below waits on either.
+ensurePrefetchOnForeground();
 
 export default function RootLayout() {
   const [isNativeChromeReady, setIsNativeChromeReady] = useState(false);
