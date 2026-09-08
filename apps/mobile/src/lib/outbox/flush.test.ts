@@ -539,6 +539,34 @@ describe('conflict routing (a 409 is not a retryable failure)', () => {
     });
   });
 
+  it('warns when a conflict marks no mirror row, so it cannot vanish silently', async () => {
+    const send = conflictingSender(CONFLICT_DATA);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    // Deliberately no `seedMirrorSetLog` — nothing carries this client_local_id,
+    // so the sweep matches nothing and `sync-engine` would never see the conflict.
+    const enqueued = await enqueueMutation({ procedure: 'workouts.logSet', payload: {} });
+
+    await flushOutbox({ send, now: () => FIXED_NOW });
+
+    expect(warn).toHaveBeenCalledWith('outbox.conflict_unmirrored', {
+      outboxId: enqueued.outboxId,
+      procedure: 'workouts.logSet',
+    });
+    warn.mockRestore();
+  });
+
+  it('stays silent when the conflict did mark a mirror row', async () => {
+    const send = conflictingSender(CONFLICT_DATA);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const enqueued = await enqueueMutation({ procedure: 'workouts.logSet', payload: {} });
+    await seedMirrorSetLog(enqueued.clientLocalId);
+
+    await flushOutbox({ send, now: () => FIXED_NOW });
+
+    expect(warn).not.toHaveBeenCalledWith('outbox.conflict_unmirrored', expect.anything());
+    warn.mockRestore();
+  });
+
   it('recognises a bare 409 with no app code, since the status alone is definitive', async () => {
     const send = conflictingSender({ httpStatus: 409 });
     const enqueued = await enqueueMutation({ procedure: 'workouts.logSet', payload: {} });

@@ -281,19 +281,34 @@ function isConflictFailure(error: unknown): boolean {
  * elapsed) and must not count toward the failure banner, which tells a
  * client their work never left the device. DB§14's status set is closed —
  * queued/inflight/failed/done — so a fifth value is not this task's to
- * invent (`CLAUDE.md` rule 4).
+ * invent (`CLAUDE.md` rule 4). DB§14.4 carries the same rule.
  */
 function markConflicted(db: LocalDb, entry: OutboxEntry): void {
+  let mirrored = 0;
   for (const mirror of CONFLICTABLE_MIRRORS) {
-    db.update(mirror)
+    mirrored += db
+      .update(mirror)
       .set({ syncState: 'conflict' })
       .where(eq(mirror.clientLocalId, entry.clientLocalId))
-      .run();
+      .run().changes;
   }
   db.update(outbox)
     .set({ status: 'done', lastError: 'SYNC_CONFLICT' })
     .where(eq(outbox.id, entry.id))
     .run();
+
+  // The sweep above is the only thing that makes a conflict visible — to the
+  // client, and to `sync-engine`, which resolves it. Match nothing and the
+  // conflict survives solely in `last_error` on a row reading `'done'`, which
+  // no surface and no pending count looks at. Unreachable while every
+  // offline-writable mutation maps to a mirror carrying `sync_state`, and
+  // silently reachable the first one that does not (DB§14.4).
+  if (mirrored === 0) {
+    console.warn('outbox.conflict_unmirrored', {
+      outboxId: entry.id,
+      procedure: entry.procedure,
+    });
+  }
 }
 
 function markDone(db: LocalDb, entryId: string): void {
