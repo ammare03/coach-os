@@ -37,11 +37,9 @@ export async function revokeInvite(
   // independently as a `client_profiles` row — reject with a clear code
   // rather than silently doing nothing.
   if (invite.acceptedAt) {
-    throw appError(
-      'INVITE_ALREADY_ACCEPTED',
-      'This invite has already been used and cannot be revoked.',
-      {},
-    );
+    // Same catalogued copy as `accept-invite.ts` (`ERRORS.md` ER§1.9) — one
+    // string per code, even reached from a different screen.
+    throw appError('INVITE_ALREADY_ACCEPTED', 'That invite has already been used.', {});
   }
 
   // Idempotent: a second revoke of an already-revoked invite is a no-op,

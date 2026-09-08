@@ -44,7 +44,12 @@ export interface AcceptInviteInput {
 // — same code, same terminal states, a different acceptance path once
 // validated. One implementation of "what does this code mean right now."
 export function inviteNotFound() {
-  return appError('INVITE_NOT_FOUND', 'This invite code is not valid.', {});
+  // Copy from `ERRORS.md` ER§1.9 — the one place this string is allowed to live.
+  return appError(
+    'INVITE_NOT_FOUND',
+    "This invite code isn't valid. Check it and try again, or ask your coach for a new one.",
+    {},
+  );
 }
 
 /**
@@ -64,17 +69,17 @@ export async function loadAndValidateInvite(db: DbClient, code: string) {
     throw inviteNotFound();
   }
   if (invite.expiresAt.getTime() < Date.now()) {
-    throw appError('INVITE_EXPIRED', 'This invite has expired. Ask your coach for a new one.', {
+    throw appError('INVITE_EXPIRED', 'That invite has expired. Ask your coach for a new one.', {
       expiredAt: invite.expiresAt.toISOString(),
     });
   }
   if (invite.acceptedAt) {
-    throw appError('INVITE_ALREADY_ACCEPTED', 'This invite has already been used.', {});
+    throw appError('INVITE_ALREADY_ACCEPTED', 'That invite has already been used.', {});
   }
   if (invite.revokedAt) {
     throw appError(
       'INVITE_REVOKED',
-      'This invite was cancelled. Ask your coach for a new one.',
+      'That invite was cancelled. Ask your coach for a new one.',
       {},
     );
   }
@@ -144,7 +149,7 @@ export async function acceptInvite(
     // notify — the client re-submits with `guardianEmail` filled in.
     throw appError(
       'GUARDIAN_CONSENT_REQUIRED',
-      "We need a parent or guardian's email before you can get started.",
+      "We need a parent or guardian's consent before you can continue.",
       {},
     );
   }
@@ -199,7 +204,11 @@ export async function acceptInvite(
       dbError?.code === '23505' &&
       dbError.constraint_name === CLIENT_ONE_ACTIVE_COACH_CONSTRAINT
     ) {
-      throw appError('CLIENT_ALREADY_HAS_COACH', 'This account is already bound to a coach.', {});
+      throw appError(
+        'CLIENT_ALREADY_HAS_COACH',
+        "You're already working with a coach. Leave them first to accept this invite.",
+        {},
+      );
     }
     throw error;
   }
