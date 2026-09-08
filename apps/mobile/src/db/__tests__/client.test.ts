@@ -29,6 +29,12 @@ jest.mock('expo-sqlite', () => {
           rows = [];
           return makeResult([]);
         }
+        // Task 02's bootstrap (`../client.ts`'s `getLocalDb()`) now also
+        // creates the `outbox_ready` index on every call — a no-op here,
+        // same as the CREATE TABLE branch above.
+        if (/^CREATE INDEX/i.test(sqlText)) {
+          return makeResult([]);
+        }
         if (/^INSERT INTO/i.test(sqlText)) {
           const row: FakeRow = { value: String(params[0]) };
           rows.push(row);

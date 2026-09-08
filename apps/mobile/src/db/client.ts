@@ -1,10 +1,8 @@
+import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/expo-sqlite';
 import * as SQLite from 'expo-sqlite';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-// schema/index.ts is an intentionally empty barrel until
-// phase-08-offline-core/local-database/02 adds tables to it.
-// eslint-disable-next-line import/namespace -- remove in task 02, once the barrel exports tables
 import * as schema from './schema/index.ts';
 
 // This is the device-side mirror, not `packages/db`. See `./README.md` for
@@ -29,8 +27,31 @@ export const DATABASE_NAME = 'coachos.db';
 
 export type LocalDb = ReturnType<typeof drizzle<typeof schema>>;
 
+// Table creation: `CREATE TABLE IF NOT EXISTS` run once at connection open,
+// not drizzle-kit migrations. DB§13's own rule — "on mismatch, drop and
+// re-fetch rather than migrate; migrating an offline cache is not worth the
+// complexity" — means this database never needs the thing migrations exist
+// for: preserving data across incremental schema changes. Task 04 handles a
+// version bump by dropping the file and re-running this bootstrap from
+// scratch, which is strictly simpler than generating, reviewing, and
+// applying an ALTER TABLE sequence for a store that's disposable by design.
+// `apps/mobile` has no `db:generate` script and `packages/db`'s
+// `drizzle.config.ts` is Postgres-only (`dialect: 'postgresql'`) — this task
+// does not add SQLite drizzle-kit tooling or a script for it. Each schema
+// module exports its own `CREATE TABLE` statements next to the Drizzle
+// table it describes (`*_SCHEMA_SQL`), so a future column change to, say,
+// `local-training.ts` is one file to edit, not two files kept in sync by
+// convention alone.
+const BOOTSTRAP_STATEMENTS: readonly string[] = [
+  ...schema.LOCAL_TRAINING_SCHEMA_SQL,
+  ...schema.LOCAL_NUTRITION_SCHEMA_SQL,
+  ...schema.LOCAL_FEEDBACK_SCHEMA_SQL,
+  ...schema.SYNC_SCHEMA_SQL,
+];
+
 let databasePromise: Promise<SQLiteDatabase> | null = null;
 let localDb: LocalDb | null = null;
+let schemaReady = false;
 
 function openDatabase(): Promise<SQLiteDatabase> {
   if (!databasePromise) {
@@ -57,6 +78,12 @@ export async function getLocalDb(): Promise<LocalDb> {
   if (!localDb) {
     localDb = drizzle(sqliteDatabase, { schema });
   }
+  if (!schemaReady) {
+    for (const statement of BOOTSTRAP_STATEMENTS) {
+      localDb.run(sql.raw(statement));
+    }
+    schemaReady = true;
+  }
   return localDb;
 }
 
@@ -64,4 +91,5 @@ export async function getLocalDb(): Promise<LocalDb> {
 export function resetLocalDbForTests(): void {
   databasePromise = null;
   localDb = null;
+  schemaReady = false;
 }
