@@ -7,6 +7,7 @@
 // and never write it slightly differently.
 import type { DbClient, Transaction } from '@coachos/db';
 import { and, eq, getTableColumns, isNotNull, type SQL } from 'drizzle-orm';
+import { getTableConfig } from 'drizzle-orm/pg-core';
 import type { PgColumn, PgInsertValue, PgTable, PgUpdateSetSource } from 'drizzle-orm/pg-core';
 
 /** A pool handle or a transaction handle — every caller has one or the other. */
@@ -36,9 +37,31 @@ export type OfflineUpsertArgs<TTable extends PgTable> = {
    * `touch_updated_at` trigger.
    */
   onConflict: 'update' | 'ignore';
-  /** Overrides the columns `'update'` writes; defaults to the payload itself. */
+  /**
+   * Overrides the columns `'update'` writes; defaults to the payload itself.
+   * Rejected for DB§14.3's device-wins tables — narrowing `set` there is a
+   * field-level merge, and DB§14.3 has none. See {@link DEVICE_WINS_TABLES}.
+   */
   set?: PgUpdateSetSource<TTable>;
 };
+
+/**
+ * DB§14.3 row one: for these four the device wins outright — "the client was
+ * there; the server was not". The stored row is replaced field for field,
+ * including the fields the device cleared, and there is no merge UI and there
+ * will not be one.
+ */
+const DEVICE_WINS_TABLES: ReadonlySet<string> = new Set([
+  'training.set_logs',
+  'nutrition.meals',
+  'coaching.body_metrics',
+  'coaching.habit_logs',
+]);
+
+function qualifiedTableName(table: PgTable): string {
+  const config = getTableConfig(table);
+  return config.schema === undefined ? config.name : `${config.schema}.${config.name}`;
+}
 
 // A replay must not move the row's identity or its creation time — an
 // `id` rewrite would orphan every child row pointing at it.
@@ -66,7 +89,12 @@ function columnKeysByName(table: PgTable): Map<string, string> {
   return byName;
 }
 
-/** The payload itself, minus what a replay must not rewrite. */
+/**
+ * The payload itself, minus what a replay must not rewrite. Every other column
+ * the payload names is overwritten unconditionally, never compared against the
+ * stored value — which is DB§14.3's device-wins rule, arrived at by having no
+ * merge step rather than by implementing one.
+ */
 function inferSet<TTable extends PgTable>(
   table: TTable,
   values: PgInsertValue<TTable>,
@@ -150,6 +178,13 @@ export async function offlineUpsert<TTable extends PgTable>(
   args: OfflineUpsertArgs<TTable>,
 ): Promise<TTable['$inferSelect']> {
   const { table, values, target, onConflict } = args;
+
+  if (args.set !== undefined && DEVICE_WINS_TABLES.has(qualifiedTableName(table))) {
+    throw new Error(
+      `offlineUpsert: ${qualifiedTableName(table)} is device-wins (DB§14.3) — the device's payload replaces the stored row whole. A caller-supplied \`set\` narrows that back to a field-level merge.`,
+    );
+  }
+
   const targetWhere = args.targetWhere ?? inferTargetWhere(target);
   const set = args.set ?? inferSet(table, values, target);
 
