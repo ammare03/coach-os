@@ -34,7 +34,9 @@ export type OfflineUpsertArgs<TTable extends PgTable> = {
    * arriving payload overwrites, which is what device-wins tables want.
    * `'ignore'` keeps the stored row, and is the only mode with literally no
    * side effect on replay — `DO UPDATE` still fires migration 0021's
-   * `touch_updated_at` trigger.
+   * `touch_updated_at` trigger. Rejected for DB§14.3's device-wins tables,
+   * where keeping the stored row discards the device outright. See
+   * {@link DEVICE_WINS_TABLES}.
    */
   onConflict: 'update' | 'ignore';
   /**
@@ -179,9 +181,19 @@ export async function offlineUpsert<TTable extends PgTable>(
 ): Promise<TTable['$inferSelect']> {
   const { table, values, target, onConflict } = args;
 
-  if (args.set !== undefined && DEVICE_WINS_TABLES.has(qualifiedTableName(table))) {
+  const deviceWins = DEVICE_WINS_TABLES.has(qualifiedTableName(table));
+
+  if (args.set !== undefined && deviceWins) {
     throw new Error(
       `offlineUpsert: ${qualifiedTableName(table)} is device-wins (DB§14.3) — the device's payload replaces the stored row whole. A caller-supplied \`set\` narrows that back to a field-level merge.`,
+    );
+  }
+
+  // The same rule inverted rather than narrowed: `DO NOTHING` keeps the
+  // server's row and discards the device's submission entirely.
+  if (onConflict === 'ignore' && deviceWins) {
+    throw new Error(
+      `offlineUpsert: ${qualifiedTableName(table)} is device-wins (DB§14.3) — the device's payload replaces the stored row whole. \`onConflict: 'ignore'\` keeps the server's row and discards the device's, which is the rule backwards.`,
     );
   }
 

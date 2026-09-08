@@ -377,52 +377,53 @@ describe('offlineUpsert — a PARTIAL unique index (sessions_client_local)', () 
   });
 });
 
-describe("offlineUpsert — onConflict: 'ignore'", () => {
+// `water_logs`, not `set_logs`: the mode is refused outright for DB§14.3's
+// four (below), and these two prove the mechanism, not the table. It is a
+// plain unique index on `(client_id, client_local_id)` like `set_logs`, and
+// carries the same migration-0021 `touch_updated_at` trigger, so the
+// updated_at assertion still bites.
+describe("offlineUpsert — onConflict: 'ignore' (water_logs)", () => {
   it('returns the stored row unchanged and leaves updatedAt alone', async () => {
     const clientLocalId = randomUUID();
     const values = {
-      workoutSessionId,
-      exerciseId,
       clientId: clientProfileId,
-      setNumber: 3,
-      reps: 8,
+      loggedDate: '2026-09-05',
+      amountMl: 500,
       clientLocalId,
     };
 
     const inserted = await offlineUpsert(db, {
-      table: schema.setLogs,
+      table: schema.waterLogs,
       values,
-      target: [schema.setLogs.clientId, schema.setLogs.clientLocalId],
+      target: [schema.waterLogs.clientId, schema.waterLogs.clientLocalId],
       onConflict: 'ignore',
     });
 
     const replayed = await offlineUpsert(db, {
-      table: schema.setLogs,
-      values: { ...values, reps: 99 },
-      target: [schema.setLogs.clientId, schema.setLogs.clientLocalId],
+      table: schema.waterLogs,
+      values: { ...values, amountMl: 990 },
+      target: [schema.waterLogs.clientId, schema.waterLogs.clientLocalId],
       onConflict: 'ignore',
     });
 
     // First write wins, and the replay is a true no-op — updated_at
     // included, which `onConflict: 'update'` cannot promise.
     expect(replayed).toEqual(inserted);
-    expect(replayed.reps).toBe(8);
+    expect(replayed.amountMl).toBe(500);
   });
 
   it('resolves two concurrent replays to the same single row', async () => {
     const clientLocalId = randomUUID();
     const values = {
-      workoutSessionId,
-      exerciseId,
       clientId: clientProfileId,
-      setNumber: 4,
-      reps: 10,
+      loggedDate: '2026-09-06',
+      amountMl: 250,
       clientLocalId,
     };
     const args = {
-      table: schema.setLogs,
+      table: schema.waterLogs,
       values,
-      target: [schema.setLogs.clientId, schema.setLogs.clientLocalId],
+      target: [schema.waterLogs.clientId, schema.waterLogs.clientLocalId],
       onConflict: 'ignore' as const,
     };
 
@@ -432,13 +433,85 @@ describe("offlineUpsert — onConflict: 'ignore'", () => {
 
     const rows = await db
       .select({ count: sql<number>`count(*)::int` })
-      .from(schema.setLogs)
+      .from(schema.waterLogs)
       .where(
         and(
-          eq(schema.setLogs.clientId, clientProfileId),
-          eq(schema.setLogs.clientLocalId, clientLocalId),
+          eq(schema.waterLogs.clientId, clientProfileId),
+          eq(schema.waterLogs.clientLocalId, clientLocalId),
         ),
       );
     expect(rows[0]?.count).toBe(1);
+  });
+});
+
+describe("offlineUpsert — onConflict: 'ignore' is refused for device-wins tables (DB§14.3)", () => {
+  // `DO NOTHING` keeps the server's row and discards the device's newer
+  // submission — the inversion of "the client was there; the server was
+  // not", and a total discard rather than the partial one a selective
+  // `set` would make.
+  it('rejects ignore on set_logs', async () => {
+    await expect(
+      offlineUpsert(db, {
+        table: schema.setLogs,
+        values: {
+          workoutSessionId,
+          exerciseId,
+          clientId: clientProfileId,
+          setNumber: 1,
+          reps: 5,
+          clientLocalId: randomUUID(),
+        },
+        target: [schema.setLogs.clientId, schema.setLogs.clientLocalId],
+        onConflict: 'ignore',
+      }),
+    ).rejects.toThrow(/DB§14\.3/);
+  });
+
+  it('rejects ignore on meals', async () => {
+    await expect(
+      offlineUpsert(db, {
+        table: schema.meals,
+        values: {
+          clientId: clientProfileId,
+          coachId: coachProfileId,
+          loggedDate: '2026-09-20',
+          mealType: 'lunch',
+          clientLocalId: randomUUID(),
+        },
+        target: [schema.meals.clientId, schema.meals.clientLocalId],
+        onConflict: 'ignore',
+      }),
+    ).rejects.toThrow(/DB§14\.3/);
+  });
+
+  it('rejects ignore on body_metrics', async () => {
+    await expect(
+      offlineUpsert(db, {
+        table: schema.bodyMetrics,
+        values: {
+          clientId: clientProfileId,
+          recordedAt: new Date('2026-09-20T07:00:00.000Z'),
+          recordedDate: '2026-09-20',
+          weightKg: '80.00',
+          source: 'manual',
+          clientLocalId: randomUUID(),
+        },
+        target: [schema.bodyMetrics.clientId, schema.bodyMetrics.clientLocalId],
+        onConflict: 'ignore',
+      }),
+    ).rejects.toThrow(/DB§14\.3/);
+  });
+
+  it('rejects ignore on habit_logs', async () => {
+    // The guard fires before any statement runs, so an unseeded habit id
+    // is enough — a reachable insert would be the bug this test forbids.
+    await expect(
+      offlineUpsert(db, {
+        table: schema.habitLogs,
+        values: { habitId: randomUUID(), date: '2026-09-20', completed: true },
+        target: [schema.habitLogs.habitId, schema.habitLogs.date],
+        onConflict: 'ignore',
+      }),
+    ).rejects.toThrow(/DB§14\.3/);
   });
 });
