@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import type { WipeResult } from '../../../db/wipe.ts';
 import { getErrorCode } from '../../../lib/error-code.ts';
 import { api } from '../../../lib/trpc.ts';
 import { InviteEntryStep } from '../../onboarding/steps/InviteEntryStep.tsx';
@@ -57,6 +58,31 @@ function copyFor(error: unknown, table: Record<string, string>): string {
   return (code === null ? undefined : table[code]) ?? GENERIC;
 }
 
+/**
+ * Every `onSignOut` on this screen routes through here rather than a bare
+ * `void signOut()`, so a `blocked` result can't be dropped silently.
+ *
+ * Unreachable today: nothing writes to the `outbox` table until
+ * `phase-08-offline-core/outbox` ships, so `wipeLocalDatabase` always sees
+ * an empty table and this always resolves `wiped`. Once that feature
+ * lands, a coach or client with unsynced work who taps sign-out here will
+ * get refused silently — `signOut()` correctly leaves the session
+ * untouched (`local-database/03-wipe-on-logout.md`), but nothing on this
+ * screen says so. The confirm-discard prompt that branch needs is
+ * design-gated (`design-gate` skill) and Ammar's call, not built here —
+ * this `if` exists so the next person touching this screen finds that gap
+ * before a real client hits it, not after.
+ */
+function handleWrongSessionSignOut(
+  signOut: (options?: { force?: boolean }) => Promise<WipeResult>,
+): void {
+  void signOut().then((result) => {
+    if (result.outcome === 'blocked') {
+      // See the function comment above.
+    }
+  });
+}
+
 export interface InviteArrivalProps {
   code: string;
 }
@@ -108,7 +134,7 @@ function RefusedAsCoach() {
     <InviteRefusedScreen
       reason="signed-in-as-coach"
       email={email}
-      onSignOut={() => void signOut()}
+      onSignOut={() => handleWrongSessionSignOut(signOut)}
       isSigningOut={isSigningOut}
     />
   );
@@ -136,7 +162,7 @@ function SignedInClientArrival({ code }: { code: string }) {
         coachName={coach.data.name}
         email={email}
         onOpenSettings={() => router.push('/(client)/settings')}
-        onSignOut={() => void signOut()}
+        onSignOut={() => handleWrongSessionSignOut(signOut)}
         isSigningOut={isSigningOut}
       />
     );
@@ -146,7 +172,7 @@ function SignedInClientArrival({ code }: { code: string }) {
   return (
     <ReturningClientAcceptance
       code={code}
-      onSignOut={() => void signOut()}
+      onSignOut={() => handleWrongSessionSignOut(signOut)}
       isSigningOut={isSigningOut}
     />
   );

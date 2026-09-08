@@ -4,6 +4,16 @@ import { signalSignOutRequired } from '../sign-out-signal.ts';
 import { useAuthStore } from '../store.ts';
 import { clearTokens, getTokens } from '../token-store.ts';
 
+// The involuntary listener now runs a wipe attempt before flipping the
+// store (`local-database/03-wipe-on-logout.md`) — faked here the same way
+// `useSignOut.test.ts` fakes it, since this file's own concern is the
+// bootstrap sequencing, not the wipe itself (covered by `db/wipe.test.ts`).
+jest.mock('../../../db/wipe.ts', () => ({
+  wipeLocalDatabase: jest.fn(async () => ({ outcome: 'wiped' })),
+}));
+jest.mock('../../../lib/query/persister.ts', () => ({
+  clearPersistedQueryCache: jest.fn(async () => undefined),
+}));
 jest.mock('../token-store.ts', () => ({
   getTokens: jest.fn(),
   setTokens: jest.fn(),
@@ -102,7 +112,7 @@ describe('bootstrap', () => {
     });
   });
 
-  it('follows a sign-out signal from outside the bootstrap flow', () => {
+  it('follows a sign-out signal from outside the bootstrap flow', async () => {
     useAuthStore.setState({
       status: 'authenticated',
       userId: 'user-1',
@@ -111,6 +121,11 @@ describe('bootstrap', () => {
     });
 
     signalSignOutRequired();
+    // The listener now awaits a (faked) wipe attempt before flipping the
+    // store — let those microtasks settle rather than asserting mid-flight.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(useAuthStore.getState()).toMatchObject({
       status: 'unauthenticated',

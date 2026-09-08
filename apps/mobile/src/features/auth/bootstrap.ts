@@ -1,7 +1,7 @@
 import { decodeAccessTokenClaims } from './jwt.ts';
 import { refreshTokenPair } from './refresh-client.ts';
 import { onSignOutRequired } from './sign-out-signal.ts';
-import { useAuthStore } from './store.ts';
+import { useAuthStore, wipeLocalDataOnSignOut } from './store.ts';
 import { clearTokens, getTokens, setTokens } from './token-store.ts';
 
 // Runs once, at module load: whenever `refresh-interceptor.ts` decides a
@@ -9,8 +9,23 @@ import { clearTokens, getTokens, setTokens } from './token-store.ts';
 // This is the store's only tie to the network layer — the interceptor
 // never imports the store directly (`sign-out-signal.ts`'s own comment on
 // why), so this is the one place that wires them together.
+//
+// This is an *involuntary* sign-out (`local-database/03-wipe-on-logout.md`):
+// there is no user present to confirm discarding unsynced outbox rows, so
+// unlike `useSignOut` this never refuses the flip — a dead refresh token
+// means the session is over regardless of what's still on disk. It still
+// attempts a non-forced wipe first, so the common case (nothing pending)
+// leaves the device clean; if the outbox does have pending rows, they are
+// deliberately left in place rather than force-discarded (never silently
+// destroy a client's unsynced workout). That is a known, bounded gap in
+// DB§13's "no window" guarantee for this one path — the previous user's
+// rows can outlive this sign-out until the next chance to wipe (a
+// subsequent sign-out, or a schema-version mismatch drop) — accepted
+// because the alternative is worse and there is no user here to choose.
 onSignOutRequired(() => {
-  useAuthStore.getState().setSignedOut();
+  void wipeLocalDataOnSignOut({ force: false }).finally(() => {
+    useAuthStore.getState().setSignedOut();
+  });
 });
 
 /**

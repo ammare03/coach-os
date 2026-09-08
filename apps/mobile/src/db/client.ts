@@ -87,6 +87,32 @@ export async function getLocalDb(): Promise<LocalDb> {
   return localDb;
 }
 
+/**
+ * Closes the memoised connection (if one was ever opened) and resets every
+ * piece of module state, so the next `getLocalDb()` call reopens `coachos.db`
+ * from scratch instead of handing back a Drizzle instance wrapped around a
+ * handle that is about to be, or just was, deleted.
+ *
+ * The production counterpart to `resetLocalDbForTests()` below —
+ * `db/wipe.ts` calls this before deleting the file (`local-database/03-wipe-
+ * on-logout.md`). Deleting a file this process still has open would either
+ * fail outright or silently leave every later `getLocalDb()` caller pointed
+ * at a file descriptor for a file that no longer exists.
+ */
+export async function closeLocalDb(): Promise<void> {
+  const opening = databasePromise;
+  databasePromise = null;
+  localDb = null;
+  schemaReady = false;
+  if (!opening) return;
+  try {
+    const database = await opening;
+    await database.closeAsync();
+  } catch {
+    // Already unopenable, or already closed — nothing left to close.
+  }
+}
+
 /** Test seam — mirrors `resetQueryCacheForTests` in `lib/query/persister.ts`. */
 export function resetLocalDbForTests(): void {
   databasePromise = null;

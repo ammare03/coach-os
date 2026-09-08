@@ -84,6 +84,9 @@ afterEach(() => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // `signOut` resolves a `WipeResult` since `local-database/03`; the screen
+  // chains `.then` on it.
+  mockSignOut.mockResolvedValue({ outcome: 'wiped' });
   meReturns(SHAPES.pendingMinor);
   mockResendMutate.mockImplementation((_input: unknown, options: { onSuccess?: () => void }) =>
     options.onSuccess?.(),

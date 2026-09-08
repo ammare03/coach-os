@@ -68,6 +68,9 @@ beforeEach(() => {
     error: null,
     data: { coachName: 'Marcus Adeyemi' },
   });
+  // `handleWrongSessionSignOut` (`InviteArrival.tsx`) reads the resolved
+  // `WipeResult` — the real hook always resolves, so the fake must too.
+  mockSignOut.mockResolvedValue({ outcome: 'wiped' });
 });
 
 function signIn(role: 'client' | 'coach' | 'assistant') {
