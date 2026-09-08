@@ -17,8 +17,7 @@ import { formatQueuedAt } from '../queued-at.ts';
 
 import { syncFailureTitle } from './SyncFailureBanner.tsx';
 
-// The approved design's frame C — what is stuck, and the manual retry.
-// Design approved by Ammar; do not redesign this.
+// Frame C of `Sync failure banner.dc.html` — what is stuck, and the manual retry.
 //
 // Two surfaces rather than one because `ERRORS.md` ER§1.4 gives
 // `SYNC_PERMANENTLY_FAILED` the action "Review" and the task text says

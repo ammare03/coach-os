@@ -4,9 +4,7 @@ import { useEffect, useRef } from 'react';
 import { AccessibilityInfo, StyleSheet, View } from 'react-native';
 
 // DB§14.4's "surfaced in the UI as 'couldn't sync — retry', never silently
-// dropped", as the design draws it (frame B, `Sync failure banner.dc.html`,
-// built against DESIGN.md and the shipped P08 cache-reset dialog). Pending
-// Ammar's sign-off; do not redesign it here.
+// dropped", as the design draws it (frame B, `Sync failure banner.dc.html`).
 //
 // Two decisions from that canvas that are easy to undo by accident:
 //
