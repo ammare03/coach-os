@@ -99,6 +99,9 @@ desktop.ini
 *.swo
 *~
 
+# Cygwin/MSYS crash dumps — Git Bash leaves these wherever a tool segfaults
+*.stackdump
+
 # ── Claude Code ───────────────────────────────────────────────
 # The planning tree and the skills are deliberately local-only.
 .claude/plan/
