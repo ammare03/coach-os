@@ -52,6 +52,16 @@ jest.mock('expo-system-ui', () => ({
 // and the store is driven directly instead.
 jest.mock('../features/auth/bootstrap.ts', () => ({ bootstrap: jest.fn(() => Promise.resolve()) }));
 
+// `local-database/04`'s check has its own tests in `db/__tests__/schema-
+// version.test.ts` and `features/offline/__tests__`. The real function opens
+// `expo-sqlite`, which has no native implementation under Jest — stubbed to
+// the common case (no mismatch) so these sequencing assertions stay about
+// the splash, not the local database.
+jest.mock('../db/schema-version.ts', () => ({
+  checkSchemaVersion: jest.fn(() => Promise.resolve({ status: 'ok' })),
+  confirmSchemaVersionReset: jest.fn(() => Promise.resolve()),
+}));
+
 const mockHideAsync = jest.mocked(SplashScreen.hideAsync);
 const mockSetBackgroundColorAsync = jest.mocked(SystemUI.setBackgroundColorAsync);
 

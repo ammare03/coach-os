@@ -1,4 +1,4 @@
-import { ThemeProvider } from '@coachos/ui';
+import { ThemeProvider, useTheme } from '@coachos/ui';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
@@ -6,11 +6,14 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { useCallback, useEffect, useState } from 'react';
+import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { bootstrap } from '../features/auth/bootstrap.ts';
 import { useAuthStore } from '../features/auth/store.ts';
 import { PendingDeepLinkReplay } from '../features/navigation/deep-links/PendingDeepLinkReplay.tsx';
+import { SchemaVersionResetDialog } from '../features/offline/SchemaVersionResetDialog.tsx';
+import { useSchemaVersionGate } from '../features/offline/useSchemaVersionGate.ts';
 import { GuardianConsentRedirect } from '../features/onboarding/GuardianConsentRedirect.tsx';
 import { AnalyticsProvider } from '../lib/analytics/index.ts';
 import { queryClient, queryPersistence } from '../lib/query/client.ts';
@@ -45,6 +48,12 @@ export default function RootLayout() {
   const [hasRootPainted, setHasRootPainted] = useState(false);
   const [isCacheRestored, setIsCacheRestored] = useState(false);
   const authStatus = useAuthStore((state) => state.status);
+  // `local-database/04`. Its own `useEffect` is the first one this
+  // component declares, so it is also the first to fire — before
+  // `bootstrap()` below, and long before any route (which could read the
+  // local SQLite mirror) is allowed to mount (`isReady`, further down).
+  const schemaVersionGate = useSchemaVersionGate();
+  const theme = useTheme();
 
   // `auth-client/04`'s cold-start sequence, kicked off from the one place
   // that knows the app has mounted. It is not re-implemented here — this is
@@ -102,11 +111,22 @@ export default function RootLayout() {
   // the first frame and there is nothing to await. A runtime `useFonts`
   // here would reintroduce the fallback-face flash that decision removed.
   //
-  // `providers-and-gates/03` added the last two conditions. The splash has
+  // `providers-and-gates/03` added the auth condition. The splash has
   // to outlast the SecureStore read and the one refresh call, or the app
   // shows a route group and then swaps it; and it has to outlast the cache
   // restore for the same reason one level down.
-  const isReady = isNativeChromeReady && isCacheRestored && authStatus !== 'loading';
+  //
+  // `local-database/04` adds the fourth: `'checking'` is the ONLY phase
+  // that holds the splash. Both `'ready'` and `'confirm-required'` let it
+  // lift — the mismatch dialog below is rendered instead of `<Stack>` in
+  // the latter case, never behind a held splash, per the approved design
+  // ("blocking dialog, over the held splash, with NO route/screen content
+  // behind it").
+  const isReady =
+    isNativeChromeReady &&
+    isCacheRestored &&
+    authStatus !== 'loading' &&
+    schemaVersionGate.phase !== 'checking';
 
   const handleRootPaint = useCallback(() => setHasRootPainted(true), []);
 
@@ -171,25 +191,49 @@ export default function RootLayout() {
                     dark chrome, explicit rather than `"auto"` so it never
                     follows the device's own light/dark setting. */}
                 <StatusBar style="light" />
-                {/* No screen in this app uses the native header yet — every
-                    route builds its own chrome (the (auth) group's glass nav
-                    bar, this placeholder's plain body).
-                    `phase-05-app-shell/router-skeleton/` revisits this once a
-                    screen actually needs one. */}
-                <Stack screenOptions={{ headerShown: false }} />
-                {/* `deep-linking/04`. Renders nothing; it replays a deep
-                    link parked at cold start, once the gate has resolved.
-                    Deliberately AFTER `<Stack>` — sibling effects flush in
-                    tree order, and the gate's redirect lives inside that
-                    subtree, so the replay has to run last or be overwritten
-                    by it. */}
-                <PendingDeepLinkReplay />
-                {/* `guardian-consent/06`. Also renders nothing: it installs
-                    the app-wide `GUARDIAN_CONSENT_PENDING` redirect, which
-                    `lib/query/client.ts` cannot install itself because it is
-                    constructed before any navigator exists. Same position as
-                    the replay above, and for the same reason. */}
-                <GuardianConsentRedirect />
+                {schemaVersionGate.phase === 'confirm-required' ? (
+                  // `local-database/04`. The one state that replaces
+                  // `<Stack>` outright rather than sitting over it: an
+                  // incompatible local schema means no route is safe to
+                  // mount, so nothing below this branch renders. The plain
+                  // background matches `<ThemeProvider>`'s own default —
+                  // no flash between the native splash (already hidden,
+                  // since `isReady` no longer waits on `'confirm-required'`)
+                  // and this dialog appearing.
+                  <View
+                    style={{ flex: 1, backgroundColor: theme.colors.bg.DEFAULT }}
+                    testID="schema-version-reset-backdrop"
+                  >
+                    <SchemaVersionResetDialog
+                      isOpen
+                      counts={schemaVersionGate.counts}
+                      isClearing={schemaVersionGate.isClearing}
+                      onConfirm={schemaVersionGate.confirm}
+                    />
+                  </View>
+                ) : (
+                  <>
+                    {/* No screen in this app uses the native header yet —
+                        every route builds its own chrome (the (auth)
+                        group's glass nav bar, this placeholder's plain
+                        body). `phase-05-app-shell/router-skeleton/`
+                        revisits this once a screen actually needs one. */}
+                    <Stack screenOptions={{ headerShown: false }} />
+                    {/* `deep-linking/04`. Renders nothing; it replays a deep
+                        link parked at cold start, once the gate has resolved.
+                        Deliberately AFTER `<Stack>` — sibling effects flush in
+                        tree order, and the gate's redirect lives inside that
+                        subtree, so the replay has to run last or be overwritten
+                        by it. */}
+                    <PendingDeepLinkReplay />
+                    {/* `guardian-consent/06`. Also renders nothing: it installs
+                        the app-wide `GUARDIAN_CONSENT_PENDING` redirect, which
+                        `lib/query/client.ts` cannot install itself because it is
+                        constructed before any navigator exists. Same position as
+                        the replay above, and for the same reason. */}
+                    <GuardianConsentRedirect />
+                  </>
+                )}
               </BottomSheetModalProvider>
             </ThemeProvider>
           </TRPCProvider>

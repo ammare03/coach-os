@@ -45,6 +45,14 @@ jest.mock('expo-system-ui', () => ({
 // bootstrap would race every assertion to `'unauthenticated'`.
 jest.mock('../features/auth/bootstrap.ts', () => ({ bootstrap: jest.fn(() => Promise.resolve()) }));
 
+// Same reason as `root-layout.test.tsx`: the real check opens `expo-sqlite`,
+// which has no native implementation under Jest, and this file's concern is
+// the auth gate, not the local database.
+jest.mock('../db/schema-version.ts', () => ({
+  checkSchemaVersion: jest.fn(() => Promise.resolve({ status: 'ok' })),
+  confirmSchemaVersionReset: jest.fn(() => Promise.resolve()),
+}));
+
 const mockHideAsync = jest.mocked(SplashScreen.hideAsync);
 
 /** The `(tabs)` navigators, which this task does not touch. */
