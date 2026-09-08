@@ -1,0 +1,465 @@
+// Real Postgres (`testing` skill §4). `phase-08-offline-core/prefetch/01`'s
+// Verification: a client with sessions scheduled for today and tomorrow gets
+// both, with the full live-resolved prescription and every referenced
+// exercise — and never anything belonging to anybody else.
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+
+import { createDbClient, schema, type DbClient } from '@coachos/db';
+import { addCalendarDays, toLocalDate } from '@coachos/utils';
+import { TRPCError } from '@trpc/server';
+import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
+
+import { createTestContext } from '../../__tests__/test-context.ts';
+import { listUpcomingWorkouts } from '../../features/workouts/upcoming.ts';
+import { isCatalogedError, type AppErrorCause } from '../../lib/app-error.ts';
+import type { Context, ContextUser } from '../../trpc/context.ts';
+import { appRouter } from '../index.ts';
+
+let pgContainer: StartedTestContainer;
+let db: DbClient;
+
+beforeAll(async () => {
+  pgContainer = await new GenericContainer('postgres:16')
+    .withEnvironment({
+      POSTGRES_USER: 'coachos',
+      POSTGRES_PASSWORD: 'coachos',
+      POSTGRES_DB: 'coachos',
+    })
+    .withExposedPorts(5432)
+    .withWaitStrategy(Wait.forLogMessage('database system is ready to accept connections', 2))
+    .start();
+
+  process.env.DATABASE_URL = `postgres://coachos:coachos@${pgContainer.getHost()}:${pgContainer.getMappedPort(5432)}/coachos`; // secret-scan-ignore — well-known local dev credential
+
+  const migrateScript = path.join(
+    __dirname,
+    '..',
+    '..',
+    '..',
+    '..',
+    '..',
+    'packages',
+    'db',
+    'src',
+    'migrate.ts',
+  );
+  execFileSync(process.execPath, ['--experimental-strip-types', migrateScript], {
+    env: { ...process.env },
+    stdio: 'inherit',
+  });
+
+  db = createDbClient({ connectionString: process.env.DATABASE_URL, sslMode: false });
+}, 180_000);
+
+afterAll(async () => {
+  await db.$client.end();
+  await pgContainer.stop();
+}, 120_000);
+
+let seq = 0;
+
+interface ClientFixture {
+  profileId: string;
+  userId: string;
+  ctx: Context;
+}
+
+async function insertCoach(): Promise<{ profileId: string; userId: string; ctx: Context }> {
+  seq += 1;
+  const [user] = await db
+    .insert(schema.users)
+    .values({
+      email: `coach-${seq}@upcoming-test.com`,
+      passwordHash: 'argon2id$placeholder',
+      name: `Coach ${seq}`,
+      role: 'coach',
+      timezone: 'UTC',
+      emailVerifiedAt: new Date(),
+    })
+    .returning();
+  if (!user) throw new Error('seed insert into users did not return a row');
+  const [profile] = await db.insert(schema.coachProfiles).values({ userId: user.id }).returning();
+  if (!profile) throw new Error('seed insert into coach_profiles did not return a row');
+
+  const contextUser: ContextUser = {
+    id: user.id,
+    email: user.email,
+    role: 'coach',
+    timezone: user.timezone,
+    locale: user.locale,
+    isMinor: user.isMinor,
+    guardianConsentAt: user.guardianConsentAt,
+    coachProfileId: profile.id,
+    clientProfileId: null,
+    deletedAt: null,
+  };
+  return {
+    profileId: profile.id,
+    userId: user.id,
+    ctx: createTestContext({ db, user: contextUser }),
+  };
+}
+
+async function insertClient(coachProfileId: string): Promise<ClientFixture> {
+  seq += 1;
+  const [user] = await db
+    .insert(schema.users)
+    .values({
+      email: `client-${seq}@upcoming-test.com`,
+      passwordHash: 'argon2id$placeholder',
+      name: `Client ${seq}`,
+      role: 'client',
+      timezone: 'UTC',
+      emailVerifiedAt: new Date(),
+    })
+    .returning();
+  if (!user) throw new Error('seed insert into users did not return a row');
+  const [profile] = await db
+    .insert(schema.clientProfiles)
+    .values({ userId: user.id, coachId: coachProfileId, status: 'active', activatedAt: new Date() })
+    .returning();
+  if (!profile) throw new Error('seed insert into client_profiles did not return a row');
+
+  const contextUser: ContextUser = {
+    id: user.id,
+    email: user.email,
+    role: 'client',
+    timezone: user.timezone,
+    locale: user.locale,
+    isMinor: user.isMinor,
+    guardianConsentAt: user.guardianConsentAt,
+    coachProfileId: null,
+    clientProfileId: profile.id,
+    deletedAt: null,
+  };
+  return {
+    profileId: profile.id,
+    userId: user.id,
+    ctx: createTestContext({ db, user: contextUser }),
+  };
+}
+
+async function insertExercise(name: string, demoAssetId: string | null = null): Promise<string> {
+  seq += 1;
+  const [exercise] = await db
+    .insert(schema.exercises)
+    .values({
+      name: `${name} ${seq}`,
+      primaryMuscle: 'quads',
+      equipment: 'barbell',
+      movementPattern: 'squat',
+      cues: ['Brace hard', 'Knees out'],
+      defaultIncrementKg: '2.50',
+      demoAssetId,
+    })
+    .returning({ id: schema.exercises.id });
+  if (!exercise) throw new Error('seed insert into exercises did not return a row');
+  return exercise.id;
+}
+
+/** A one-day program whose single day carries one prescribed block. */
+async function insertProgramDay(
+  coachProfileId: string,
+  block: { exerciseId: string; alternatives?: string[] },
+): Promise<string> {
+  seq += 1;
+  const [program] = await db
+    .insert(schema.programs)
+    .values({ coachId: coachProfileId, name: `Program ${seq}`, durationWeeks: 4 })
+    .returning({ id: schema.programs.id });
+  if (!program) throw new Error('seed insert into programs did not return a row');
+  const [week] = await db
+    .insert(schema.programWeeks)
+    .values({ programId: program.id, weekNumber: 1 })
+    .returning({ id: schema.programWeeks.id });
+  if (!week) throw new Error('seed insert into program_weeks did not return a row');
+  const [day] = await db
+    .insert(schema.programDays)
+    .values({ programWeekId: week.id, dayNumber: 1, name: 'Push A', notes: 'Leave one in reserve' })
+    .returning({ id: schema.programDays.id });
+  if (!day) throw new Error('seed insert into program_days did not return a row');
+  await db.insert(schema.programExercises).values({
+    programDayId: day.id,
+    exerciseId: block.exerciseId,
+    orderIndex: 1,
+    targetSets: 4,
+    targetRepsMin: 6,
+    targetRepsMax: 8,
+    targetRpe: '8.5',
+    targetWeightKg: '62.50',
+    targetRestSeconds: 120,
+    tempo: '3010',
+    alternatives: block.alternatives ?? [],
+    coachNotes: 'Film the top set',
+  });
+  return day.id;
+}
+
+async function insertSession(args: {
+  clientId: string;
+  coachId: string;
+  programDayId: string | null;
+  scheduledDate: string;
+  deletedAt?: Date;
+}): Promise<string> {
+  const [session] = await db
+    .insert(schema.workoutSessions)
+    .values({
+      clientId: args.clientId,
+      coachId: args.coachId,
+      programDayId: args.programDayId,
+      scheduledDate: args.scheduledDate,
+      status: 'scheduled',
+      deletedAt: args.deletedAt ?? null,
+    })
+    .returning({ id: schema.workoutSessions.id });
+  if (!session) throw new Error('seed insert into workout_sessions did not return a row');
+  return session.id;
+}
+
+// Both fixture clients are `timezone: 'UTC'`, so "today" here is the same
+// calendar day the device would compute for them.
+const today = toLocalDate(new Date(), 'UTC');
+const tomorrow = addCalendarDays(today, 1);
+const nextWeek = addCalendarDays(today, 7);
+
+function caller(ctx: Context) {
+  return appRouter.createCaller(ctx);
+}
+
+/** The catalogued `cause` of a rejected call — never its message. */
+async function causeOf(call: Promise<unknown>): Promise<AppErrorCause> {
+  try {
+    await call;
+  } catch (error) {
+    if (error instanceof TRPCError && isCatalogedError(error)) return error.cause;
+    throw error;
+  }
+  throw new Error('expected the call to reject, but it resolved');
+}
+
+describe('workouts.upcoming', () => {
+  it("returns today's and tomorrow's sessions with the live-resolved prescription", async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const exerciseId = await insertExercise('Back Squat');
+    const dayId = await insertProgramDay(coach.profileId, { exerciseId });
+    const todayId = await insertSession({
+      clientId: client.profileId,
+      coachId: coach.profileId,
+      programDayId: dayId,
+      scheduledDate: today,
+    });
+    const tomorrowId = await insertSession({
+      clientId: client.profileId,
+      coachId: coach.profileId,
+      programDayId: dayId,
+      scheduledDate: tomorrow,
+    });
+
+    const result = await caller(client.ctx).workouts.upcoming({ from: today, to: tomorrow });
+
+    expect(result.sessions.map((session) => session.id)).toEqual([todayId, tomorrowId]);
+    expect(result.sessions[0]).toMatchObject({
+      scheduledDate: today,
+      status: 'scheduled',
+      dayName: 'Push A',
+      dayNotes: 'Leave one in reserve',
+    });
+    // The prescription is resolved live from `program_day_id`, and every
+    // `numeric` arrives as a number, not a Postgres string.
+    expect(result.sessions[0]?.exercises).toEqual([
+      expect.objectContaining({
+        exerciseId,
+        orderIndex: 1,
+        targetSets: 4,
+        targetRepsMin: 6,
+        targetRepsMax: 8,
+        targetRpe: 8.5,
+        targetWeightKg: 62.5,
+        targetRestSeconds: 120,
+        tempo: '3010',
+        coachNotes: 'Film the top set',
+      }),
+    ]);
+  });
+
+  it('caches every referenced exercise, including the coach-approved swaps', async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const exerciseId = await insertExercise('Front Squat');
+    const alternativeId = await insertExercise('Goblet Squat');
+    const dayId = await insertProgramDay(coach.profileId, {
+      exerciseId,
+      alternatives: [alternativeId],
+    });
+    await insertSession({
+      clientId: client.profileId,
+      coachId: coach.profileId,
+      programDayId: dayId,
+      scheduledDate: today,
+    });
+
+    const result = await caller(client.ctx).workouts.upcoming({ from: today, to: tomorrow });
+
+    expect(result.exercises.map((exercise) => exercise.id).sort()).toEqual(
+      [exerciseId, alternativeId].sort(),
+    );
+    const prescribed = result.exercises.find((exercise) => exercise.id === exerciseId);
+    expect(prescribed).toMatchObject({
+      primaryMuscle: 'quads',
+      equipment: 'barbell',
+      movementPattern: 'squat',
+      isBodyweight: false,
+      defaultIncrementKg: 2.5,
+      cues: ['Brace hard', 'Knees out'],
+      demoAssetId: null,
+      demoVideoUrl: null,
+    });
+  });
+
+  it('excludes sessions outside the range and soft-deleted ones', async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const exerciseId = await insertExercise('Deadlift');
+    const dayId = await insertProgramDay(coach.profileId, { exerciseId });
+    const inRange = await insertSession({
+      clientId: client.profileId,
+      coachId: coach.profileId,
+      programDayId: dayId,
+      scheduledDate: today,
+    });
+    await insertSession({
+      clientId: client.profileId,
+      coachId: coach.profileId,
+      programDayId: null,
+      scheduledDate: nextWeek,
+    });
+    await insertSession({
+      clientId: client.profileId,
+      coachId: coach.profileId,
+      programDayId: null,
+      scheduledDate: tomorrow,
+      deletedAt: new Date(),
+    });
+
+    const result = await caller(client.ctx).workouts.upcoming({ from: today, to: tomorrow });
+
+    expect(result.sessions.map((session) => session.id)).toEqual([inRange]);
+  });
+
+  it("never returns another client's sessions, even under the same coach", async () => {
+    const coach = await insertCoach();
+    const mine = await insertClient(coach.profileId);
+    const theirs = await insertClient(coach.profileId);
+    const exerciseId = await insertExercise('Bench Press');
+    const dayId = await insertProgramDay(coach.profileId, { exerciseId });
+    const mySession = await insertSession({
+      clientId: mine.profileId,
+      coachId: coach.profileId,
+      programDayId: dayId,
+      scheduledDate: today,
+    });
+    await insertSession({
+      clientId: theirs.profileId,
+      coachId: coach.profileId,
+      programDayId: dayId,
+      scheduledDate: today,
+    });
+
+    const result = await caller(mine.ctx).workouts.upcoming({ from: today, to: tomorrow });
+
+    // The client is read from `ctx.user`, never from the wire — there is no
+    // input a caller could put someone else's id in.
+    expect(result.sessions.map((session) => session.id)).toEqual([mySession]);
+  });
+
+  it('rejects a coach — this is a client-only read', async () => {
+    const coach = await insertCoach();
+
+    const cause = await causeOf(caller(coach.ctx).workouts.upcoming({ from: today, to: tomorrow }));
+
+    expect(cause.appCode).toBe('ROLE_REQUIRED');
+  });
+
+  it('rejects an anonymous caller', async () => {
+    const anonymous = createTestContext({ db, user: null });
+
+    const cause = await causeOf(caller(anonymous).workouts.upcoming({ from: today, to: tomorrow }));
+
+    expect(cause.appCode).toBe('AUTH_REQUIRED');
+  });
+
+  it('rejects an inverted range', async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+
+    await expect(
+      caller(client.ctx).workouts.upcoming({ from: tomorrow, to: today }),
+    ).rejects.toThrow();
+  });
+
+  it('resolves the demo video URL for a ready asset, and null for one still processing', async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    seq += 1;
+    const readyKey = `demos/ready-${seq}.mp4`;
+    const processingKey = `demos/processing-${seq}.mp4`;
+    const [readyAsset] = await db
+      .insert(schema.mediaAssets)
+      .values({
+        ownerUserId: coach.userId,
+        coachId: coach.profileId,
+        kind: 'video',
+        storageKey: readyKey,
+        mimeType: 'video/mp4',
+        sizeBytes: 1024,
+        processingStatus: 'ready',
+      })
+      .returning({ id: schema.mediaAssets.id });
+    const [processingAsset] = await db
+      .insert(schema.mediaAssets)
+      .values({
+        ownerUserId: coach.userId,
+        coachId: coach.profileId,
+        kind: 'video',
+        storageKey: processingKey,
+        mimeType: 'video/mp4',
+        sizeBytes: 1024,
+        processingStatus: 'processing',
+      })
+      .returning({ id: schema.mediaAssets.id });
+    if (!readyAsset || !processingAsset) throw new Error('seed insert into media_assets failed');
+
+    const withDemo = await insertExercise('Overhead Press', readyAsset.id);
+    const withoutDemo = await insertExercise('Row', processingAsset.id);
+    const dayId = await insertProgramDay(coach.profileId, {
+      exerciseId: withDemo,
+      alternatives: [withoutDemo],
+    });
+    await insertSession({
+      clientId: client.profileId,
+      coachId: coach.profileId,
+      programDayId: dayId,
+      scheduledDate: today,
+    });
+
+    // The resolver is injected: signing needs live R2 credentials, and
+    // `upcoming.ts` decision (d) is about *which* assets get a URL at all,
+    // not about the signature itself.
+    const result = await listUpcomingWorkouts(
+      db,
+      client.profileId,
+      { from: today, to: tomorrow },
+      { resolveDemoUrl: async (storageKey) => `https://r2.test/${storageKey}` },
+    );
+
+    expect(result.exercises.find((exercise) => exercise.id === withDemo)?.demoVideoUrl).toBe(
+      `https://r2.test/${readyKey}`,
+    );
+    expect(
+      result.exercises.find((exercise) => exercise.id === withoutDemo)?.demoVideoUrl,
+    ).toBeNull();
+  });
+});
