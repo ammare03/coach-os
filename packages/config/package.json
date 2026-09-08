@@ -21,16 +21,16 @@
     "typescript": ">=5.0.0"
   },
   "dependencies": {
-    "@eslint/js": "9.39.5",
-    "eslint-config-expo": "57.0.1",
+    "@eslint/js": "10.0.1",
+    "eslint-config-expo": "57.0.2",
     "eslint-config-prettier": "10.1.8",
     "eslint-import-resolver-node": "0.4.0",
     "eslint-import-resolver-typescript": "4.4.5",
     "eslint-plugin-import": "2.32.0",
-    "jest-expo": "57.0.4",
-    "typescript-eslint": "8.67.0"
+    "jest-expo": "57.0.5",
+    "typescript-eslint": "8.69.0"
   },
   "devDependencies": {
-    "jest": "30.4.2"
+    "jest": "30.5.1"
   }
 }
