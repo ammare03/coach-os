@@ -1,3 +1,5 @@
+import { ensureLocalDatabaseBelongsTo } from '../../db/user-scope.ts';
+
 import { decodeAccessTokenClaims } from './jwt.ts';
 import { refreshTokenPair } from './refresh-client.ts';
 import { onSignOutRequired } from './sign-out-signal.ts';
@@ -62,6 +64,12 @@ export async function bootstrap(): Promise<void> {
       refreshToken: refreshed.refreshToken,
       accessExpiresAt: refreshed.expiresAt.toISOString(),
     });
+    // DB§13: the device mirror must belong to this user before the store
+    // reports `authenticated` — see `db/user-scope.ts`. On the common cold
+    // start (same user reopening the app) this is one indexed `SELECT`, so
+    // the §8.1 budget above still holds.
+    await ensureLocalDatabaseBelongsTo(claims.userId);
+
     // `onboardingCompletedAt` rides on the rotation response rather than a
     // second `me.get` call, which is what keeps the budget above intact
     // while still giving the route gate its third dimension at cold start

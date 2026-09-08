@@ -1,3 +1,4 @@
+import { ensureLocalDatabaseBelongsTo } from '../../../db/user-scope.ts';
 import { bootstrap } from '../bootstrap.ts';
 import { refreshTokenPair } from '../refresh-client.ts';
 import { signalSignOutRequired } from '../sign-out-signal.ts';
@@ -13,6 +14,12 @@ jest.mock('../../../db/wipe.ts', () => ({
 }));
 jest.mock('../../../lib/query/persister.ts', () => ({
   clearPersistedQueryCache: jest.fn(async () => undefined),
+}));
+// Covered on its own in `db/__tests__/user-scope.test.ts` — this file's
+// concern is bootstrap sequencing, including that it is awaited before
+// `setAuthenticated` (see the ordering test below).
+jest.mock('../../../db/user-scope.ts', () => ({
+  ensureLocalDatabaseBelongsTo: jest.fn(async () => ({ outcome: 'same-user' })),
 }));
 jest.mock('../token-store.ts', () => ({
   getTokens: jest.fn(),
@@ -101,6 +108,67 @@ describe('bootstrap', () => {
       accessExpiresAt: '2026-08-28T00:00:00.000Z',
     });
     (refreshTokenPair as jest.Mock).mockRejectedValue(new Error('refresh token expired'));
+
+    await bootstrap();
+
+    expect(clearTokens).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState()).toMatchObject({
+      status: 'unauthenticated',
+      userId: null,
+      role: null,
+    });
+  });
+
+  // DB§13's ordering guarantee: nothing observes `authenticated` while
+  // `ensureLocalDatabaseBelongsTo` is still resolving.
+  it('does not flip the store to authenticated until the local-database guard resolves', async () => {
+    (getTokens as jest.Mock).mockResolvedValue({
+      accessToken: 'old',
+      refreshToken: 'refresh-1',
+      accessExpiresAt: '2026-08-28T00:00:00.000Z',
+    });
+    (refreshTokenPair as jest.Mock).mockResolvedValue({
+      accessToken: makeAccessToken({ sub: 'user-1', role: 'coach' }),
+      refreshToken: 'refresh-2',
+      expiresAt: new Date('2026-08-28T01:00:00.000Z'),
+      onboardingCompletedAt: null,
+    });
+    let resolveGuard: () => void = () => {
+      throw new Error('resolveGuard called before assignment');
+    };
+    (ensureLocalDatabaseBelongsTo as jest.Mock).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveGuard = () => resolve({ outcome: 'same-user' });
+      }),
+    );
+
+    const bootstrapPromise = bootstrap();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(useAuthStore.getState().status).toBe('loading');
+
+    resolveGuard();
+    await bootstrapPromise;
+
+    expect(useAuthStore.getState().status).toBe('authenticated');
+  });
+
+  it('resolves unauthenticated, without authenticating, when the local-database guard fails closed', async () => {
+    (getTokens as jest.Mock).mockResolvedValue({
+      accessToken: 'old',
+      refreshToken: 'refresh-1',
+      accessExpiresAt: '2026-08-28T00:00:00.000Z',
+    });
+    (refreshTokenPair as jest.Mock).mockResolvedValue({
+      accessToken: makeAccessToken({ sub: 'user-1', role: 'coach' }),
+      refreshToken: 'refresh-2',
+      expiresAt: new Date('2026-08-28T01:00:00.000Z'),
+      onboardingCompletedAt: null,
+    });
+    (ensureLocalDatabaseBelongsTo as jest.Mock).mockRejectedValueOnce(
+      new Error('could not wipe the local database for a different user: failed'),
+    );
 
     await bootstrap();
 
