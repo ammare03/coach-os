@@ -4,7 +4,6 @@ import type {
   UpcomingSession,
   UpcomingWorkouts,
 } from 'api/src/features/workouts/upcoming.ts';
-import type { AppRouter } from 'api/src/routers/index.ts';
 import { eq } from 'drizzle-orm';
 import { parse as superjsonParse, stringify as superjsonStringify } from 'superjson';
 
@@ -12,6 +11,7 @@ import { getLocalDb, type LocalDb } from '../../db/client.ts';
 import { localWorkoutSessions } from '../../db/schema/local-training.ts';
 
 import { collectReferencedExerciseIds, prefetchExercises } from './exercises.ts';
+import { prefetchQuery } from './trpc-client.ts';
 
 // `prefetch/01` — today's and tomorrow's sessions on the device before the
 // signal disappears (`offline-sync` §2, `CLAUDE.md` §11.2). This module
@@ -74,33 +74,8 @@ export function upcomingRange(now: Date, timeZone: string): UpcomingRange {
 
 export type UpcomingFetcher = (range: UpcomingRange) => Promise<UpcomingWorkouts>;
 
-// Lazily built and dynamically imported for the same two reasons
-// `lib/outbox/flush.ts` gives: `trpc-links.ts` resolves
-// `EXPO_PUBLIC_API_URL` at module scope, and `TRPCProvider`'s client lives
-// inside a component's `useState`, unreachable from a module a background
-// trigger calls.
-let queryClient: Promise<{ query: (path: string, input: unknown) => Promise<unknown> }> | null =
-  null;
-
-function getQueryClient(): Promise<{ query: (path: string, input: unknown) => Promise<unknown> }> {
-  if (!queryClient) {
-    const building = Promise.all([import('@trpc/client'), import('../trpc-links.ts')]).then(
-      ([{ createTRPCUntypedClient }, { buildLinks }]) =>
-        createTRPCUntypedClient<AppRouter>({ links: buildLinks() }),
-    );
-    // Don't memoise a failure (same idiom as `db/client.ts` and `flush.ts`).
-    building.catch(() => {
-      queryClient = null;
-    });
-    queryClient = building;
-  }
-  return queryClient;
-}
-
-const fetchViaTrpc: UpcomingFetcher = async (range) => {
-  const client = await getQueryClient();
-  return (await client.query('workouts.upcoming', range)) as UpcomingWorkouts;
-};
+const fetchViaTrpc: UpcomingFetcher = async (range) =>
+  (await prefetchQuery('workouts.upcoming', range)) as UpcomingWorkouts;
 
 export function serialiseSessionPayload(payload: LocalSessionPayload): string {
   // superjson, not `JSON.stringify`: `startedAt`/`completedAt`/`updatedAt`
@@ -255,7 +230,4 @@ export async function prefetchSessionsAndExercises(
   };
 }
 
-/** Test seam — mirrors `resetOutboxFlushStateForTests` in `lib/outbox/flush.ts`. */
-export function resetPrefetchStateForTests(): void {
-  queryClient = null;
-}
+export { resetPrefetchStateForTests } from './trpc-client.ts';

@@ -1,6 +1,7 @@
 import { client as clientSchemas } from '@coachos/schemas';
 
 import { getMyCoach } from '../features/clientApp/get-my-coach.ts';
+import { getClientHistory } from '../features/clientApp/history.ts';
 import { updateClientProfile } from '../features/clientApp/update-profile.ts';
 import {
   detachClient,
@@ -26,6 +27,23 @@ export const clientAppRouter = router({
       throw new Error('clientApp.coach: authenticated client has no clientProfileId');
     }
     return getMyCoach(ctx.db, ctx.user.clientProfileId);
+  }),
+
+  // `phase-08-offline-core/prefetch/02` — the trailing-30-days snapshot
+  // the device caches so history and coach feedback read with no signal.
+  // No `ownsResource` for the same reason as `coach` above; the range is
+  // the only caller-supplied input. The timezone comes from the stored
+  // `users.timezone`, never from the wire (`code-conventions` §6).
+  history: clientProcedure.input(clientSchemas.historyInput).query(({ ctx, input }) => {
+    if (ctx.user.clientProfileId === null) {
+      throw new Error('clientApp.history: authenticated client has no clientProfileId');
+    }
+    return getClientHistory(
+      ctx.db,
+      ctx.user.clientProfileId,
+      { from: input.from, to: input.to },
+      ctx.user.timezone,
+    );
   }),
 
   // No input — a client can only ever leave their own coach; `ctx.user`

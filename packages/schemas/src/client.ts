@@ -98,3 +98,37 @@ export const updateProfileInput = strictObject({
   dietaryRestrictions: z.array(z.string().trim().min(1).max(MAX_SHORT_TEXT)).max(MAX_TAG_ARRAY),
 });
 export type UpdateProfileInput = z.infer<typeof updateProfileInput>;
+
+/**
+ * The trailing window `clientApp.history` will answer for — 30 days per
+ * `CLAUDE.md` §11.1, plus a day of headroom so a caller whose "today" has
+ * already rolled over is not rejected for asking for the same 30 days.
+ */
+export const MAX_HISTORY_RANGE_DAYS = 31;
+
+const MS_PER_DAY = 86_400_000;
+
+/**
+ * `clientApp.history` (`phase-08-offline-core/prefetch/02`) — a client-local
+ * calendar range, inclusive at both ends, the same shape and the same
+ * reasoning as `workouts.upcomingWorkoutsInput`: `scheduled_date` and
+ * `logged_date` are the client's own calendar days (`code-conventions` §6,
+ * `CLAUDE.md` §25.5), so the range that selects them is expressed in days,
+ * not instants. Comments have no calendar-day column and are resolved
+ * against this range through the caller's stored `users.timezone`,
+ * server-side.
+ */
+export const historyInput = strictObject({
+  from: calendarDate,
+  to: calendarDate,
+})
+  .refine((value) => value.to >= value.from, {
+    message: 'to must not be earlier than from',
+    path: ['to'],
+  })
+  .refine(
+    (value) =>
+      (Date.parse(value.to) - Date.parse(value.from)) / MS_PER_DAY < MAX_HISTORY_RANGE_DAYS,
+    { message: `the range may not span more than ${MAX_HISTORY_RANGE_DAYS} days`, path: ['to'] },
+  );
+export type HistoryInput = z.infer<typeof historyInput>;
