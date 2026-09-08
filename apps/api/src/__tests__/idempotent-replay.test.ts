@@ -7,6 +7,12 @@
 // session — the single riskiest behaviour in this feature, verified here
 // against real Postgres, including the concurrent case the catch path
 // exists for.
+//
+// Scratch tables and raw SQL, deliberately — this proves the two PATHS,
+// independent of any table. The shared helper procedures actually call is
+// `../lib/offline-upsert.ts` (`sync-engine/01`), tested against the real
+// `set_logs`/`meals`/`workout_sessions` indexes; a resolver should use that,
+// never a hand-written copy of the statement below.
 import { createDbClient, type DbClient } from '@coachos/db';
 import { sql } from 'drizzle-orm';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
