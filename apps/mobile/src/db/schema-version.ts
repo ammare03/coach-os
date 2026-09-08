@@ -1,5 +1,7 @@
 import { sql } from 'drizzle-orm';
 
+import { trackEvent } from '../lib/analytics/index.ts';
+
 import type { LocalDb } from './client.ts';
 import { getLocalDb } from './client.ts';
 import { wipeLocalDatabase } from './wipe.ts';
@@ -55,6 +57,22 @@ export function labelForOutboxProcedure(procedure: string): string {
   return PROCEDURE_LABELS[procedure] ?? FALLBACK_PROCEDURE_LABEL;
 }
 
+type PendingReset = {
+  fromVersion: number;
+  hadPendingOutbox: boolean;
+  entryCount: number;
+};
+
+/**
+ * Set by `checkSchemaVersion()` the moment a mismatch is found, read once
+ * by the reset that follows — either its own silent `performReset()` call
+ * or the later `confirmSchemaVersionReset()` the dialog triggers. This is
+ * what lets `local_cache_reset` (`ANALYTICS.md` AN§3.8) carry the real
+ * `from_version` and entry count without widening either function's
+ * public signature.
+ */
+let pendingReset: PendingReset | null = null;
+
 /**
  * Reads `meta.schema_version` and compares it against
  * `EXPECTED_SCHEMA_VERSION`. This is the first thing in the app that calls
@@ -81,19 +99,32 @@ export async function checkSchemaVersion(): Promise<SchemaVersionCheckResult> {
     return { status: 'ok' };
   }
 
-  if (Number(stored.value) === EXPECTED_SCHEMA_VERSION) {
+  // `-1` for a null or unparseable row, never `NaN`: it still mismatches
+  // (so the reset runs), and `trackEvent` throws in dev on a non-finite
+  // number — a corrupted `meta` row must not crash the very path that
+  // exists to recover from one.
+  const parsedVersion = Number(stored.value);
+  const fromVersion = Number.isFinite(parsedVersion) ? parsedVersion : -1;
+  if (fromVersion === EXPECTED_SCHEMA_VERSION) {
     return { status: 'ok' };
   }
 
   const counts = readPendingOutboxCounts(db);
 
   if (counts === null) {
+    // Severe mismatch (state 4): the outbox itself couldn't be counted, so
+    // there is no honest number to report — never a guessed one. Treated
+    // as "had pending work" for the analytics flag since we could not
+    // verify otherwise.
+    pendingReset = { fromVersion, hadPendingOutbox: true, entryCount: 0 };
     return { status: 'confirm-required', counts: null };
   }
   if (counts.length === 0) {
-    await performReset();
+    await performReset({ fromVersion, hadPendingOutbox: false, entryCount: 0 });
     return { status: 'ok' };
   }
+  const entryCount = counts.reduce((sum, group) => sum + group.count, 0);
+  pendingReset = { fromVersion, hadPendingOutbox: true, entryCount };
   return { status: 'confirm-required', counts };
 }
 
@@ -105,10 +136,20 @@ export async function checkSchemaVersion(): Promise<SchemaVersionCheckResult> {
  * silently (`local-database/04`'s Risks section).
  */
 export async function confirmSchemaVersionReset(): Promise<void> {
-  await performReset();
+  // `pendingReset` is set by the `checkSchemaVersion()` call this dialog's
+  // gate always makes first (`useSchemaVersionGate`'s `'confirm-required'`
+  // phase) — the fallback below only guards against a call site that skips
+  // that step, which nothing in the app does.
+  const pending = pendingReset ?? {
+    fromVersion: EXPECTED_SCHEMA_VERSION,
+    hadPendingOutbox: true,
+    entryCount: 0,
+  };
+  pendingReset = null;
+  await performReset(pending);
 }
 
-async function performReset(): Promise<void> {
+async function performReset(pending: PendingReset): Promise<void> {
   const result = await wipeLocalDatabase({ force: true });
   if (result.outcome !== 'wiped') {
     throw new Error(`schema-version reset could not wipe the local database: ${result.outcome}`);
@@ -119,6 +160,17 @@ async function performReset(): Promise<void> {
   // again and looping straight back into this dialog.
   const db = await getLocalDb();
   writeSchemaVersion(db);
+
+  // Fires once per device per version bump, on both the silent path (empty
+  // outbox) and the confirmed-dialog path — without this a schema bump
+  // silently destroying unsynced sets would be invisible (`ANALYTICS.md`
+  // AN§3.8).
+  trackEvent('local_cache_reset', {
+    had_pending_outbox: pending.hadPendingOutbox,
+    entry_count: pending.entryCount,
+    from_version: pending.fromVersion,
+    to_version: EXPECTED_SCHEMA_VERSION,
+  });
 }
 
 function writeSchemaVersion(db: LocalDb): void {

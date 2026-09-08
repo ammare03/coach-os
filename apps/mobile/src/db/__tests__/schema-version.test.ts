@@ -6,6 +6,14 @@ import {
   labelForOutboxProcedure,
 } from '../schema-version.ts';
 
+// `local_cache_reset` (`ANALYTICS.md` AN§3.8) fires from `performReset()`,
+// not from this test's own assertions — stand in for the real emitter the
+// same way `GuardianConsentPendingScreen.test.tsx` does.
+const mockTrackEvent = jest.fn();
+jest.mock('../../lib/analytics/index.ts', () => ({
+  trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
+}));
+
 // Same hand-rolled fake philosophy as `client.test.ts`/`wipe.test.ts`: an
 // in-memory `meta` key/value store and an `outbox` row list, recognising
 // exactly the SQL shapes `schema-version.ts` and `wipe.ts` (called via
@@ -110,6 +118,7 @@ beforeEach(() => {
   sqliteFake.__setStoredVersion(undefined);
   sqliteFake.__setOutboxRows([]);
   sqliteFake.__setOutboxUnreadable(false);
+  mockTrackEvent.mockClear();
 });
 
 describe('checkSchemaVersion', () => {
@@ -226,5 +235,58 @@ describe('confirmSchemaVersionReset', () => {
 
     expect(result).toEqual({ status: 'ok' });
     expect(sqliteFake.deleteDatabaseAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe('local_cache_reset analytics', () => {
+  it('fires once on the silent path with an empty outbox', async () => {
+    sqliteFake.__setStoredVersion(EXPECTED_SCHEMA_VERSION - 1);
+    sqliteFake.__setOutboxRows([]);
+
+    await checkSchemaVersion();
+
+    expect(mockTrackEvent).toHaveBeenCalledTimes(1);
+    expect(mockTrackEvent).toHaveBeenCalledWith('local_cache_reset', {
+      had_pending_outbox: false,
+      entry_count: 0,
+      from_version: EXPECTED_SCHEMA_VERSION - 1,
+      to_version: EXPECTED_SCHEMA_VERSION,
+    });
+  });
+
+  it('fires once on the confirmed-dialog path with the real pending count', async () => {
+    sqliteFake.__setStoredVersion(EXPECTED_SCHEMA_VERSION - 1);
+    sqliteFake.__setOutboxRows([
+      { procedure: 'workouts.logSet', status: 'queued' },
+      { procedure: 'workouts.logSet', status: 'failed' },
+      { procedure: 'nutrition.logMeal', status: 'inflight' },
+    ]);
+
+    await checkSchemaVersion();
+    expect(mockTrackEvent).not.toHaveBeenCalled();
+
+    await confirmSchemaVersionReset();
+
+    expect(mockTrackEvent).toHaveBeenCalledTimes(1);
+    expect(mockTrackEvent).toHaveBeenCalledWith('local_cache_reset', {
+      had_pending_outbox: true,
+      entry_count: 3,
+      from_version: EXPECTED_SCHEMA_VERSION - 1,
+      to_version: EXPECTED_SCHEMA_VERSION,
+    });
+  });
+
+  it('does not fire on first run - no stored version, no mismatch', async () => {
+    await checkSchemaVersion();
+
+    expect(mockTrackEvent).not.toHaveBeenCalled();
+  });
+
+  it('does not fire when the stored version matches', async () => {
+    sqliteFake.__setStoredVersion(EXPECTED_SCHEMA_VERSION);
+
+    await checkSchemaVersion();
+
+    expect(mockTrackEvent).not.toHaveBeenCalled();
   });
 });
