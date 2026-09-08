@@ -32,8 +32,18 @@
 
 1. `CLAUDE.md`, `DATABASE.md`, `.claude/plan/README.md` — read in full.
 2. Every `README.md` and task document under `.claude/plan/phase-00-*` … `phase-08-*` —
-   254 files, ~1.87 MB. Read in full for P00 and P01; read for header table, scope, files,
-   acceptance criteria, verification, and risks for P02–P08.
+   254 files, ~1.87 MB — but **not all at the same depth, and the difference matters to Step 2**:
+
+   | Depth                                                                                                                               | Where                                                       |
+   | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+   | Every section, verbatim                                                                                                             | All of P00; P01 `db-package-scaffold` and `identity-schema` |
+   | Header table · `Depends on` · `Blocks` · `Scope` · `Files` · `Acceptance criteria` · `Verification` · `Risks` · implementer `Notes` | P01's other six features, and all of P02–P08                |
+
+   What that second row **omits** is each task's `Why this exists` and `Approach` prose. Those
+   sections are mostly rationale, but `Approach` occasionally carries a design decision that
+   appears nowhere else in the document. Step 2 should re-read `Approach` for any task it
+   scrutinises in depth rather than treating this audit as having covered it.
+
 3. `git log`, `git branch -r --merged main`, and per-commit inspection.
 4. The working tree: `git ls-files` inventories per workspace (1,044 tracked source files),
    plus targeted reads of the implementation, migrations, and tests each task names.
