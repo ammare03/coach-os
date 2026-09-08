@@ -1,7 +1,6 @@
 // `local-database/04` — the one user-facing surface a schema-version
 // mismatch can produce (`offline-sync` skill §8: an unsynced outbox can't
-// just be discarded). Design approved by Ammar; do not redesign this —
-// see the task's Copy section for the exact strings below.
+// just be discarded). See the task's Copy section for the exact strings below.
 import { Button, Card, createThemedStyles, Modal, spacing, Text, useTheme } from '@coachos/ui';
 import { AlertTriangle } from 'lucide-react-native';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
