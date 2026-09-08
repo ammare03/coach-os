@@ -9,6 +9,7 @@ const noRawColor = require('./eslint-rules/no-raw-color.js');
 const adherenceColorsOnly = require('./eslint-rules/adherence-colors-only.js');
 const noArbitraryTailwind = require('./eslint-rules/no-arbitrary-tailwind.js');
 const noBareInvalidateQueries = require('./eslint-rules/no-bare-invalidate-queries.js');
+const noDirectOutboxWrite = require('./eslint-rules/no-direct-outbox-write.js');
 
 // eslint-config-expo bundles its own eslint-plugin-import registration in
 // several entries. `base` already registers `import` workspace-wide with no
@@ -67,6 +68,36 @@ const noBareInvalidateQueriesRule = {
   files: ['**/*.{ts,tsx}'],
   plugins: QUERY_PLUGIN,
   rules: { 'query/no-bare-invalidate-queries': 'error' },
+};
+
+// outbox/01 — the single-enqueue-path rule. NOT spread into this file's
+// default export: `packages/ui` also consumes that array and has no local
+// database at all, so registering an outbox plugin there would be noise.
+// apps/mobile/eslint.config.js picks this up by name instead, the same way
+// it already picks up `base.noInlineInputSchemaRules`.
+const OUTBOX_PLUGIN = {
+  outbox: {
+    rules: {
+      'no-direct-outbox-write': noDirectOutboxWrite,
+    },
+  },
+};
+
+const noDirectOutboxWriteRule = {
+  files: ['**/*.{ts,tsx}'],
+  ignores: [
+    // The sanctioned module itself: enqueue (task 01) and, from task 02
+    // onward, the flush loop's own status/attempts updates.
+    '**/lib/outbox/**',
+    // The device mirror's own tests exercise the table shape directly —
+    // `schema.test.ts` inserts outbox rows to prove `depends_on` resolves,
+    // and the DDL-drift guard reconstructs both sides of the schema. Same
+    // exemption class as `tokens.test.ts` under `no-raw-color`: these ARE
+    // the files that check the table.
+    '**/db/__tests__/**',
+  ],
+  plugins: OUTBOX_PLUGIN,
+  rules: { 'outbox/no-direct-outbox-write': 'error' },
 };
 
 // `no-raw-color` and `adherence-colors-only` each carry their own explicit
@@ -225,3 +256,5 @@ module.exports = [
   adherenceColorsOnlyRule,
   noBareInvalidateQueriesRule,
 ];
+
+module.exports.noDirectOutboxWriteRule = noDirectOutboxWriteRule;
