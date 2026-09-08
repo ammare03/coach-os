@@ -1,10 +1,10 @@
 # Pre-Phase-09 Audit — CoachOS
 
-`Step 1: complete · Step 2: in progress — **verified: P00–P08 (all)** · Step 3: not started · Step 4: not started`
+`Step 1: complete · **Step 2: complete** — all of P00–P08 verified · Step 3: not started · Step 4: not started`
 
-> **Resuming Step 2?** Read the line above, then start at the lowest phase listed as "not yet
-> reached". Step 2's verdicts live in [§8](#step2); its findings in [§10](#step2-findings) and
-> its fixes in [§11](#step2-fixes).
+> **Step 2 is done.** Its per-phase verdicts are in [§8](#step2), the `pnpm check` re-run in
+> [§9](#step2-check), the 23 severity-tagged findings in [§10](#step2-findings), and the three
+> changes it actually made in [§11](#step2-fixes). Step 3 starts from §10.
 
 > **What this document is.** A durable, append-only working log for a four-step audit of
 > phases 00–08 before Phase 09 (`workout-logger`) begins. Step 1 (this session) builds ground
@@ -16,15 +16,19 @@
 > they revise a Step 1 verdict, add a row to [§7 Revisions log](#revisions) rather than editing
 > the Step 1 table in place. **The Step 1 status table (§3) is frozen after this session.**
 
-| Section                             | Anchor                         |
-| ----------------------------------- | ------------------------------ |
-| 1. Method and evidence standard     | [#method](#method)             |
-| 2. Step 1 summary and risk register | [#summary](#summary)           |
-| 3. Step 1 task-level status table   | [#status-table](#status-table) |
-| 4. Mechanical-scan findings         | [#scans](#scans)               |
-| 5. `pnpm check` baseline            | [#pnpm-check](#pnpm-check)     |
-| 6. Open questions for Ammar         | [#questions](#questions)       |
-| 7. Revisions log                    | [#revisions](#revisions)       |
+| Section                             | Anchor                             |
+| ----------------------------------- | ---------------------------------- |
+| 1. Method and evidence standard     | [#method](#method)                 |
+| 2. Step 1 summary and risk register | [#summary](#summary)               |
+| 3. Step 1 task-level status table   | [#status-table](#status-table)     |
+| 4. Mechanical-scan findings         | [#scans](#scans)                   |
+| 5. `pnpm check` baseline            | [#pnpm-check](#pnpm-check)         |
+| 6. Open questions for Ammar         | [#questions](#questions)           |
+| 7. Revisions log                    | [#revisions](#revisions)           |
+| 8. Step 2 per-phase verification    | [#step2](#step2)                   |
+| 9. Step 2 `pnpm check` re-run       | [#step2-check](#step2-check)       |
+| 10. Step 2 findings                 | [#step2-findings](#step2-findings) |
+| 11. Step 2 fixes applied            | [#step2-fixes](#step2-fixes)       |
 
 ---
 
@@ -753,6 +757,14 @@ it is noise on every run and a one-line fix.
 Things Step 1 could not settle from the repository, in the order they would change what happens
 next.
 
+> **Step 2 update (2026-09-08).** Five of the seven are now settled. **2 is answered** — branch
+> protection is configured and the required context matches the workflow's job id ([§8.0](#step2),
+> finding **F3** for two caveats). **3, 4, and 6 were put to Ammar and decided** — the P02 task
+> document is the stale one, the stranded invite-copy commit was cherry-picked, and live-reference
+> is confirmed ([§11](#step2-fixes)). **1, 5, and 7 remain open**, and 7 grew: it is now finding
+> **F12**, because account deletion — not just unit preference and data export — is unreachable
+> without a real settings screen.
+
 1. **Do R1's two unscheduled jobs block Phase 09, or follow it?** Building the scheduler is small;
    deciding that account deletion and the minor sweep may sit unscheduled through P09 is a product
    call, not an engineering one.
@@ -1464,3 +1476,356 @@ dependency used by the exit-gate test remains undeclared in `apps/mobile/package
 | `UI-UX.md` §UX8                         | ✅ where it applies — the banner is a section-level surface with its own error isolation and does not block a screen's primary action.                                                                                                                          |
 | Accessibility                           | ✅ labels on the banner and sheet; 📱 contrast and 200% text.                                                                                                                                                                                                   |
 | No undeclared dependency / paid service | ⚠️ — `expo-network` and `@tanstack/query-persist-client-core` carry §3.1 entries; `drizzle-orm` (31 sites) and `testcontainers` (1 site) are used by `apps/mobile` and declared by neither (**F1**). No paid service.                                           |
+
+---
+
+<a id="step2-check"></a>
+
+## 9. `pnpm check` — Step 2 re-run, against the §5 baseline
+
+Step 1 handed over two instructions for this: **run the checks with `--concurrency=1` and Docker
+up**. Both were followed. The tree under test is `chore/pre-phase-09-audit` **including fix X1**
+(the cherry-picked invite copy), so this is not a byte-identical re-run of §5.3 — it is one
+three-file commit ahead.
+
+### 9.1 Run D — forced, serialised, Docker up — **FAILED (1 test of 995)**
+
+`pnpm exec turbo run check --force --concurrency=1`, 16m58s:
+
+```
+api:test: Summary of all failing tests
+api:test: FAIL src/__tests__/auth-reset.test.ts (37.811 s)
+api:test:   ● auth.requestReset › sends an email only when the account exists
+api:test:     expect(jest.fn()).toHaveBeenCalledTimes(expected)
+api:test:     Expected number of calls: 1
+api:test:     Received number of calls: 2
+api:test:       at Object.<anonymous> (src/__tests__/auth-reset.test.ts:172:27)
+api:test: Test Suites: 1 failed, 104 passed, 105 total
+api:test: Tests:       1 failed, 994 passed, 995 total
+api:test: Time:        806.185 s
+
+ Tasks:    16 successful, 20 total
+Failed:    api#test
+```
+
+Turbo stopped on the failure, so the run never reached the remaining tasks — hence 20 rather than
+§5.3's 23.
+
+### 9.2 Run E — the same 105 suites, alone — **PASSED**
+
+Immediately afterwards, `npx jest` in `apps/api`, nothing else running:
+
+```
+Test Suites: 105 passed, 105 total
+Tests:       995 passed, 995 total
+Time:        541.326 s, estimated 795 s
+```
+
+And the failing file alone: `Test Suites: 1 passed, Tests: 9 passed, Time: 18.442 s`.
+
+### 9.3 What this establishes
+
+| Question                                               | Answer                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Did Step 2's own change break anything?                | **No.** X1 touches three invite files; the failing suite is `auth-reset.test.ts`, and the six invite suites were re-run green (65 tests) right after the cherry-pick.                                                                                                                                     |
+| Is `--concurrency=1` sufficient, as §5 concluded?      | **No — that conclusion is now superseded.** Serialisation fixes the _Docker_ contention (`@coachos/db#test` passed cleanly this time, which is what failed in §5.2), but it makes `api:test` **slower** (806 s versus 541 s alone), and slowness is precisely what triggers this second, unrelated flake. |
+| Is this a regression or a flake?                       | **A load-sensitive flake with a deterministic mechanism.** Same code, same machine: 806 s → fail, 541 s → pass, 18 s → pass. The mechanism is a fire-and-forget email leaking across a `clearMocks` boundary — see finding **F23**.                                                                       |
+| Does the tree still meet §23's "`pnpm check` exits 0"? | **Not reliably.** 3,602 of 3,603 tests pass. One suite fails intermittently under load. Recorded as a finding rather than papered over.                                                                                                                                                                   |
+
+**Two independent flake sources are now known**, and Step 1's R5 covers only the first:
+
+1. **Docker contention** (§5.2, R5) — `@coachos/db#test` and `api:test` racing for containers under
+   parallel execution. Mitigation: `--concurrency=1`. **CI runs the parallel form.**
+2. **Async-email leakage under slow execution** (**F23**) — surfaced _by_ the mitigation for the
+   first. Mitigation: fix the test.
+
+Anything that makes the suite slower makes source 2 more likely; anything that makes it more
+parallel makes source 1 more likely. That is worth knowing before P09 adds ~100 more tests.
+
+### 9.4 Two side-checks run while the suite was executing
+
+| Check                                                                                                                                | Result                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`.expo/types` is gitignored — can `mobile:typecheck` pass locally and fail CI?** (Step 1's open worry on P05 `router-skeleton/01`) | **No, not today.** `apps/mobile/.expo/types/router.d.ts` was moved aside and `npx tsc --noEmit` run in `apps/mobile`: **exit 0, no diagnostics.** The directory was restored. The hazard is real in principle — `.gitignore:48` excludes `.expo/` — but the tree does not currently depend on the generated types to typecheck. |
+| **Do the four untested custom ESLint rules still fire?**                                                                             | **Yes, all four** — executed against deliberate violations. Table in [§8.4](#step2).                                                                                                                                                                                                                                            |
+
+---
+
+<a id="step2-findings"></a>
+
+## 10. Step 2 findings
+
+Twenty-three findings, severity-tagged. **Blocking** = must not ship / must not be built on.
+**Should-fix-before-09** = Phase 09 will make it worse, or will trip over it.
+**Nice-to-have** = real, but nothing before P09 depends on it.
+
+Each row says what is wrong, where, and why it matters _for Phase 09 specifically_. Step 1's
+risk-register items are cross-referenced where a finding confirms, sharpens, or supersedes one.
+
+### 10.1 Blocking — 2
+
+**F12 · Account deletion cannot be started by a user, and could not finish if it were.**
+`CLAUDE.md` §21.4 opens _"Required by both app stores. In-app, no email required, ≤ 3 taps from
+settings."_ Three facts compose into its absence:
+
+- No mobile screen calls `me.requestDeletion`. Searching `apps/mobile/src` for
+  `requestDeletion|deleteAccount|Delete account` returns one comment plus two strings in
+  `src/dev/gallery/sections/OverlaysSection.tsx` — the dev component gallery's `ConfirmModal`
+  demo, which `production-exclusion.test.ts` proves is stripped from release bundles.
+- `src/app/(coach)/settings/index.tsx` and `(client)/settings/index.tsx` are still P05
+  placeholders: a `<Text>` of the route path plus one `<Link>` to the medical disclaimer.
+- `/your-data` exists and is tested but is linked from nowhere, and carries no deletion action.
+
+Add **F11** and the 7-day grace never expires into a purge either. Everything server-side is
+built and well tested (`jobs/purge-account.ts` and its suite are among the strongest in the
+repo) — the flow simply has no beginning and no end. **Why it matters for P09:** it does not
+block P09 technically, but no build should reach TestFlight without it, and P09 is the last
+phase before the surfaces that make a build worth submitting. Supersedes and enlarges Step 1's
+**R8**. Owner action: a real settings screen is needed and **no task from P05 to P28 owns
+building one** — that gap is itself the decision to make (Step 1 [§6 question 7](#questions)).
+
+**F11 · Two compliance-facing recurring jobs exist and are never scheduled.** Confirmed
+decisively: `grep -rn 'runAgeSweep|sweepDeletionRequests' apps/api/src --include=*.ts`, excluding
+tests, returns **only the two function definitions** (`jobs/age-sweep.ts:41`,
+`jobs/sweep-deletion-requests.ts:34`). Zero call sites. `apps/api/src/worker.ts` constructs three
+`Worker`s and installs exactly one repeatable trigger, `scheduleWeeklyExerciseReconcile()` at
+`:96`. Consequences on `main`: §21.5's daily minor→adult sweep never fires, so a 17-year-old stays
+`is_minor` and guardian-gated past their birthday and `suspended_until` never expires; §21.4's
+7-day deletion grace never becomes a purge. Both are legally-framed commitments. Step 1's **R1**,
+unchanged and confirmed. **Why it matters for P09:** it does not, mechanically — but P09 is the
+natural moment to add the scheduler, because it is small and every later phase assumes it exists.
+
+### 10.2 Should-fix-before-09 — 10
+
+**F23 · `pnpm check` no longer exits 0, and the cause is a test-isolation leak rather than Step 1's
+Docker contention.** The Step 2 re-run (`turbo run check --force --concurrency=1`, Docker up, 17m)
+failed `api#test`: `src/__tests__/auth-reset.test.ts` › _"sends an email only when the account
+exists"_ — `Expected number of calls: 1, Received number of calls: 2`. **104 of 105 suites and 994
+of 995 tests passed.** Run in isolation the same file passes 9/9 in 18s, so it is timing-dependent —
+but the mechanism is deterministic, not contention:
+
+- The **preceding** test (`:154`, _"returns the same response for a known and an unknown address"_)
+  calls `auth.requestReset` for a real account, which fires the reset email **off the response
+  path** by design, and never waits for it.
+- `packages/config/jest.base.js:18` sets `clearMocks: true`, so `sendEmailMock` is cleared between
+  tests. A send leaking past its own test boundary is therefore attributed to the **next** test.
+- `waitForSendToSettle()` (`:132`) is a fixed 500 ms wait **inside** the failing test. It gives the
+  legitimate send time to land; it cannot exclude the previous test's.
+
+Under a loaded serialised run (`api:test` took 806 s) the first test's send drifts past its
+boundary and the second test counts two. **Confirmed load-sensitive rather than a regression:** the
+identical 105 suites re-run on their own immediately afterwards passed **995/995, exit 0, in 541 s**
+— same code, same machine, 33% faster, green. This is the same class of defect `64027c5` already fixed
+once for this file ("wait for the reset email to arrive instead of sleeping 50ms") — fixed for the
+positive case, not for the leak. Not fixed here because the honest repair changes what the
+assertion measures (filter `sendEmailMock.mock.calls` by recipient, rather than counting), which is
+test-design, not a mechanical edit. **Why it matters for P09:** every phase's DoD ends with
+"`pnpm check` exits 0". A gate that fails once per full run trains people to re-run rather than
+read — Step 1's **R5** made exactly this argument about Docker contention, and this is a second,
+independent instance of it.
+
+**F5 · Six of DB§7's twenty named indexes do not exist, and three of them are P09's own access
+paths.** Read out of a live catalogue, not from SQL: missing are `sessions_client_date`,
+`sessions_coach_unreviewed`, `sessions_coach_range` (deliberately deferred by
+`training-schema/03`, which said the phase that writes the queries should add them — that phase
+is P09/P10) **and `meals_client_date`, `meals_coach_recent`, `summary_client_date`, which no task
+document defers or even mentions**. `0011_meals_summary.sql` creates four indexes, none of them
+these. P09's logger reads `workout_sessions` by `(client_id, scheduled_date)` on every open.
+Add the three session indexes in P09's own migration; raise the nutrition three with P13.
+
+**F4 · Thirty-one foreign keys have no supporting index, and the "migration lint rule" DB§7
+claims does the indexing does not exist.** DB§7 states _"Every FK is indexed. No exceptions.
+(Postgres does not do this for you.)"_ and, in its preamble, _"which is indexed automatically by
+our migration lint rule"_. There is no such rule, script, or CI step in
+`packages/config/eslint-rules/`, `packages/db/scripts/`, or `.github/workflows/`. The 31 include
+every FK on `coaching.habits` and `coaching.progress_photos`, four on `coaching.media_assets`,
+and `training.exercises.coach_id` — whose only candidate index leads with the expression
+`COALESCE(coach_id, sentinel)`, which Postgres cannot use for `coach_id = $1`. P09's own tables
+(`workout_sessions`, `set_logs`) are **not** among them, so this is not a P09 hot path; it is a
+cascade-delete and coach-scoped-query cost that grows with every phase. The cheap durable fix is
+the missing check itself: a test that enumerates `pg_constraint` and fails on an unindexed FK,
+with a documented exclusion list — the pattern `db/constraint-map-freshness.test.ts` already
+establishes.
+
+**F6 · `recomputeSessionVolume` is not inert — it writes `totalVolumeKg: '0'`.** R4 recorded that
+all four transactional aggregate helpers are stubs. Step 2 adds the part that matters: only
+`recomputePersonalRecords` is _deliberately empty_, with a written reason ("there is no safe zero
+placeholder for a personal record"). The other three actively write placeholder values —
+`recompute-session-volume.ts:20` sets `'0'`, `recompute-storage-usage.ts` writes `0/0`, and
+`recompute-daily-summary.ts` upserts a zeroed row. `pnpm db:seed` already demonstrates the effect:
+all 80 seeded `daily_nutrition_summary` rows are zeros. **Wiring P09's session-complete path to
+the stub yields silently wrong volume rather than obviously-missing volume.** Implement the real
+formula in the same task that first calls it, or make the stub throw.
+
+**F10 · The authorization enumeration test cannot see array-of-ids inputs.** Proven by
+experiment, not inspection: two deliberately unguarded `coachProcedure`s were added to
+`routers/habits.ts` and `authz.test.ts` was run. The one taking `{ clientId }` **failed the build
+correctly**; the one taking `{ clientIds: string[] }` **passed**. `probeOneProcedure` filters
+input fields with `field.endsWith('Id')` (`authz.test.ts:220`), so `clientIds`,
+`orderedExerciseIds`, `exerciseIds`, and `alternativeExerciseIds` are never probed. Today's
+behaviour is correct — `routers/assignments.ts:75` guards `clientIds` and `owns-resource.ts:59-64`
+enforces all-or-nothing — so this is a **hole in the guard, not a live vulnerability**. It matters
+now because P09's offline-sync surface is array-shaped by nature (a batch of set logs, a list of
+session ids). Fix: change the filter to `/Ids?$/` and give `foreignIdFor` an array branch.
+
+**F19 · Thirteen of fourteen id-routes have no loading, not-found, or forbidden state, and one
+of them is P09's.** P05's phase AC says _"Every id-route handles loading, not-found, and forbidden
+using P04's `screen-states` components."_ Exactly one does: `(coach)/exercise/[exerciseId].tsx`,
+added in P07. `(client)/workout/[sessionId].tsx` — the workout logger's own route — is a
+placeholder rendering its route path. The mechanism is built and documented
+(`lib/query/useResourceState.ts` + its README) and has **one consumer in the entire app**, and
+that consumer is a sheet rather than a route. This is the single most directly actionable item
+in the audit for P09: adopt `useResourceState` on the logger route and the pattern gets its first
+real proving ground.
+
+**F17 · Only the colour quarter of P04's "no literal outside `tokens.ts`" is enforced, and there
+are already 91 violations of the rest.** `theme/no-raw-color` works (proven live). Nothing checks
+radius, spacing, or font size, and `grep -rnE '(fontSize|borderRadius|padding|margin|gap):\s*[0-9]'`
+outside `theme/`, tests, and the gallery returns **91 hits — 15 in `packages/ui/src` and 76 in
+`apps/mobile/src`**, concentrated in P03's auth components (`AuthScreenShell.tsx:153`
+`borderRadius: 8`, `:159` `fontSize: 14`). P09 builds the densest screen in the product; adding
+the logger to an unenforced convention is how a design system stops being one.
+
+**F2 · `packages/config` is never linted or typechecked, so the rule that would catch its own
+violation cannot fire.** `packages/config/package.json` declares only a `test` script — no `lint`,
+no `typecheck` — and `.lintstagedrc.json` lists seven workspaces, not including it. Consequences:
+(a) `import/no-relative-packages` (`eslint.base.js:177`, severity `error`), which P00
+`shared-config/01`'s own AC demands, **can never fire on `packages/config/tailwind/preset.js:18-19`**,
+the one file in the repo that violates it (Step 1's **R7**); (b) the six custom rule
+implementations under `eslint-rules/` are themselves unlinted and untypechecked. Adding the two
+scripts is a one-line change that will immediately fail on R7 — which is the point.
+
+**F1 · Undeclared runtime dependencies that resolve only because of `nodeLinker: hoisted`.**
+Step 1's **R2**, confirmed, and now with the reason it is clearly an oversight rather than a
+policy: `packages/ui` declares **twelve** RN-ecosystem packages in _both_ `peerDependencies` and
+`devDependencies`, and omits exactly three — `expo-image` (`Avatar.tsx`), `@gorhom/bottom-sheet`
+(`Sheet.tsx`), `react-native-safe-area-context` (`SheetFooter.tsx`). `apps/mobile` value-imports
+`drizzle-orm` at 31 sites (including `src/db/client.ts:1-2`), `@trpc/server/observable` at
+`features/auth/refresh-interceptor.ts:2`, and `testcontainers` in the P08 exit-gate test, with
+none in its manifest. P09 adds device-side database code, which is exactly the `drizzle-orm`
+surface.
+
+**F16 · The one test that enforces §23's "analytics events declared in `ANALYTICS.md` first"
+never runs on CI.** `apps/mobile/src/lib/analytics/__tests__/events-match-dictionary.test.ts:10`
+resolves `ANALYTICS.md` by relative path and skips both cross-checks when it is absent
+(`94016db`); `.gitignore:123` keeps `ANALYTICS.md` out of the repository, so it is always absent
+on a CI checkout. It passes locally, where the file exists. P09 introduces `workout_started`,
+`workout_completed`, and `set_logged` — three of §20's core events — under a guard that is
+green-by-vacuity on every CI run. Options: commit the event table alone, or have CI fail loudly
+when the document is missing rather than skipping.
+
+**F20 · Two different components are named `ExercisePickerSheet`.**
+`features/onboarding/components/ExercisePickerSheet.tsx` (P06) and
+`features/workouts/components/library/ExercisePickerSheet.tsx` (P07 — the one with a test, and
+the app's only `useResourceState` consumer). P09's logger needs an exercise picker and whoever
+writes it will import whichever autocomplete offers first. Rename one before P09, not after.
+
+### 10.3 Nice-to-have — 10
+
+**F3 · Branch protection is configured but admin-bypassable.** Step 1 could not see this at all;
+`gh api repos/ammare03/coach-os/branches/main/protection` returns
+`required_status_checks.contexts: ["check"]` with `strict: true`, `allow_force_pushes: false`,
+`allow_deletions: false` — and the context **matches** the workflow's job id, so the trap the task
+doc warns about is not present. Two caveats: `enforce_admins: false` (the sole admin can push
+directly to `main`) and `required_approving_review_count: 0`, which makes
+`authz-allowlist.ts`'s "needs a second reviewer's approval" aspirational for a solo developer.
+Both are reasonable for a one-person project; recorded so they are chosen rather than inherited.
+
+**F7 · The migration CI idempotency step still cannot fail for the reason it exists.** Step 1's
+**R10**, now executed rather than inferred: re-running the migrator against a fully migrated
+database prints `nothing to apply, already up to date.` and exits 0 **without executing one DDL
+statement**, because it consults `drizzle.__drizzle_migrations` first. DB§12.1 point 5's check is
+a tautology. A real check would diff a freshly-migrated schema against the current one
+(`pg_dump --schema-only`), which is a genuine improvement but not a P09 dependency.
+
+**F8 · Seed determinism holds, but three tables carry a wall-clock column, not one.** Two
+independent migrate+seed runs into fresh databases produced **2,765 rows each and 46 of 49 tables
+byte-identical**. The three that differ — `training.workout_sessions`,
+`nutrition.daily_nutrition_summary`, `platform.storage_usage` — differ in `updated_at` alone;
+every id and value matches. Step 1 recorded only the first. Also worth knowing for P10/P13 QA:
+all 80 seeded `daily_nutrition_summary` rows are zeros, because the seed writes them through
+**F6**'s stub, so `v_client_overview.nutrition_adherence_7d` reads 0 against seed data.
+
+**F9 · Four custom ESLint rules encoding product law still have no unit test — but all four
+fire today.** Step 1's **R6**. Each was executed against a deliberate violation during this pass
+(`no-raw-color`, `no-arbitrary-tailwind`, `adherence-colors-only`, `no-hand-written-row-type`)
+and each reported its error. The risk is forward-looking regression, not present breakage, and it
+compounds with **F2**. `theme-tokens/05`'s own Files table still names a `rules.test.js` that was
+never created.
+
+**F15 · The export/purge inventory guard compares two hand-written lists to each other, never to
+the schema.** All five assertions in `services/export/table-inventory.test.ts` relate
+`PURGE_TABLES`, `EXPORT_TABLES`, and `EXPORT_EXCLUDED` — three arrays in one file. Nothing
+compares any of them to the Drizzle schema, and **11 of the 49 live tables appear in none of
+them** (`habit_logs`, `meal_items`, `meal_plan_days`, `meal_plan_items`, `program_days`,
+`program_exercises`, `program_weeks`, `foods`, `audit_log`, `metric_samples`, `webhook_events`).
+Each is plausibly a cascade child or a deliberate retention — but nothing asserts that, so a table
+added in P11/P17/P18 that is neither exported nor purged passes every test. P09 adds no tables, so
+this becomes urgent at P11, not now.
+
+**F14 · One purge assertion is looser than its name.** `jobs/purge-account.test.ts:569` —
+_"refuses to purge a coach who still has a client (client_profiles.coach_id RESTRICT)"_ — asserts
+`.rejects.toThrow()` with no matcher, so any future unrelated failure in that path keeps it green.
+One argument from being exact. Not fixed here because choosing the right matcher (the SQLSTATE, the
+constraint name, or an app code) is a judgement call, not a mechanical edit.
+
+**F13 · The `packages/schemas` import-purity test covers 21 of 27 modules.**
+`__tests__/layout.test.ts:49` loops the 20-entry `ROUTERS` list plus `primitives`; `auth-session`,
+`errors`, `index`, `limits`, `pagination`, and `strict` are outside it. The invariant holds in fact
+— every import across `packages/schemas/src/*.ts` is `zod` or `./primitives.ts`, except
+`pagination.ts` → `./limits.ts` and `./strict.ts` — but Step 1's "every module" overstates the test.
+
+**F18 · The a11y contract is enumerated, not enumerating.** `packages/ui/src/a11y-contract.test.tsx`
+holds 22 well-built assertions (roles, names, `accessibilityState`, hints, decorative-hidden cases,
+`LoadingState` as a busy progressbar) but has no completeness check, so a primitive added in P09
+gets no a11y coverage automatically. One directory away, `gallery-coverage.test.ts:46` does exactly
+that for gallery presence — the pattern to copy.
+
+**F21 · The P07 plan document names an error code that does not exist.** Its AC says the one-active-
+assignment conflict surfaces as `ASSIGNMENT_ALREADY_ACTIVE`; the shipped code is
+`CLIENT_ALREADY_HAS_ACTIVE_ASSIGNMENT` (`packages/schemas/src/errors.ts:211`, mapped to `CONFLICT`
+at `:286`). Behaviour is right; the document is stale. Doc-only.
+
+**F22 · Two test-only cross-app value imports now exist.**
+`apps/mobile/src/features/auth/__tests__/auth-link.test.ts` imports `PUBLIC_ALLOWLIST` from
+`apps/api`, and `apps/mobile/src/lib/outbox/concurrent-flush.integration.test.ts` imports
+`offlineUpsert` from `apps/api`. Both are deliberate and both buy something real (a cross-tier
+drift guard and a genuinely end-to-end idempotency test respectively). Recorded so the count is
+known and the third one is a decision rather than a precedent.
+
+### 10.4 Step 1 risks Step 2 did not change
+
+**R11** (only 3 of 10 declared BullMQ queues have a `Worker`, and the registry disagrees with
+DB§15) stands exactly as written. **§4.3a** (acceptance-criteria checkboxes are unticked across
+every task in P02–P08 despite merged, tested code) stands, and remains the reason the plan tree
+cannot be used as a status signal — Step 1's [§6 question 5](#questions) is still open.
+
+---
+
+<a id="step2-fixes"></a>
+
+## 11. Fixes applied (Step 2)
+
+Step 2 is report-first. Only minimal, low-risk, mechanical changes were made: one cherry-pick the
+owner explicitly authorised, and two document corrections that had become clearly wrong relative to
+verified reality. **Everything else is a finding in [§10](#step2-findings), not a change.**
+
+| Id  | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Commit                         |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| X1  | **Cherry-picked `7934f56`** — the invite error copy alignment stranded on the local `feat/phase3-invites` branch (Step 1's **R9**). Resolves seven user-facing strings to their `ERRORS.md` entries, including `SEAT_LIMIT_REACHED`'s interpolated `{seatLimit}` template. One conflict, resolved by keeping `main`'s `export` of `inviteNotFound` (needed by `accept-invite-as-existing-client.ts`, added after the original commit) with the new copy. Re-ran the six invite suites afterwards: **65 tests, exit 0**. | `bab5ee9`                      |
+| X2  | **Corrected `.claude/plan/phase-02-api-foundation/authorization-middleware/05-public-allowlist.md`** — added a "superseded" note to its Scope paragraph and struck the AC _"Invite acceptance is **not** on the list"_, recording that `invites.accept` **is** the client's sign-up and so cannot require a prior session (Step 1's **R3**, decided by Ammar on 2026-09-08).                                                                                                                                            | **Untracked — see note below** |
+| X3  | **Marked `CLAUDE.md` §27's live-reference-over-snapshot entry decided**, with the confirmation date, the mechanism (`programs.version` stays a change counter; `program_snapshot` is written only at session start, DB§14.6), and the test that proves it both directions.                                                                                                                                                                                                                                              | `b642475`                      |
+
+> **X2 is on disk but in no commit, and that is not an oversight.** `.gitignore:107` excludes
+> `.claude/plan/` (and `:108` `.claude/skills/`), exactly as it excludes `ERRORS.md`,
+> `ANALYTICS.md`, and their siblings. The whole plan tree is local-only. Every plan-document
+> correction this or any later step makes therefore lives on this machine and travels with nothing —
+> worth knowing before Step 4 plans a bulk pass over the tree (Step 1's [§6 question 5](#questions)).
+
+**Deliberately not fixed**, each logged as a finding instead because it needs a design or
+architecture judgement rather than a mechanical edit: **F14**'s bare `.rejects.toThrow()` (choosing
+the right matcher is a decision), **F23**'s test-isolation leak (the honest fix changes what the
+assertion measures), **F1**'s three missing peer dependencies (touches the lockfile and needs a full
+re-check), **F5**'s six missing indexes (they belong in the migration of the phase that queries
+them), and **F2**'s two missing package scripts (adding them fails the build until **R7** is
+resolved, which is the correct order but not a drive-by change).
