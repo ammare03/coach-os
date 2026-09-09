@@ -1,12 +1,13 @@
 # Pre-Phase-09 Audit — CoachOS
 
-`Step 1: complete · Step 2: complete — all of P00–P08 verified · **Step 3: complete** — code-quality, convention and security pass across all eight workspaces · Step 4: not started`
+`Step 1: complete · Step 2: complete — all of P00–P08 verified · **Step 3: complete** — audit across all eight workspaces, then 12 fixes applied and verified ([§16](#remaining)) · Step 4: not started`
 
 > **Steps 2 and 3 are done.** Step 2's per-phase verdicts are in [§8](#step2), its `pnpm check`
 > re-run in [§9](#step2-check), its 23 findings in [§10](#step2-findings), and its three changes
 > in [§11](#step2-fixes). Step 3's method and scope are in [§12](#step3), its 20 findings in
 > [§13](#step3-quality) and [§14](#step3-security), and its counts, verification and hand-over in
-> [§15](#step3-counts). **Step 4 starts from [§15.4](#step3-counts).**
+> [§15](#step3-counts). Ammar then asked for the P00-08 findings to be fixed rather than only
+> reported; [§16](#remaining) is that ledger, and **Step 4 starts from [§16.7](#remaining).**
 
 > **What this document is.** A durable, append-only working log for a four-step audit of
 > phases 00–08 before Phase 09 (`workout-logger`) begins. Step 1 (this session) builds ground
@@ -31,6 +32,11 @@
 | 9. Step 2 `pnpm check` re-run       | [#step2-check](#step2-check)       |
 | 10. Step 2 findings                 | [#step2-findings](#step2-findings) |
 | 11. Step 2 fixes applied            | [#step2-fixes](#step2-fixes)       |
+| 12. Step 3 method and scope         | [#step3](#step3)                   |
+| 13. Code quality and conventions    | [#step3-quality](#step3-quality)   |
+| 14. Security review findings        | [#step3-security](#step3-security) |
+| 15. Step 3 counts and verification  | [#step3-counts](#step3-counts)     |
+| 16. Fixes applied, Step 4 entry     | [#remaining](#remaining)           |
 
 ---
 
@@ -1825,6 +1831,10 @@ verified reality. **Everything else is a finding in [§10](#step2-findings), not
 > correction this or any later step makes therefore lives on this machine and travels with nothing —
 > worth knowing before Step 4 plans a bulk pass over the tree (Step 1's [§6 question 5](#questions)).
 
+> **X5 onwards are in [§16.1](#remaining).** Step 3 opened as a report; Ammar then asked for the
+> P00-08 findings to be fixed, so the eleven further changes are tabled there with their commits
+> rather than continuing this table.
+
 **Deliberately not fixed**, each logged as a finding instead because it needs a design or
 architecture judgement rather than a mechanical edit: **F14**'s bare `.rejects.toThrow()` (choosing
 the right matcher is a decision), **F23**'s test-isolation leak (the honest fix changes what the
@@ -2604,3 +2614,159 @@ the script's own header prescribes, working as designed on a text file. That is 
 - **Step 2's Blocking count drops from 2 to 1.** **F12** is out of scope per [§12.1](#step3);
   **F11** (the two unscheduled compliance jobs) stands unchanged and is unaffected by anything in
   this step.
+
+---
+
+<a id="remaining"></a>
+
+## 16. Fixes applied, and the Step 4 entry state
+
+Step 3 closed as a report. Ammar then asked for the P00–08 findings to be **fixed**, under four
+standing constraints given during the work:
+
+> _"DO NOT implement anything new or anything related to the settings screen or anything from
+> Phase 09 and upwards. Only code changes to Phase 00 to 08."_
+> _"Your fixes must be small and accurate but also required… The application should return to the
+> same state it was but with the required fixes."_
+
+This section is the ledger. Every finding from Steps 1–3 appears exactly once, in one of five
+states, so Step 4 starts from a list rather than a re-read.
+
+### 16.1 Fixed — [§11](#step2-fixes) rows X4 onwards
+
+| Id                             | Finding                                                                                  | Commit                                     |
+| ------------------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------ |
+| **Q0**                         | Raw NUL byte made a source file invisible to every text search                           | `e90cc7a`                                  |
+| **Q9** _(Blocking)_            | `nest()` collision deleted `text-urgent-text`; 15 error messages uncoloured              | `5f1fb94`                                  |
+| **S1**                         | A NUL-bearing source file bypassed the pre-commit secret scan                            | `5daa5db`                                  |
+| **F10 · S3 · S2 · Q2**         | Three holes in the authorization enumeration test, plus the stub that would exercise one | `32c185c`                                  |
+| **F23**                        | Reset-email suite leaked a send across a test boundary                                   | `f57787c`                                  |
+| **F20**                        | Two components both named `ExercisePickerSheet`                                          | `8d5b237`                                  |
+| **F11** _(Blocking)_           | Two compliance sweeps existed and were never scheduled                                   | `c6e7fac`                                  |
+| **F9 · Q10 · Q11 · Q12**       | Four untested lint rules; three regex gaps in the tested ones                            | `ac0238e`                                  |
+| **F6**                         | Three aggregate stubs wrote placeholder zeros instead of refusing                        | `9c9648c`                                  |
+| **F4**                         | No guard against a new unindexed foreign key                                             | `5b000f7`                                  |
+| **F15 · F13 · F14 · Q5 · Q14** | Export/purge inventory never checked against the schema, plus four smaller guards        | `e2bcef1`                                  |
+| **Q4 · Q8 · F18**              | Six copies of one hook, four copies of one formula, no a11y completeness check           | see §16.6                                  |
+| **F21**                        | P07 plan doc named a non-existent error code                                             | local only — `.claude/plan/` is gitignored |
+
+**Five fixes proved themselves by catching something on their first run**, which is the point of
+a fail-closed guard:
+
+- **S3**'s new `CTX_SCOPED_NO_INPUT` allowlist immediately failed on `me.medicalDisclaimer.status`
+  — a no-input procedure this audit's own manual enumeration had missed, because it lives in a
+  sub-router under `features/me/` rather than in `routers/me.ts`. It is genuinely `ctx`-scoped and
+  is now recorded with its reason.
+- **S1** was demonstrated against four cases in a scratch repository: a `.ts` holding a NUL byte
+  and an AWS access key ID is now **refused** (it passed silently before); a plain `.ts` with the
+  same key is still refused by the pattern check; a clean `.ts` passes; and a real `.png` —
+  including one carrying the same NUL bytes — still passes.
+- **Q9**'s new test walks every flattened colour channel, so the assertion is the invariant rather
+  than the instance. A before/after comparison confirmed the blast radius was exactly one group
+  (`urgent`) and exactly one lost key (`urgent-text`).
+- **F4**'s guard enumerated **95 FKs and found 31 unindexed** — exactly the count Step 2 reported,
+  arrived at independently, including the expression-index case (`training.exercises.coach_id`)
+  that a naive check would have scored as covered.
+- **F15**'s guard was sanity-checked by deleting one exclusion entry and confirming the test fails
+  naming that table, then restoring it.
+
+**Two fixes corrected the audit's own briefing**, which is worth recording:
+
+- **Q5**: the column list this document gave for `features/auth/social-sign-in.ts` was
+  **incomplete** — the call site needs seven columns, not three. Verified against `openSession`
+  rather than taken on trust.
+- **F6**: the phase mapping in `packages/db/src/aggregates/README.md` pointed at
+  `personal-records/01`; the plan tree actually assigns the volume formula to
+  `session-runtime/07-completion.md`. The README was corrected in the same change.
+
+### 16.2 What changed that a person could notice
+
+Nothing a coach or client sees changed — **except one thing, and it is a correction.** The three
+aggregate stubs were writing **zeros**, so every seeded client's nutrition read as
+_"0 kcal, 0% adherence"_ — indistinguishable from a client who logged nothing. They now refuse to
+run and the seed leaves those rows absent, so the same client reads as **"no data yet"**.
+`ui-conventions` §2 is explicit that grey means no data and that _"a brand-new client must never
+render red"_; zero-filled rows were quietly breaking that rule against seed data. Real users never
+saw it — the derived tables have no production writer yet.
+
+Everything else is a tripwire or a tidy: no screen, no copy, no colour, no spacing, no touch
+target moved. The `hitSlop` extraction was checked value-by-value across all five call sites
+(17, 16, 6, 6, 6 — identical before and after).
+
+### 16.3 Not fixed — needs Ammar, not engineering
+
+`CLAUDE.md` rule 7 puts product decisions with Ammar; rule 7a puts design decisions behind the
+`design-gate` skill. These seven were deliberately **not** decided by this audit:
+
+| Id      | Decision                                                                                                                                                                                                                                                             |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Q1**  | **`FlashList` is pinned in §3.1 and installed nowhere.** Install it, or amend §3.1 the way the `victory-native` row was amended. P09 is where it gets decided a third time.                                                                                          |
+| **Q6**  | **Tap-target floor is 44 in `tokens.ts`; `accessibility` §1 and `ui-conventions` §5 both say 48, "no exceptions."** A real conflict between governing documents; whichever wins, the other needs amending in the same PR.                                            |
+| **Q7**  | **`numberOfLines={1}` on `Chip` and `SegmentedControl` labels.** Removing it changes rendered layout, so it is design-gated.                                                                                                                                         |
+| **F16** | **`ANALYTICS.md` is gitignored, so §23's analytics-dictionary guard is green-by-vacuity on every CI run.** Commit the event table, or make CI fail loudly — the second turns CI red today.                                                                           |
+| **F17** | **Only the colour quarter of "no literal outside `tokens.ts`" is enforced.** Needs a lint rule _and_ a ruling on which numeric literals are legitimate. Step 3 also found F17's own count understated — its regex misses the `paddingVertical`/`marginTop` variants. |
+| **S4**  | **The rate limiter fails open on Redis failure, including the shared `auth.*` bucket.** Deliberate and documented; worth re-affirming rather than inheriting.                                                                                                        |
+| **F3**  | **Branch protection is `enforce_admins: false` with 0 required reviewers.** A GitHub setting, reasonable solo — recorded so it is chosen.                                                                                                                            |
+
+### 16.4 Not fixed — Ammar declined, this session
+
+Put to Ammar during the work and answered **"None of these now"**:
+
+| Id        | Why it was offered, and why it waits                                                                                                                                                                                                                             |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Q3**    | `is_offline_queued` is hardcoded `false` though P08 shipped the outbox. Fixing it means threading replay state through the outbox flush path — a runtime change with a real risk of leaking state between events.                                                |
+| **F1**    | Undeclared runtime dependencies that resolve only through `nodeLinker: hoisted`. Manifest entries plus one lockfile regeneration and a full re-check.                                                                                                            |
+| **F2/R7** | `packages/config` has no `lint` or `typecheck` script, so `import/no-relative-packages` can never fire on the one file that violates it. Adding the scripts fails the build by design; resolving R7 is an architecture call about which package owns the tokens. |
+
+### 16.5 Not fixed — owned by a later phase, correctly deferred
+
+**F5** (three session indexes belong in P09's own migration, three nutrition ones to P13),
+**F19** (thirteen id-routes with no loading/not-found/forbidden state — the phases that build those
+screens own them, each design-gated), **Q13** (`apps/web` has no logging or error boundary; needs
+either a new dependency under §3 or a new screen under the design gate), **Q15** (ten
+forward-scaffolded exports, to be checked off as their phases land), **S5** (exercise-mutation
+ownership as middleware would add a resource kind; the behaviour is already covered by four
+explicit tests), **F7** (the migration idempotency step is a tautology; a real check means a
+`pg_dump --schema-only` diff).
+
+**Informational, no action:** **F8**, **F22**, **Q16**, and the one genuinely unused runtime
+export, `mergeRouters` (`trpc/init.ts:29`).
+
+### 16.6 Verification
+
+Docker Desktop was started for this work, so **every testcontainer suite ran** — unlike
+[§15.3](#step3-counts), where it was down and the integration halves were skipped.
+
+Per-workspace, after all twelve commits:
+
+| Workspace          | Result                                                                                                           |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `packages/ui`      | **39 suites, 1,045 tests** · lint exit 0                                                                         |
+| `apps/mobile`      | **113 suites, 1,168 tests** · typecheck exit 0 · lint exit 0 (15 pre-existing warnings, unchanged from baseline) |
+| `packages/config`  | **7 suites, 140 tests** — was 3 / 86; the four new rule tests are the difference                                 |
+| `packages/schemas` | **10 suites, 153 tests**                                                                                         |
+| `packages/utils`   | **10 suites, 131 tests**, 100% coverage held                                                                     |
+| `packages/db`      | **2 suites, 6 tests** · typecheck exit 0                                                                         |
+| `apps/api`         | typecheck exit 0 · lint exit 0 · every targeted suite green throughout                                           |
+
+**Two guards were proved rather than assumed**, by breaking them on purpose and restoring:
+removing one entry from **F15**'s exclusion list fails the test naming that table, and removing
+one from **F18**'s fails naming that component. A guard nobody has watched fail is a guard nobody
+has tested.
+
+**One correction to an agent's own work.** The `hitSlop` helper's doc comment cited a
+`CONTRACT.md` that exists nowhere in the repository. Replaced with the rule stated plainly — an
+invented citation is worse than none, because the next reader goes looking for it.
+
+### 16.7 What Step 4 should do first
+
+1. **Take the seven decisions in [§16.3](#remaining).** Four of them — Q1, Q6, Q7, F17 — are about
+   the design system and are cheapest settled together.
+2. **Revisit the three in [§16.4](#remaining)** once there is appetite for a lockfile
+   regeneration and a deliberate build break.
+3. **`DATABASE.md` and `.claude/plan/` edits made by these fixes are local only.** `.gitignore`
+   excludes both, so the DB§15 queue-registry correction and the F21 error-code correction travel
+   with this machine and nothing else — the same constraint [§11](#step2-fixes)'s X2 note records,
+   now applying to two more documents.
+4. **R5's Docker contention is still live.** F23 is fixed, so that flake source is gone; CI still
+   runs the parallel form that triggers the other one.
