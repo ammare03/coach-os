@@ -2749,6 +2749,25 @@ Per-workspace, after all twelve commits:
 | `packages/db`      | **2 suites, 6 tests** · typecheck exit 0                                                                         |
 | `apps/api`         | typecheck exit 0 · lint exit 0 · every targeted suite green throughout                                           |
 
+**The full gate passes.** `pnpm exec turbo run check --force --concurrency=1`, Docker up:
+
+```
+ Tasks:    23 successful, 23 total
+Cached:    0 cached, 23 total
+  Time:    16m33.057s
+```
+
+**Exit 0.** This is the first clean full run since [§9.1](#step2-check), where the same command
+failed `api#test` on **F23**'s cross-test email leak. That flake source is now fixed at both ends
+— the leaking test awaits its own send, and the assertion counts by recipient rather than in
+total — so §9.3's "not reliably" verdict on §23's `pnpm check` requirement no longer stands.
+
+**R5's Docker contention is untouched and still live.** This run was serialised precisely to avoid
+it; CI runs the parallel form. That remains open for Step 4.
+
+`mobile:lint` reports 15 warnings and 0 errors, unchanged from the pre-fix baseline — the package's
+own script is `eslint .` with no `--max-warnings` flag, so it exits 0 by design.
+
 **Two guards were proved rather than assumed**, by breaking them on purpose and restoring:
 removing one entry from **F15**'s exclusion list fails the test naming that table, and removing
 one from **F18**'s fails naming that component. A guard nobody has watched fail is a guard nobody
@@ -2768,5 +2787,5 @@ invented citation is worse than none, because the next reader goes looking for i
    excludes both, so the DB§15 queue-registry correction and the F21 error-code correction travel
    with this machine and nothing else — the same constraint [§11](#step2-fixes)'s X2 note records,
    now applying to two more documents.
-4. **R5's Docker contention is still live.** F23 is fixed, so that flake source is gone; CI still
-   runs the parallel form that triggers the other one.
+4. **R5’s Docker contention is still live**, and CI runs the parallel form that triggers it.
+   The other flake source, F23, is fixed, and the full gate now passes serialised ([§16.6](#remaining)).
