@@ -1,10 +1,12 @@
 # Pre-Phase-09 Audit — CoachOS
 
-`Step 1: complete · Step 2: complete — all of P00–P08 verified · **Step 3: in progress** — mobile/API/db passes done, packages/web delegated passes pending · Step 4: not started`
+`Step 1: complete · Step 2: complete — all of P00–P08 verified · **Step 3: complete** — code-quality, convention and security pass across all eight workspaces · Step 4: not started`
 
-> **Step 2 is done.** Its per-phase verdicts are in [§8](#step2), the `pnpm check` re-run in
-> [§9](#step2-check), the 23 severity-tagged findings in [§10](#step2-findings), and the three
-> changes it actually made in [§11](#step2-fixes). Step 3 starts from §10.
+> **Steps 2 and 3 are done.** Step 2's per-phase verdicts are in [§8](#step2), its `pnpm check`
+> re-run in [§9](#step2-check), its 23 findings in [§10](#step2-findings), and its three changes
+> in [§11](#step2-fixes). Step 3's method and scope are in [§12](#step3), its 20 findings in
+> [§13](#step3-quality) and [§14](#step3-security), and its counts, verification and hand-over in
+> [§15](#step3-counts). **Step 4 starts from [§15.4](#step3-counts).**
 
 > **What this document is.** A durable, append-only working log for a four-step audit of
 > phases 00–08 before Phase 09 (`workout-logger`) begins. Step 1 (this session) builds ground
@@ -1970,7 +1972,7 @@ the O(n²) per-file regex Step 1 used).
 `react-native-safe-area-context` in `packages/ui`. Step 2 logged it as **F1** and deliberately
 did not fix it (lockfile churn). Step 3 confirms it still holds and adds nothing.
 
-### 13.2 Should-fix-before-09 — 3
+### 13.2 Should-fix-before-09 — Q1-Q3 (Q10 is in [§13.5](#step3-quality))
 
 **Q1 · `FlashList` is pinned as the list library and is installed nowhere in the repository.**
 `CLAUDE.md` §3.1 pins **FlashList v2** for "long workout histories, food diaries";
@@ -2035,7 +2037,7 @@ whole session logged in a basement flushes on reconnect — so a permanently-`fa
 from harmless into actively misleading exactly then, and it is the dimension you would slice by
 to answer "did the offline path work".
 
-### 13.3 Nice-to-have — 2
+### 13.3 Nice-to-have — Q4-Q5 (Q6-Q8 in §13.4, Q11-Q16 in §13.5)
 
 **Q4 · Six copies of `useReducedMotion`, in three distinct implementations.** All six subscribe
 to `AccessibilityInfo`'s `reduceMotionChanged` rather than sampling once, which is the correct
@@ -2172,6 +2174,163 @@ confirmed `expo-glass-effect` has two import sites, not the one `GlassSurface.ts
   it is a tracked decision rather than a surprise when P09 is the first to import one.
 - `theme/contrast.ts` has no production consumer by design — it powers a 300-pairing contrast
   audit. Not dead.
+
+### 13.5 `apps/web`, `packages/utils`, `packages/schemas`, `packages/config` — a dedicated pass
+
+The four remaining workspaces were reviewed in a second parallel pass against
+`code-conventions`, `security-and-privacy`, and `configuration`. Every finding below was
+**re-verified in this session by executing the code**, not accepted on report.
+
+#### Q9 · **Blocking** — a colour-token key collision silently deletes `text-urgent-text`, and 15 live error messages render with no colour
+
+`packages/config/tailwind/preset.js:31-43`'s `nest()` un-flattens `bg-raised` into
+`{ bg: { raised: … } }` by splitting each key on its first hyphen. `tokens.ts` declares **both** a
+bare `urgent: '#B51A2B'` (`:81`) **and** `'urgent-text': '#FF8A9B'` (`:83`) as top-level colours.
+`urgent` is processed first and lands as a plain **string**; `urgent-text` then does
+`out.urgent = out.urgent ?? {}` — a no-op, because a non-empty string is truthy — and
+`out.urgent['text'] = value`, which in sloppy-mode JS is a **silent no-op when the target is a
+string primitive.**
+
+Reproduced by loading the real preset in Node:
+
+```
+typeof colors.urgent   : string
+colors['urgent-text']  : undefined
+colors.urgent.text     : undefined
+on-deep control        : colors.on === { deep: 'rgb(var(--color-on-deep) / <alpha-value>)' }
+```
+
+`on-deep` nests correctly because there is no bare `on` key — so this is one isolated collision,
+not a systemic one. But its consequence is real: **Tailwind never generates `text-urgent-text`,
+`bg-urgent-text`, or `border-urgent-text`,** and `packages/ui/src/components/Text.tsx:46` maps the
+shared `Text` primitive's `tone="urgent"` to exactly that class. NativeWind drops an unrecognised
+class silently — the behaviour `no-arbitrary-tailwind.js`'s own doc comment describes.
+
+**Blast radius: 15 live `tone="urgent"` call sites** across `apps/mobile/src` and
+`packages/ui/src` (onboarding steps, invite screens, program-builder sheets), each an inline
+validation message rendered with `accessibilityRole="alert"`. Every one currently renders with no
+colour applied. `Button.tsx:159,161` and `FormField.tsx:82,86` are **not** affected — they read
+`colors['urgent-text']` from the theme object directly rather than through a Tailwind class.
+
+**Why it was never caught.** `Text.test.tsx:60` asserts the _class string_ `'text-urgent-text'` is
+applied — which it is. Nothing anywhere exercises the **compiled preset output**;
+`packages/config/jest.config.js:10` runs only the two `eslint-rules/__tests__` suites. Add
+**F2** (`packages/config` has no `lint` or `typecheck` script) and this is a workspace with no
+static analysis and no test over the one artefact it exists to produce.
+
+**Not fixed here**, deliberately. The idiomatic repair is Tailwind's `DEFAULT` key —
+`{ urgent: { DEFAULT: …, text: … } }` — which means `nest()` must promote a bare key to `DEFAULT`
+when a hyphenated sibling arrives, and demote a string to `{ DEFAULT: … }` when one arrives late.
+That changes the **shape of the object NativeWind consumes** for any group with both forms, and
+there is no test over the compiled output to prove the change is safe. Judgement, not a
+mechanical edit — and Ammar's standing instruction this session was to implement nothing new.
+**Why it matters for P09:** the logger's set-entry validation is exactly a `tone="urgent"`
+surface, so P09 adds call sites to a broken path.
+
+#### Q10 · Should-fix-before-09 — `no-direct-outbox-write` misses four valid SQLite `INSERT OR …` forms
+
+`packages/config/eslint-rules/no-direct-outbox-write.js:27`:
+
+```js
+/\b(?:(?:insert|replace)\s+into|update|delete\s+from)\s+outbox\b/i;
+```
+
+`insert` must sit immediately beside `into`. Executed against the real regex:
+
+| Statement                              | Result                                                     |
+| -------------------------------------- | ---------------------------------------------------------- |
+| `INSERT INTO outbox`                   | caught                                                     |
+| `INSERT OR REPLACE INTO outbox`        | caught — **accidentally**, via the `replace\s+into` branch |
+| `INSERT OR IGNORE INTO outbox`         | **missed**                                                 |
+| `INSERT OR ABORT INTO outbox`          | **missed**                                                 |
+| `INSERT OR FAIL INTO outbox`           | **missed**                                                 |
+| `INSERT OR ROLLBACK INTO outbox`       | **missed**                                                 |
+| `UPDATE outbox` / `DELETE FROM outbox` | caught                                                     |
+
+The blind spot lines up with the rule's most plausible bypass: `INSERT OR IGNORE` is precisely
+what someone hand-rolling an idempotent "enqueue if not already queued" write would reach for —
+the exact semantics `client_local_id` idempotency needs, per the rule's own doc comment.
+`__tests__/no-direct-outbox-write.test.js` covers no `INSERT OR *` variant. **Why it matters for
+P09:** P09 is the phase that writes the first real outbox mutations at volume; this rule is what
+keeps them going through `enqueueMutation` instead of raw SQL.
+
+#### Nice-to-have from this pass — 6
+
+**Q11 · `no-bare-invalidate-queries` does not catch `invalidateQueries(undefined)`.**
+`eslint-rules/no-bare-invalidate-queries.js:63-70` tests `node.arguments.length === 0` and an
+empty `ObjectExpression`, and nothing else. TanStack Query treats an explicit `undefined`
+identically to no argument — it matches every query — so a ternary or optional chain resolving to
+`undefined` in a generic `onSettled` produces exactly the full-cache refetch the rule exists to
+prevent. Untested.
+
+**Q12 · `no-direct-outbox-write`'s `LOCAL_SCHEMA_SOURCE` regex is one directory deep.**
+`:24`'s `/(^|\/)db\/schema(\/[\w.-]+)?$/` matches `db/schema/sync` but would stop matching
+`db/schema/training/exercises`. Today's layout is flat, so this is speculative — recorded because
+it is the same shape of regex fragility as **Q10**.
+
+**Q13 · `apps/web`'s guardian-consent flow has no logging, no error reporting, and no error
+boundary.** `app/guardian-consent/[token]/confirm.ts:80-103` collapses every fetch failure,
+timeout, non-JSON body, and unrecognised outcome into a single `{ outcome: 'unavailable' }`. That
+collapse is _correct_ — it is what stops a live token being told it is expired — but `apps/web`
+carries no Sentry or logger dependency at all and has no `error.tsx`/`global-error.tsx`. An
+upstream outage or a `WEB_API_URL` misconfiguration produces **zero** observable signal beyond a
+parent seeing "try again", on the one flow that activates a minor's account (§21.5).
+
+**Q14 · `formatRelativeToNow` reads the ambient system clock.** `packages/utils/src/dates.ts:167`
+delegates to `date-fns`'s `formatDistanceToNow`, which calls `Date.now()` internally rather than
+taking "now" as a parameter — the one ambient-state read in a package whose whole contract is
+purity. It is why `dates.test.ts:107-113` installs `jest.useFakeTimers()` around that one
+`describe`. Correctly tested today; worth a `now: Date` parameter if it is ever reused where fake
+timers are not available.
+
+**Q15 · Ten exported symbols across `packages/utils` and `packages/schemas` have no consumer.**
+`contrastAgainstInk` (`color/brand-ramp.ts:111`), `localWeekRangeUtc` (`dates.ts:98`) and
+`formatLocalDate` (`dates.ts:157`) are barrel-exported and referenced only by their own tests;
+`localWeekRangeUtc`'s comment ties it explicitly to P10's unbuilt adherence engine. Seven of
+`errors.ts`'s fifty `APP_ERROR_CODES` (`STORAGE_QUOTA_EXCEEDED`, `LIVE_MINUTES_EXHAUSTED`,
+`AI_LIMIT_REACHED`, `FEATURE_NOT_IN_TIER`, `MEDIA_STILL_PROCESSING`, `CHECKIN_ALREADY_SUBMITTED`,
+`RECORDING_CONSENT_REQUIRED`) appear nowhere in `apps/api/src`, each mapping to an unshipped
+phase. **Forward scaffolding, not dead code** — recorded so it is confirmed rather than assumed
+when those phases land.
+
+**Q16 · `packages/config`'s `adherence-colors-only` regex looks drifted and is not.**
+`adherence-colors-only.js:20` matches `onPlan|drifting|offPlan|notStarted` while
+`packages/utils/src/adherence.ts` uses `onTrack|drifting|offTrack|noData`. The rule is **correct**:
+the real property names on `tokens.ts`'s `colors.state` object are `onPlan`/`offPlan`/`notStarted`,
+and `AdherenceDot.tsx:44-49` documents the deliberate indirection (_"The names differ; the four
+states do not."_). Recorded so the next reader does not re-derive the false alarm.
+
+#### Checked and clean in these four workspaces
+
+- **`apps/web` — no findings beyond Q13.** No `NEXT_PUBLIC_` variable exists at all; the only env
+  var is server-only `WEB_API_URL`. The consent page has no import edge to the module that spends
+  the token (asserted structurally by `page.test.tsx`). No name is rendered before the token is
+  spent; the token is never displayed, echoed, or put in an error string. The mutation is a React
+  Server Action reached only through a real `<form>` POST — a `GET` render has no code path to it.
+  Single-use is enforced server-side only; `apps/web` stores no state about it. Heading order is
+  clean, decorative SVGs are `aria-hidden`, and every text/background pairing in `styles.css`
+  independently measures ≥5.1:1. 80 tests, 4 suites, all passing.
+- **`packages/utils` is genuinely pure.** Zero imports of React, `react-dom`, `react-native`, or
+  any Node builtin — and `tsconfig.json` enforces it structurally (`lib: ["ES2022"]`, no `"dom"`,
+  no `"node"` types). No bare `Date.now()`, `Math.random()`, `process.env`, or `Intl` read outside
+  Q14. **Unit-naming discipline is perfect**: no exported function or parameter named bare
+  `weight`, `height`, `duration`, or `size`. Pounds appear in exactly four functions
+  (`units/weight.ts`), rounding only in `formatWeight`. No formula is duplicated in `apps/api` or
+  `apps/mobile`. 130/130 tests, 100% statement/branch/function/line coverage.
+- **`packages/schemas` is guarded, not merely conventional.** `__tests__/layout.test.ts` walks
+  every import line in every module and fails on anything but `zod` or `./primitives.ts`;
+  `__tests__/conventions.test.ts` reflectively walks every exported schema's Zod `.def` tree and
+  fails on any non-`strictObject` or unbounded string/array. `z.record`, `z.tuple`,
+  `z.intersection`, `z.lazy` and `z.discriminatedUnion` are unused, so the walker's missing cases
+  for them are not a live gap. **No `z.any()` or `z.unknown()` anywhere.** The reverse of Q15 —
+  a code thrown in `apps/api` but missing from the union — is structurally impossible, because
+  `appError<Code extends AppErrorCode>()` is generic over the union and fails typecheck at the
+  call site. 153/153 tests.
+- **`packages/config`'s six custom rules are all registered and reachable**, including
+  `no-direct-outbox-write`, which is deliberately excluded from `eslint.react-native.js`'s default
+  array (`packages/ui` has no local DB to guard) and exported by name for
+  `apps/mobile/eslint.config.js:9` to pick up — a working design, not an orphan. `tailwind/
+preset.js`'s cross-workspace `require` is unchanged and remains **F2**/**R7**.
 
 ---
 
@@ -2340,3 +2499,108 @@ the `NEVER_UPDATED_ON_CONFLICT` list, so a _replay_ cannot move a row between cl
 resolver owns identity, the helper owns idempotency — and it means P09's rule is: **`clientId`
 comes from `ctx`, never from the payload.** Nothing enforces it mechanically today because
 nothing calls it today.
+
+---
+
+<a id="step3-counts"></a>
+
+## 15. Step 3 — counts, verification, and what Step 4 inherits
+
+### 15.1 Findings
+
+**Twenty findings — 1 Blocking, 7 Should-fix-before-09, 12 Nice-to-have** — plus **Q0**, found
+and fixed in this step.
+
+| Severity                 | Id      | One line                                                                                      |
+| ------------------------ | ------- | --------------------------------------------------------------------------------------------- |
+| **Blocking**             | **Q9**  | `nest()` key collision deletes `text-urgent-text`; 15 live error messages render uncoloured   |
+| **Should-fix-before-09** | **Q1**  | `FlashList` is pinned in §3.1 and installed nowhere                                           |
+|                          | **Q2**  | `coach.clients.list` stub on `protectedProcedure`; its comment names a phase that has shipped |
+|                          | **Q3**  | `is_offline_queued` hardcoded `false` after P08 shipped the outbox                            |
+|                          | **Q10** | `no-direct-outbox-write` misses four valid `INSERT OR …` forms                                |
+|                          | **S1**  | A NUL byte in a staged source file bypasses the pre-commit secret scan — demonstrated         |
+|                          | **S2**  | `me.update` writes an arbitrary `avatarAssetId` with no ownership check                       |
+|                          | **S3**  | The enumeration test trusts every no-input procedure to be `ctx`-scoped                       |
+| **Nice-to-have**         | Q4      | Six copies of `useReducedMotion`                                                              |
+|                          | Q5      | 45 bare `SELECT *`, four on `identity.users`                                                  |
+|                          | Q6      | Tap-target floor is 44, both skills say 48 — a DESIGN.md/skills conflict                      |
+|                          | Q7      | `numberOfLines={1}` on two interactive primitives                                             |
+|                          | Q8      | The hitSlop-centring formula written out four times                                           |
+|                          | Q11     | `no-bare-invalidate-queries` misses `invalidateQueries(undefined)`                            |
+|                          | Q12     | `LOCAL_SCHEMA_SOURCE` regex is one directory deep                                             |
+|                          | Q13     | `apps/web`'s guardian-consent flow has no logging and no error boundary                       |
+|                          | Q14     | `formatRelativeToNow` reads the ambient clock                                                 |
+|                          | Q15     | Ten exported symbols with no consumer — forward scaffolding, confirmed                        |
+|                          | Q16     | `adherence-colors-only`'s regex looks drifted and is correct                                  |
+|                          | S4      | The rate limiter fails open on Redis failure, including the `auth.*` bucket                   |
+|                          | S5      | Exercise-mutation ownership is inline and on the enumeration escape list                      |
+| **Fixed in this step**   | **Q0**  | Raw NUL byte made a source file invisible to every text search — `e90cc7a`                    |
+
+**Two findings sharpen a Step 2 finding rather than standing alone**, and are recorded in place
+rather than counted twice: **F17**'s true literal count is higher than 91 (its regex missed the
+`paddingVertical` / `marginTop` variants, [§13.4](#step3-quality)), and P04
+`ui-primitives-core/07`'s ⚠️ gains the detail that `useGlassAvailable` is barrel-exported.
+
+### 15.2 What this step did **not** find
+
+Recorded because a security review's negatives are load-bearing:
+
+- **No unguarded procedure.** Zero procedures name a registered resource id without
+  `ownsResource` attached to the same procedure.
+- **No `any`, `@ts-ignore`, non-null assertion, commented-out code, or leftover debug logging** in
+  application source.
+- **No committed secret, no tracked `ios/`/`android/`, no `.env`, no token outside SecureStore.**
+- **No PII in any analytics event or log line** — and the analytics guardrail is enforced by
+  types first, a regex second, with no exported client and no free-form string property.
+- **No unsafe DDL** across 32 migrations.
+- **No way for a device to write data it does not own through the DB§14.3 boundary** — and
+  `server-authored-no-offline-write.test.ts` proves that structurally over live router state
+  rather than by convention.
+- **Guardian consent is enforced server-side as middleware**, not by a client-side check.
+- **One orphan file**, and it is the settings surface Ammar placed out of scope ([§12.1](#step3)).
+
+### 15.3 Verification of this step's own change
+
+Fix **X4** touches one line of one file. Docker Desktop was **not running** during this step, so
+every testcontainer-backed suite was unavailable — including
+`jobs/exercise-reconcile.integration.test.ts`, the integration half of the changed file's cover.
+What was run:
+
+| Check                                            | Result                         |
+| ------------------------------------------------ | ------------------------------ |
+| `apps/api` `tsc --noEmit`                        | **exit 0**                     |
+| `apps/api` `eslint src --max-warnings=0`         | **exit 0**                     |
+| `apps/mobile` `tsc --noEmit`                     | **exit 0**                     |
+| `jest src/jobs/exercise-reconcile.test.ts`       | **10 passed, 10 total**        |
+| `jobs/exercise-reconcile.integration.test.ts`    | **not run — Docker down**      |
+| Pre-commit hooks (prettier, eslint, secret scan) | ran and passed on every commit |
+
+The change replaces a raw NUL byte with its `\u0000` escape inside a template literal; the
+produced string is byte-identical, so the residual risk is that the integration suite was not
+re-run, not that the semantics moved. **Step 4 should run the full `pnpm check` with Docker up**
+— and note that both flake sources from [§9.3](#step2-check) are still live and unfixed
+(**F23**'s async-email leak, and R5's Docker contention).
+
+**One incidental confirmation:** the pre-commit secret scan correctly caught this audit document
+itself, because [§14.1](#step3-security) quotes AWS's public example access key. It was cleared
+with the sanctioned `secret-scan-ignore` annotation rather than `--no-verify` — the escape hatch
+the script's own header prescribes, working as designed on a text file. That is the same scanner
+**S1** shows is blind to a NUL-bearing one.
+
+### 15.4 What Step 4 inherits
+
+- **The one thing to fix first is Q9.** It is the only Blocking finding in either step that is a
+  live, user-visible defect rather than a missing control, its blast radius is 15 shipped screens,
+  and its root cause — a workspace with no `lint` script (**F2**), no `typecheck` script, and no
+  test over the artefact it exists to produce — is shared with **F9**'s four untested lint rules
+  and **R7**'s cross-workspace `require`. Four findings, one under-tested package.
+- **Three findings are the same authorization-test weakness seen from three angles**: **F10**
+  (array-of-ids never probed), **S3** (no-input procedures assumed safe), and **Q2** (the
+  procedure that will exercise S3). One afternoon fixes all three, and it is best spent before
+  P10 rather than after.
+- **Two findings share one root cause**: **Q3** and **F16** both trace to `ANALYTICS.md` being
+  gitignored, so the only document that owns the event dictionary is invisible to CI and to the
+  plan tree.
+- **Step 2's Blocking count drops from 2 to 1.** **F12** is out of scope per [§12.1](#step3);
+  **F11** (the two unscheduled compliance jobs) stands unchanged and is unaffected by anything in
+  this step.
