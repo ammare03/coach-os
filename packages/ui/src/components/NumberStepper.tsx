@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 
 import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { centeredHitSlop } from '../theme/hitSlop.ts';
 import { useTextScale } from '../theme/TextScaleProvider.tsx';
 import {
   density as densityTokens,
@@ -305,7 +306,7 @@ export function NumberStepper({
   // Mirrors `Button`'s pattern: the visible box is the design's, the tap
   // area reaches the floor through symmetric `hitSlop` rather than by
   // growing the box. §13's floor for a mid-set control is 52.
-  const keyHitSlop = Math.max(0, Math.ceil((tapTarget.MID_SET - keySize) / 2));
+  const keyHitSlop = centeredHitSlop(keySize, tapTarget.MID_SET);
 
   const formatted = value.toFixed(resolvedPrecision);
   const spokenUnit = unitLabel ?? unit;

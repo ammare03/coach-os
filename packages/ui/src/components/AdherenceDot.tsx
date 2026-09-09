@@ -2,6 +2,7 @@ import { ADHERENCE_TOKEN, type AdherenceState } from '@coachos/utils';
 import { StyleSheet, View } from 'react-native';
 
 import { createThemedValue } from '../theme/createThemedStyles.ts';
+import { centeredHitSlop } from '../theme/hitSlop.ts';
 import { radius, spacing, tapTarget } from '../theme/tokens.ts';
 
 import { Pressable } from './Pressable.tsx';
@@ -184,7 +185,7 @@ export function AdherenceDot({ state, size = 'md', label, onPress, testID }: Adh
         onPress={onPress}
         // The 44px floor (`DESIGN.md` §13) reached with symmetric `hitSlop`,
         // never by growing the dot — an 11px dot IS the design.
-        hitSlop={Math.ceil((tapTarget.MIN - diameter) / 2)}
+        hitSlop={centeredHitSlop(diameter, tapTarget.MIN)}
         accessibilityRole="button"
         accessibilityLabel={label ?? stateLabel}
         testID={testID}

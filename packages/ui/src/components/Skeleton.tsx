@@ -1,7 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useState } from 'react';
 import {
-  AccessibilityInfo,
   StyleSheet,
   View,
   type DimensionValue,
@@ -21,6 +20,7 @@ import Animated, {
 
 import { createThemedStyles } from '../theme/createThemedStyles.ts';
 import { duration, easing, radius as radiusTokens } from '../theme/tokens.ts';
+import { useReducedMotion } from '../theme/useReducedMotion.ts';
 import { useTheme } from '../theme/useTheme.ts';
 
 export type SkeletonRadius = keyof typeof radiusTokens;
@@ -55,32 +55,6 @@ const SWEEP_SKEW = '-18deg';
 // slowest, and DS§6.7 asks for slow. `easing.fill` is §5's curve for
 // anything that traverses a track.
 const SWEEP_EASING = Easing.bezier(easing.fill[0], easing.fill[1], easing.fill[2], easing.fill[3]);
-
-/**
- * Reduce Motion is a live, toggleable setting rather than a static device
- * capability — subscribed, not sampled once, mirroring `SegmentedControl`
- * and `useGlassAvailable`.
- */
-function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
-      if (mounted) setReduced(value);
-    });
-    const subscription = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      (value: boolean) => setReduced(value),
-    );
-    return () => {
-      mounted = false;
-      subscription.remove();
-    };
-  }, []);
-
-  return reduced;
-}
 
 /**
  * The loading placeholder every cache-first list shows before data lands.

@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useState } from 'react';
-import { AccessibilityInfo, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -10,6 +10,7 @@ import Animated, {
 
 import { createThemedStyles } from '../theme/createThemedStyles.ts';
 import { duration, easing, radius, type Density } from '../theme/tokens.ts';
+import { useReducedMotion } from '../theme/useReducedMotion.ts';
 import { useTheme } from '../theme/useTheme.ts';
 
 import { Pressable } from './Pressable.tsx';
@@ -54,32 +55,6 @@ const ITEM_HEIGHT = 38;
 // symmetric vertical `hitSlop` reaches it without growing the track.
 const ITEM_HIT_SLOP = { top: 3, bottom: 3, left: 0, right: 0 };
 const fillEasing = Easing.bezier(easing.fill[0], easing.fill[1], easing.fill[2], easing.fill[3]);
-
-/**
- * Reduce Motion is a live, toggleable accessibility setting, not a static
- * device capability — subscribed rather than sampled once, mirroring
- * `useGlassAvailable`'s treatment of Reduce Transparency.
- */
-function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
-      if (mounted) setReduced(value);
-    });
-    const subscription = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      (value: boolean) => setReduced(value),
-    );
-    return () => {
-      mounted = false;
-      subscription.remove();
-    };
-  }, []);
-
-  return reduced;
-}
 
 /**
  * A two-to-four-option single-select switcher with a sliding selection

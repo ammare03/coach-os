@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import { Plus } from 'lucide-react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AdherenceDot } from './components/AdherenceDot.tsx';
 import { AdherenceDotRow } from './components/AdherenceDotRow.tsx';
@@ -9,18 +10,31 @@ import { Badge } from './components/Badge.tsx';
 import { Button } from './components/Button.tsx';
 import { Calendar } from './components/Calendar.tsx';
 import { Card } from './components/Card.tsx';
+import { CHART_MIN_SPAN } from './components/chartDomain.ts';
 import { Chip } from './components/Chip.tsx';
+import { ConfirmModal } from './components/ConfirmModal.tsx';
 import { EmptyState } from './components/EmptyState.tsx';
+import { FORBIDDEN_COPY, ForbiddenState } from './components/ForbiddenState.tsx';
 import { FormField } from './components/FormField.tsx';
 import { IconButton } from './components/IconButton.tsx';
 import { Input } from './components/Input.tsx';
+import { LineChart } from './components/LineChart.tsx';
 import { LoadingState } from './components/LoadingState.tsx';
+import { MacroBar } from './components/MacroBar.tsx';
+import { Modal } from './components/Modal.tsx';
+import { NOT_FOUND_COPY, NotFoundState } from './components/NotFoundState.tsx';
 import { NumberStepper } from './components/NumberStepper.tsx';
+import { ProgressRing } from './components/ProgressRing.tsx';
 import { SegmentedControl } from './components/SegmentedControl.tsx';
+import { SheetFooter } from './components/SheetFooter.tsx';
 import { SheetHeader } from './components/SheetHeader.tsx';
+import { Skeleton } from './components/Skeleton.tsx';
+import { SkeletonText } from './components/SkeletonText.tsx';
+import { Sparkline } from './components/Sparkline.tsx';
 import { Text } from './components/Text.tsx';
 import { MEDICAL_DISCLAIMER_COPY } from './MedicalDisclaimer/copy.ts';
 import { MedicalDisclaimer } from './MedicalDisclaimer/MedicalDisclaimer.tsx';
+import { Toast } from './toast/Toast.tsx';
 
 // `component-gallery/03` — the accessibility half of the audit, in one
 // place. The point of gathering it here rather than trusting twelve
@@ -254,6 +268,82 @@ describe('interactive primitives are labelled, roled, and stated', () => {
     );
     expect(screen.getByRole('button', { name: 'Invite client' })).toBeTruthy();
   });
+
+  it('NotFoundState — the recovery action is reachable and labelled from the copy', () => {
+    render(<NotFoundState onRecover={jest.fn()} />);
+    expect(screen.getByRole('button', { name: NOT_FOUND_COPY.action })).toBeTruthy();
+  });
+
+  it('ForbiddenState — the recovery action is reachable and labelled from the copy', () => {
+    render(<ForbiddenState onRecover={jest.fn()} />);
+    expect(screen.getByRole('button', { name: FORBIDDEN_COPY.action })).toBeTruthy();
+  });
+
+  it('SheetFooter — the commit action is a labelled, disableable button', () => {
+    // `useSafeAreaInsets` throws outside a provider — the same wrapper
+    // `scheme-wiring.test.tsx` uses for this component.
+    const insets = (
+      <SafeAreaProvider
+        initialMetrics={{
+          frame: { x: 0, y: 0, width: 390, height: 844 },
+          insets: { top: 47, left: 0, right: 0, bottom: 34 },
+        }}
+      >
+        <SheetFooter actionLabel="Add 2 items" onAction={jest.fn()} />
+      </SafeAreaProvider>
+    );
+    const { rerender } = render(insets);
+    expect(
+      screen.getByRole('button', { name: 'Add 2 items' }).props.accessibilityState,
+    ).toMatchObject({ disabled: true });
+
+    rerender(
+      <SafeAreaProvider
+        initialMetrics={{
+          frame: { x: 0, y: 0, width: 390, height: 844 },
+          insets: { top: 47, left: 0, right: 0, bottom: 34 },
+        }}
+      >
+        <SheetFooter actionLabel="Add 2 items" onAction={jest.fn()} isActionDisabled={false} />
+      </SafeAreaProvider>,
+    );
+    expect(
+      screen.getByRole('button', { name: 'Add 2 items' }).props.accessibilityState,
+    ).toMatchObject({ disabled: false });
+  });
+
+  it('Modal — an alert dialog that traps focus, with the scrim hidden from the reading order', () => {
+    render(
+      <Modal isOpen onDismiss={jest.fn()}>
+        <Text>Delete this client?</Text>
+      </Modal>,
+    );
+    // `getByRole` requires `accessible` to be explicit or inferred (`text`,
+    // `textInput`, `switch`) — a plain `View` carrying only
+    // `accessibilityRole` falls outside that, same as `Toast`'s root below,
+    // so the dialog is found by its distinguishing prop instead.
+    const dialog = screen.UNSAFE_getByProps({ accessibilityViewIsModal: true });
+    expect(dialog.props.accessibilityRole).toBe('alert');
+  });
+
+  it('ConfirmModal — the typed match, not a tap, is what enables the action', () => {
+    render(
+      <ConfirmModal
+        isOpen
+        onCancel={jest.fn()}
+        onConfirm={jest.fn()}
+        title="Delete your account"
+        body="This removes your workouts, photos, and messages after a 7-day grace period."
+        confirmationText="DELETE"
+        actionLabel="Delete account"
+      />,
+    );
+    const action = () => screen.getByRole('button', { name: 'Delete account' });
+    expect(action().props.accessibilityState).toMatchObject({ disabled: true });
+
+    fireEvent.changeText(screen.getByPlaceholderText('DELETE'), 'DELETE');
+    expect(action().props.accessibilityState).toMatchObject({ disabled: false });
+  });
 });
 
 describe('decorative elements are removed from the reading order', () => {
@@ -284,6 +374,20 @@ describe('decorative elements are removed from the reading order', () => {
         .accessibilityElementsHidden,
     ).toBe(true);
   });
+
+  it('Skeleton is hidden by default — a screen made of them needs one announcement, not twenty', () => {
+    render(<Skeleton height={20} testID="skeleton" />);
+    const skeleton = screen.getByTestId('skeleton', { includeHiddenElements: true });
+    expect(skeleton.props.accessibilityElementsHidden).toBe(true);
+    expect(skeleton.props.accessible).toBe(false);
+  });
+
+  it('Sparkline is hidden when it carries no label — a mark with no meaning is noise', () => {
+    render(<Sparkline points={[]} testID="spark" />);
+    const spark = screen.getByTestId('spark', { includeHiddenElements: true });
+    expect(spark.props.accessibilityElementsHidden).toBe(true);
+    expect(spark.props.accessible).toBe(false);
+  });
 });
 
 describe('regions that are not controls still announce themselves', () => {
@@ -292,5 +396,73 @@ describe('regions that are not controls still announce themselves', () => {
     const region = screen.getByLabelText('Loading this week');
     expect(region.props.accessibilityRole).toBe('progressbar');
     expect(region.props.accessibilityState).toMatchObject({ busy: true });
+  });
+
+  it('Skeleton announces itself as a busy progressbar once it carries the region label', () => {
+    render(<Skeleton height={20} accessibilityLabel="Loading this week" />);
+    const region = screen.getByLabelText('Loading this week');
+    expect(region.props.accessibilityRole).toBe('progressbar');
+    expect(region.props.accessibilityState).toMatchObject({ busy: true });
+  });
+
+  it('SkeletonText puts the region label on its first line only, never once per line', () => {
+    render(<SkeletonText lines={3} accessibilityLabel="Loading history" />);
+    // `getByLabelText` throws on more than one match — the assertion IS that
+    // exactly one of the three lines carries it (`Skeleton`'s own contract:
+    // one label per loading region, not one per shape).
+    expect(screen.getByLabelText('Loading history')).toBeTruthy();
+  });
+
+  it('ProgressRing — value, target, and unit as one spoken sentence', () => {
+    render(<ProgressRing value={1800} target={2200} unit="kcal" label="left" />);
+    const ring = screen.getByRole('progressbar');
+    expect(ring.props.accessibilityLabel).toContain('1800');
+    expect(ring.props.accessibilityValue).toMatchObject({ min: 0, max: 2200, now: 1800 });
+  });
+
+  it('MacroBar — the full protein/carbs/fat breakdown, not just the fill colour', () => {
+    render(<MacroBar proteinG={40} carbsG={50} fatG={20} targetKcal={2000} />);
+    const bar = screen.getByRole('progressbar');
+    expect(bar.props.accessibilityLabel).toContain('protein 40 grams');
+  });
+
+  it('LineChart — a spoken summary standing in for a graphic no screen reader can read, plus a way to reach it as a list', () => {
+    render(
+      <LineChart
+        series={[
+          {
+            points: [{ dateISO: '2026-09-01', value: 84.2 }],
+            label: 'Weight',
+            minSpan: CHART_MIN_SPAN.bodyWeightKg,
+          },
+        ]}
+        onRequestTable={jest.fn()}
+      />,
+    );
+    expect(screen.getByRole('image', { name: /^Weight, one entry on/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Read weight entries as a list' })).toBeTruthy();
+  });
+
+  it('Sparkline — the trend in a word, spoken instead of the shape', () => {
+    render(<Sparkline points={[]} accessibilityLabel="Bench press working weight" />);
+    expect(
+      screen.getByRole('image', { name: 'Bench press working weight, no entries yet' }),
+    ).toBeTruthy();
+  });
+
+  it('Toast — announced as an alert, with a labelled action', () => {
+    render(
+      <Toast
+        toastId="t1"
+        message="Set deleted"
+        action={{ label: 'Undo', onPress: jest.fn() }}
+        durationMs={5000}
+        onTimeout={jest.fn()}
+      />,
+    );
+    // Same reason as `Modal` above: found by the role prop directly, not
+    // through `getByRole`'s accessible-element filter.
+    expect(screen.UNSAFE_getByProps({ accessibilityRole: 'alert' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
   });
 });

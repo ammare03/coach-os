@@ -13,6 +13,7 @@ import { Text } from '../components/Text.tsx';
 import { GlassSurface } from '../surfaces/GlassSurface.tsx';
 import { createThemedStyles } from '../theme/createThemedStyles.ts';
 import { duration, easing, radius, spacing } from '../theme/tokens.ts';
+import { useReducedMotion } from '../theme/useReducedMotion.ts';
 
 export type ToastAction = {
   /** Sentence case, one or two words (`COPY.md` CO§4.3 — "Set deleted" → *Undo*). */
@@ -58,38 +59,6 @@ const EXIT_EASING = Easing.bezier(easing.out[0], easing.out[1], easing.out[2], e
 const COUNTDOWN_TICK_MS = 250;
 
 const COUNTDOWN_SIZE = 28;
-
-/**
- * Reduce Motion is a live setting, not a static capability — subscribed
- * rather than sampled once. Deliberately duplicated from `Calendar`, whose
- * own header notes the same: extracting it would edit a component this task
- * has no other business in (`CLAUDE.md` §0 rule 8). Promote it to
- * `theme/useReducedMotion.ts` on the third consumer.
- */
-function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
-      // Only when it differs from the `false` this starts at. `Calendar`'s
-      // copy sets unconditionally; a no-op setState resolving after the
-      // render still trips React's act() warning in every test that mounts
-      // a toast, and there is nothing to warn about.
-      if (mounted && value) setReduced(true);
-    });
-    const subscription = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      (value: boolean) => setReduced(value),
-    );
-    return () => {
-      mounted = false;
-      subscription.remove();
-    };
-  }, []);
-
-  return reduced;
-}
 
 /**
  * One toast. Rendered only by `ToastProvider`'s host — a screen asks for a
