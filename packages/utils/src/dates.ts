@@ -9,7 +9,7 @@ import {
   addDays,
   differenceInCalendarDays,
   endOfWeek,
-  formatDistanceToNow,
+  formatDistance,
   getISODay,
   startOfWeek,
 } from 'date-fns';
@@ -163,7 +163,15 @@ export function formatLocalDate(instant: Date, timeZone: string, formatStr = 'PP
  * they edited, not a day-boundary decision, so unlike everything else in
  * this file it takes no timezone: elapsed time since `instant` reads the
  * same everywhere (`program-templates/01`'s templates-list meta line).
+ *
+ * `now` defaults to the current instant — this package's one ambient clock
+ * read (`code-conventions` §1: `packages/utils` is pure functions only, no
+ * I/O). Built on `formatDistance(instant, now)` rather than date-fns's own
+ * `formatDistanceToNow(instant)`, which always calls `Date.now()`
+ * internally and has no way to accept a fixed `now`; passing `now`
+ * explicitly makes this function itself pure and its result deterministic,
+ * and the default keeps every existing call site compiling unchanged.
  */
-export function formatRelativeToNow(instant: Date): string {
-  return formatDistanceToNow(instant, { addSuffix: true });
+export function formatRelativeToNow(instant: Date, now: Date = new Date()): string {
+  return formatDistance(instant, now, { addSuffix: true });
 }

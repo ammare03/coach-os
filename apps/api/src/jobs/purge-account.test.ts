@@ -13,6 +13,8 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 
+import { unwrapDatabaseError } from '../db/is-database-error.ts';
+
 import type { purgeAccount as PurgeAccount } from './purge-account.ts';
 
 // R2 has no real bucket in tests — stubbed at the boundary so this suite
@@ -572,8 +574,18 @@ describe('purgeAccount', () => {
 
     // Detachment is account-lifecycle/05's job, not this function's — the
     // database itself is what refuses here, deliberately (this task's own
-    // Approach/Risks sections).
-    await expect(purgeAccount(db, coachUser.id)).rejects.toThrow();
+    // Approach/Risks sections). Assert the exact FK, not just "it throws" —
+    // a future unrelated failure on this same code path must not keep this
+    // test green (F14). `client_profiles_coach_id_coach_profiles_id_fk` is
+    // the constraint Drizzle generated for `client_profiles.coach_id`'s
+    // `ON DELETE RESTRICT` (identity-schema/03, migrations/0003).
+    const caught: unknown = await purgeAccount(db, coachUser.id).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    const dbError = unwrapDatabaseError(caught);
+    expect(dbError?.code).toBe('23503'); // foreign_key_violation
+    expect(dbError?.constraint_name).toBe('client_profiles_coach_id_coach_profiles_id_fk');
   });
 
   it('writes one audit_log summary row with a hashed id, never the plaintext id', async () => {

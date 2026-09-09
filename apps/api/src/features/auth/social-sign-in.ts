@@ -84,8 +84,19 @@ export async function handleSocialSignIn(
     return { kind: 'needsDateOfBirth', pendingSignupToken: token, email: claim.email };
   }
 
+  // Exactly the columns read below (the `!user.deletedAt` guard plus
+  // `openSession`'s fields) — `code-conventions` §7: no SELECT *, so
+  // `password_hash` and `guardian_email` never enter this scope.
   const [user] = await db
-    .select()
+    .select({
+      id: schema.users.id,
+      deletedAt: schema.users.deletedAt,
+      role: schema.users.role,
+      name: schema.users.name,
+      timezone: schema.users.timezone,
+      locale: schema.users.locale,
+      onboardingCompletedAt: schema.users.onboardingCompletedAt,
+    })
     .from(schema.users)
     .where(eq(schema.users.id, resolution.userId))
     .limit(1);

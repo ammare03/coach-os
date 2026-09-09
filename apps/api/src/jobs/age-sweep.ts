@@ -39,8 +39,17 @@ export interface AgeSweepResult {
  * for any user whose suspension has already passed (DB§15's shared job).
  */
 export async function runAgeSweep(db: DbClient, asOf: Date = new Date()): Promise<AgeSweepResult> {
+  // Exactly the columns read below — the age filter, the update's `id`, and
+  // `notifyAdultTransition`'s recipients. `code-conventions` §7: no SELECT
+  // *, so `password_hash` and every other minor client's full row don't
+  // pass through memory just to email two addresses.
   const minorClients = await db
-    .select()
+    .select({
+      id: schema.users.id,
+      dateOfBirth: schema.users.dateOfBirth,
+      email: schema.users.email,
+      guardianEmail: schema.users.guardianEmail,
+    })
     .from(schema.users)
     .where(and(eq(schema.users.role, 'client'), eq(schema.users.isMinor, true)));
 
@@ -67,7 +76,7 @@ export async function runAgeSweep(db: DbClient, asOf: Date = new Date()): Promis
   return { minorStatusCleared: nowAdults.length, suspensionsExpired: expiredSuspensions.length };
 }
 
-async function notifyAdultTransition(user: User): Promise<void> {
+async function notifyAdultTransition(user: Pick<User, 'email' | 'guardianEmail'>): Promise<void> {
   await sendEmail({
     to: user.email,
     subject: 'Your CoachOS account has been updated',
