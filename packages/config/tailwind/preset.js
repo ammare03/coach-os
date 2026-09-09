@@ -28,14 +28,24 @@ const cssVarColors = Object.fromEntries(
 // Un-flatten `bg-raised` → `{ bg: { raised: '...' } }` so Tailwind produces
 // `bg-bg-raised`, `text-fg-muted`, etc. — the semantic names tasks 03-05 and
 // every downstream component write.
+//
+// A group that has BOTH a bare key and a hyphenated sibling (`urgent` and
+// `urgent-text`) collapses to Tailwind's `DEFAULT`, so both classes survive.
+// Without it the bare value lands as a string and the sibling's assignment
+// onto a string primitive is a silent no-op — `text-urgent-text` is simply
+// never generated, and NativeWind drops the unknown class without erroring.
+// Order-independent on purpose: `flattenColorChannels` decides which arrives
+// first, and neither ordering may lose a value.
 function nest(flat) {
   const out = {};
   for (const [key, value] of Object.entries(flat)) {
     const [group, ...rest] = key.split('-');
     if (rest.length === 0) {
-      out[group] = value;
+      if (typeof out[group] === 'object') out[group].DEFAULT = value;
+      else out[group] = value;
       continue;
     }
+    if (typeof out[group] === 'string') out[group] = { DEFAULT: out[group] };
     out[group] = out[group] ?? {};
     out[group][rest.join('-')] = value;
   }
