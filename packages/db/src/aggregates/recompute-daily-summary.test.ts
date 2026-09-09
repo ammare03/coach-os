@@ -4,6 +4,14 @@
 // update the summary." A real Postgres via Testcontainers, not a mock —
 // mocking Drizzle would test the mock, not the rollback behaviour
 // (`testing` skill §4).
+//
+// F6 (pre-phase-09 audit): `recomputeDailySummary` now throws instead of
+// upserting a placeholder zero row (see its own comment). That changes what
+// this file can prove — there is no real formula yet to demonstrate a
+// successful commit with — but the invariant that matters survives: a meal
+// write is never left standing without its summary, because the call
+// that's supposed to pair with it fails loudly, every time, until
+// phase-13-nutrition/nutrition-summary/01 replaces the stub.
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
@@ -84,8 +92,14 @@ afterAll(async () => {
   await container.stop();
 }, 60_000);
 
-describe('recomputeDailySummary — transactional atomicity', () => {
-  it('rolls back both the meal write and the summary row when the transaction fails after the recompute call', async () => {
+describe('recomputeDailySummary — stub behaviour (F6, pre-phase-09 audit)', () => {
+  it('throws, naming the phase that owns the real formula', async () => {
+    await expect(
+      db.transaction(async (tx) => recomputeDailySummary(tx, clientId, '2026-08-22')),
+    ).rejects.toThrow(/phase-13-nutrition\/nutrition-summary\/01/);
+  });
+
+  it('rolls back the paired meal write when recomputeDailySummary throws', async () => {
     const loggedDate = '2026-08-22';
 
     await expect(
@@ -98,9 +112,8 @@ describe('recomputeDailySummary — transactional atomicity', () => {
           clientLocalId: 'atomicity-rollback-test',
         });
         await recomputeDailySummary(tx, clientId, loggedDate);
-        throw new Error('simulated failure after both writes');
       }),
-    ).rejects.toThrow('simulated failure after both writes');
+    ).rejects.toThrow();
 
     const mealRows = await db
       .select()
@@ -118,37 +131,5 @@ describe('recomputeDailySummary — transactional atomicity', () => {
         ),
       );
     expect(summaryRows).toHaveLength(0);
-  });
-
-  it('commits both the meal write and the summary row when the transaction succeeds', async () => {
-    const loggedDate = '2026-08-23';
-
-    await db.transaction(async (tx) => {
-      await tx.insert(meals).values({
-        clientId,
-        coachId,
-        loggedDate,
-        mealType: 'lunch',
-        clientLocalId: 'atomicity-commit-test',
-      });
-      await recomputeDailySummary(tx, clientId, loggedDate);
-    });
-
-    const mealRows = await db
-      .select()
-      .from(meals)
-      .where(and(eq(meals.clientId, clientId), eq(meals.clientLocalId, 'atomicity-commit-test')));
-    expect(mealRows).toHaveLength(1);
-
-    const summaryRows = await db
-      .select()
-      .from(dailyNutritionSummary)
-      .where(
-        and(
-          eq(dailyNutritionSummary.clientId, clientId),
-          eq(dailyNutritionSummary.date, loggedDate),
-        ),
-      );
-    expect(summaryRows).toHaveLength(1);
   });
 });

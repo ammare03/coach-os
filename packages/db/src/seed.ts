@@ -34,29 +34,20 @@
 //      non-determinism in this file, and the easiest one to miss because
 //      nothing about it looks wrong in isolation.
 //
-//      ONE narrow, understood, and permanent exception:
-//      `training.workout_sessions.updated_at` on a *completed* session.
-//      `recomputeSessionVolume` (training-history.ts) issues a real
-//      `UPDATE` after the row's own `INSERT`, and `derived-data/01`'s
-//      `touch_updated_at()` trigger — correctly, unconditionally, by
-//      design (it has no bypass, unlike the guard triggers) — stamps that
-//      `UPDATE` with real `now()`. There is no seed-side value that
-//      survives a trigger doing its job; this is the trigger behaving
-//      exactly as production needs it to. DB§21's determinism guarantee
-//      therefore covers every column of every table this seed writes
-//      EXCEPT this one column, on rows that went through the
-//      recompute-after-insert pairing (`workout_sessions` rows for a
-//      `skipped` session, which never calls `recomputeSessionVolume`, are
-//      NOT affected and remain fully deterministic). Verified empirically:
-//      a two-run diff of every other table, and every other column of this
-//      one, is byte-identical.
+//      No exception to this rule exists today. There was one — training-
+//      history.ts used to call `recomputeSessionVolume` after each
+//      session's own INSERT, and `derived-data/01`'s `touch_updated_at()`
+//      trigger stamped that UPDATE with real `now()`. F6 (pre-phase-09
+//      audit) removed the call (that stub now throws rather than writing a
+//      placeholder '0' — see `aggregates/recompute-session-volume.ts`), so
+//      `workout_sessions.updated_at` is fully deterministic again, same as
+//      every other column of every table this seed writes.
 //
 // The whole seed runs inside ONE transaction: a failure partway through
 // leaves no partial data, so re-running after a fix always starts from a
 // genuinely empty database, never from a previous failed attempt's debris.
 import { fileURLToPath } from 'node:url';
 
-import { recomputeStorageUsage } from './aggregates/recompute-storage-usage.ts';
 import { createDbClient } from './client.ts';
 import { resolveConnectionString } from './migrate-env.ts';
 import { seedBodyMetrics } from './seed/body-metrics.ts';
@@ -184,14 +175,12 @@ async function seed(demo: boolean): Promise<void> {
         ],
       );
 
-      // Every client's storage counter follows the same recompute-in-the-
-      // same-transaction pairing training-history.ts and
-      // nutrition-history.ts already exercise — one call per client whose
-      // media_assets rows changed (the two form-check owners here).
-      for (const clientKey of ['client:1', 'client:2']) {
-        const userId = clientUserIdByKey.get(clientKey);
-        if (userId) await recomputeStorageUsage(tx, userId);
-      }
+      // Does NOT call recomputeStorageUsage (F6, pre-phase-09 audit): that
+      // stub now throws rather than upserting 0/0 (see its own comment), so
+      // `platform.storage_usage` is intentionally left with no row for
+      // either form-check owner — missing, not zeroed, until
+      // phase-11-media-pipeline/retention-and-quota/03 computes the real
+      // byte count.
 
       await seedCheckins(tx, coach.coachProfileId, clientIdByKey, demo);
       await seedBodyMetrics(tx, clientIdByKey, demo);
