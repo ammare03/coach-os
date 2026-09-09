@@ -1815,6 +1815,7 @@ verified reality. **Everything else is a finding in [§10](#step2-findings), not
 | X1  | **Cherry-picked `7934f56`** — the invite error copy alignment stranded on the local `feat/phase3-invites` branch (Step 1's **R9**). Resolves seven user-facing strings to their `ERRORS.md` entries, including `SEAT_LIMIT_REACHED`'s interpolated `{seatLimit}` template. One conflict, resolved by keeping `main`'s `export` of `inviteNotFound` (needed by `accept-invite-as-existing-client.ts`, added after the original commit) with the new copy. Re-ran the six invite suites afterwards: **65 tests, exit 0**. | `bab5ee9`                      |
 | X2  | **Corrected `.claude/plan/phase-02-api-foundation/authorization-middleware/05-public-allowlist.md`** — added a "superseded" note to its Scope paragraph and struck the AC _"Invite acceptance is **not** on the list"_, recording that `invites.accept` **is** the client's sign-up and so cannot require a prior session (Step 1's **R3**, decided by Ammar on 2026-09-08).                                                                                                                                            | **Untracked — see note below** |
 | X3  | **Marked `CLAUDE.md` §27's live-reference-over-snapshot entry decided**, with the confirmation date, the mechanism (`programs.version` stays a change counter; `program_snapshot` is written only at session start, DB§14.6), and the test that proves it both directions.                                                                                                                                                                                                                                              | `b642475`                      |
+| X4  | **Escaped the raw NUL byte in `apps/api/src/services/exercises/reconcile.ts:371`** (Step 3, [Q0](#step3-quality) / [S1](#step3-security)). `findDuplicateCandidates` joined two fields with a literal NUL rather than its escape, so `file(1)` reported the source as binary and `grep`/`ripgrep` skipped all 452 lines — silently excluding the file from every mechanical scan in Steps 1, 2 and the first half of 3. Same runtime value, 17,287 → 17,292 bytes, one line. Re-scanned afterwards: clean.              | `e90cc7a`                      |
 
 > **X2 is on disk but in no commit, and that is not an oversight.** `.gitignore:107` excludes
 > `.claude/plan/` (and `:108` `.claude/skills/`), exactly as it excludes `ERRORS.md`,
@@ -1909,3 +1910,423 @@ What Step 3 found instead is a small number of **drifts between a pinned decisio
 code**, one **latent authorization hole that is not reachable today**, and one **defect that had
 been silently corrupting this audit's own evidence** — fixed, and described first because it
 changes how much the earlier scans can be trusted.
+
+---
+
+<a id="step3-quality"></a>
+
+## 13. Code quality and convention findings
+
+Severity uses Step 2's definitions verbatim. **Blocking** = must not ship / must not be built on.
+**Should-fix-before-09** = Phase 09 will make it worse, or will trip over it. **Nice-to-have** =
+real, but nothing before P09 depends on it.
+
+Findings are prefixed `Q` (quality) and `S` ([§14](#step3-security), security) so they never
+collide with Step 1's `R` or Step 2's `F`.
+
+### 13.0 Q0 — the finding that changes the other scans · **fixed, see [§11](#step2-fixes) X4**
+
+**A raw NUL byte in a committed source file made it invisible to every text search in the
+repository.** `apps/api/src/services/exercises/reconcile.ts:371` (P07 `exercise-library/06`)
+built a composite `Map` key by joining two fields with a **literal** NUL byte rather than the
+`\u0000` escape.
+
+The technique is sound — NUL cannot occur in either component, so the key is unambiguous — but
+writing it as a raw byte has three consequences, and the third is the one that matters:
+
+1. `file(1)` reported the source as `data`, not JavaScript.
+2. **`grep` and `ripgrep` skip binary files by default**, so all 452 lines were silently excluded
+   from every mechanical scan in Step 1 §4, every scan in Step 2, and every scan in the first
+   half of this step. A scan that skips a file reports the same "clean" as a scan that reads it.
+3. It also defeats the repository's own pre-commit secret scan — see **[S1](#step3-security)**,
+   which is the security half of the same defect and was demonstrated rather than inferred.
+
+**Fixed** in `e90cc7a` by replacing the byte with its `\u0000` escape: same runtime value, file
+is now `JavaScript source, Unicode text, UTF-8 text`, 17,287 to 17,292 bytes, one line changed.
+Re-scanning the newly visible 452 lines found **nothing** — no `console.*`, no `TODO`, no `any`,
+no `SELECT *`, no naive date slicing. The file was clean; the point is that nobody could have
+known that.
+
+### 13.1 Dead and unnecessary code — Step 1 §4.2 closes at zero
+
+Step 1's orphan scan was re-run with a corrected method (a single indexed pass over every
+import, `require()`, and dynamic `import()` specifier in all 1,079 tracked files, rather than
+the O(n²) per-file regex Step 1 used).
+
+| Check                                   | Result                                                                                                                                                                                                                              |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Orphan files**                        | **1 candidate — `AppearanceRow.tsx`, and it is out of scope per [§12.1](#step3).** Excluding it, **zero**. Step 1's §4.2 therefore closes with no open item.                                                                        |
+| **Unused runtime exports**              | 50 candidates, each opened and checked. **49 are false positives** — used inside their own file and exported for testability or documentation (`REFRESH_TOKEN_TTL_DAYS`, `EXPORT_FORMAT_VERSION`, `ASSIGNABLE_CLIENT_STATUSES`, …). |
+| **The one real hit**                    | `apps/api/src/trpc/init.ts:29` `export const mergeRouters = t.mergeRouters` — referenced nowhere, including its own file. A three-word re-export; not worth a finding on its own, recorded so the count is honest.                  |
+| **Unused exported _types_**             | 393 further candidates, all discarded: an exported return or parameter type of an exported function is legitimately unreferenced by name, because consumers infer it.                                                               |
+| **Commented-out code**                  | **None.** Not one block, in either `//` or block-comment form, across 899 source files.                                                                                                                                             |
+| **Leftover debug logging**              | **None.** 24 `console.*` calls in non-test code, every one deliberate: CLI output in `migrate.ts`/`seed.ts`, and warn-level diagnostics carrying ids and codes only — checked against `observability-ops` §1, no PII in any.        |
+| **Dangling TODOs**                      | **One**, `packages/utils/src/seat-limit.ts:11`, naming the phase and task that resolve it (`phase-20-.../entitlement-service/03`). No `FIXME`, no `HACK`, no `XXX`.                                                                 |
+| **Unused feature flags / config**       | **None found.** No flag mechanism exists yet; PostHog feature flags are named in `CLAUDE.md` §3.1 and not yet consumed.                                                                                                             |
+| **Forward scaffolding, correctly kept** | `packages/db/src/schema/enums.ts`'s four P26 moderation enums; `apps/mobile/src/lib/prefetch/`'s serialisers, which P09 is the first consumer of; the 14 empty routers.                                                             |
+
+**The Step 1 §4.1 undeclared-import list is unchanged** — `drizzle-orm`, `@trpc/server`, and
+`testcontainers` in `apps/mobile`; `expo-image`, `@gorhom/bottom-sheet`, and
+`react-native-safe-area-context` in `packages/ui`. Step 2 logged it as **F1** and deliberately
+did not fix it (lockfile churn). Step 3 confirms it still holds and adds nothing.
+
+### 13.2 Should-fix-before-09 — 3
+
+**Q1 · `FlashList` is pinned as the list library and is installed nowhere in the repository.**
+`CLAUDE.md` §3.1 pins **FlashList v2** for "long workout histories, food diaries";
+`ui-conventions` §6 opens "FlashList v2 **everywhere**"; `frontend-performance` §4 repeats it;
+`CLAUDE.md` §25.8 warns about `estimatedItemSize`. The package appears in **no** `package.json`
+and **zero times** in `pnpm-lock.yaml`. The only two mentions in the codebase are comments
+explaining why it was _not_ used:
+
+- `features/programs/screens/ProgramTemplatesScreen.tsx:41` — _"`ScrollView` + `.map()`, not
+  `FlashList`: … a coach's template count is small, and a 'Load more' row reads better here than
+  virtualising a handful of cards."_
+- `features/workouts/components/library/ExerciseLibraryScreen.tsx` — the same shape, and this
+  one is the weaker case: it accumulates paginated results behind a **"Load more"** button
+  (`:252`) into a plain `ScrollView` (`:104`), so a coach who presses it repeatedly holds every
+  loaded page's rows mounted at once.
+
+Each individual decision is defensible and written down. What is not written down is the
+**stack change**: §3.1 still says FlashList is the answer while the code has answered
+differently twice. This is the same class of drift as the `victory-native` row, which §3.1 _was_
+updated to record ("§7.4 originally pinned victory-native; `ui-primitives-data/04` did not
+install it and the row now records why"). **Why it matters for P09:** the logger and the session
+history are the third and fourth times this decision gets made, the phase's exit criteria
+include 55fps scrolling, and whoever writes it will read §3.1 and reach for a package that is
+not there. Either install it or amend §3.1 the way the charting row was amended — the wrong
+outcome is a third undocumented divergence.
+
+**Q2 · `coach.clients.list` is a stub built on the wrong procedure type, and its comment names a
+phase that has already shipped without replacing it.** `apps/api/src/routers/coach.ts:26` is
+`list: protectedProcedure.query(() => [])`. Two separate problems:
+
+- **The comment is now false.** `coach.ts:12-13` says _"phase-06-onboarding replaces it with the
+  real procedure — same name, same path, real implementation."_ P06 is merged and Step 2 verified
+  it; the stub is untouched. The plan tree says something different again:
+  `phase-02-api-foundation/api-scaffold/04-router-registry.md:140` says it is _"replaced by
+  **P10**"_. A reader chasing the replacement through P06's history finds nothing.
+- **`protectedProcedure`, not `coachProcedure`.** Harmless while the body is `() => []`. It stops
+  being harmless the moment P10 fills the body in, because a client's session satisfies
+  `protectedProcedure` too — and this is the exact shape of `security-and-privacy`'s "one
+  catastrophic bug". The enumeration test does not cover it; see **[S3](#step3-security)**.
+
+Nothing calls the procedure. Three tests reference the path, all of them only to prove the
+reflective walk reaches two levels deep (`authz.test.ts:284`, `router-registry.test.ts:32-34`),
+so none constrains the builder. **Not fixed here** because changing a stub's procedure type is a
+decision about the stub's intent, not a mechanical edit — but it is a one-word decision.
+
+**Q3 · `is_offline_queued` is a hardcoded `false` on every analytics event, and P08 shipped the
+outbox that was supposed to set it.** `apps/mobile/src/lib/analytics/track-event.ts:85`, inside
+`baseProperties()` — the properties added to **every** event. Its own comment reads _"Always
+false today: there is no offline outbox yet … The task that builds it (`offline-sync`) sets this
+from the outbox item, and until then a constant `false` is accurate rather than aspirational."_
+
+P08 built the outbox (`lib/outbox/{enqueue,flush}.ts`), and nothing in it reaches this property —
+`flush.ts` calls `trackEvent('sync_failed', …)` and never sets the flag. The comment's own
+condition ("until then") has expired, so the constant is no longer accurate, it is wrong.
+
+The reason it slipped is worth recording: **no plan task names this property.** A grep of the
+whole `.claude/plan/` tree for `is_offline_queued` returns nothing; it is declared only in
+`ANALYTICS.md` AN§3.0, which `.gitignore:123` keeps out of the repository — the same document
+whose absence makes **F16**'s guard vacuous on CI. Two findings, one root cause. **Why it
+matters for P09:** P09 is the phase where offline-queued events stop being an edge case — a
+whole session logged in a basement flushes on reconnect — so a permanently-`false` flag turns
+from harmless into actively misleading exactly then, and it is the dimension you would slice by
+to answer "did the offline path work".
+
+### 13.3 Nice-to-have — 2
+
+**Q4 · Six copies of `useReducedMotion`, in three distinct implementations.** All six subscribe
+to `AccessibilityInfo`'s `reduceMotionChanged` rather than sampling once, which is the correct
+behaviour and the thing `accessibility` §5 says is commonly got wrong — so this is duplication,
+not breakage.
+
+| Location                                                          | Shape                                            |
+| ----------------------------------------------------------------- | ------------------------------------------------ |
+| `apps/mobile/src/lib/useReducedMotion.ts:23`                      | exported; one consumer (`DraggableExerciseList`) |
+| `apps/mobile/src/features/navigation/client/ClientTabBar.tsx:102` | private                                          |
+| `packages/ui/src/components/Calendar.tsx:136`                     | private — byte-identical to the next two         |
+| `packages/ui/src/components/SegmentedControl.tsx:63`              | private                                          |
+| `packages/ui/src/components/Skeleton.tsx:64`                      | private                                          |
+| `packages/ui/src/toast/Toast.tsx:69`                              | private — differs slightly                       |
+
+Each copy's own comment promises extraction: `lib/useReducedMotion.ts` says _"`packages/ui`
+carries three private copies of this … each with a note to extract it on the third consumer"_,
+and `ClientTabBar.tsx:94-99` says _"this is the fourth copy of this hook in the repo … extract to
+`packages/ui/src/theme/useReducedMotion.ts` when someone owns that file."_ It is the sixth, and
+`packages/ui/src/theme/useReducedMotion.ts` does not exist. `code-conventions` §1's promotion
+rule fired three consumers ago. P09 adds a PR celebration and a rest timer, both of which need
+it — the seventh copy is already implied.
+
+**Q5 · 45 bare `.select()` calls against `code-conventions` §7's "no `SELECT *` in application
+code", four of them on `identity.users`.** The bulk are defensible: 18 are in
+`services/export/collect.ts`, where selecting every column is the point (an export that narrows
+its columns silently omits data from a subject's DPDP/GDPR access request), and
+`lib/offline-upsert.ts:163` is generic over `PgTable` and cannot enumerate. The four worth
+naming pull the **whole `users` row — including `password_hash` and `guardian_email`, both DB§18
+sensitive — into a local variable that only needs two or three fields:**
+
+| Site                                 | Actually needs                                                                                                                                  |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `features/auth/password-reset.ts:44` | id, email, deleted_at                                                                                                                           |
+| `features/auth/social-sign-in.ts:88` | id, deleted_at, role                                                                                                                            |
+| `routers/auth.ts:130`                | id, password_hash — this one is fair                                                                                                            |
+| `jobs/age-sweep.ts:43`               | id, date_of_birth, suspended_until — and this one loads **every minor client's full row**, `guardian_email` included, into a sweep job's memory |
+
+None of them returns the row to a client — each picks fields afterwards — so nothing leaks
+today. The rule exists so that a future `return user` or a Sentry capture of the local scope
+cannot leak, and `packages/db/src/**` already holds the line at **zero** bare selects.
+
+### 13.4 `packages/ui` — a dedicated pass
+
+`packages/ui`'s 95 files were reviewed against `ui-conventions` and `accessibility` in a separate
+pass, cross-checked against the barrel and every consumer in `apps/*` and `packages/*`.
+
+**Q6 · The tap-target floor is 44px, and both governing skills say 48 — "no exceptions."**
+`packages/ui/src/theme/tokens.ts:186-189` sets `tapTarget.MIN` to **44** (52 "mid-set"), citing
+`DESIGN.md` §13. `accessibility` §1 says **"Tap target ≥ 48 × 48, both apps, no exceptions"** and
+`ui-conventions` §5 says **"minimum 48×48. No exceptions in the client app. Sweaty, chalky,
+moving."** This is not an oversight — it is a **conflict between DESIGN.md and the two skills**,
+and the token propagates through every primitive's `hitSlop` arithmetic:
+
+| Component                   | Box    | With `hitSlop`          |
+| --------------------------- | ------ | ----------------------- |
+| `IconButton.tsx:34-41` (sm) | 32     | lands on 44             |
+| `Button.tsx:48-60` (sm)     | 32     | lands on 44             |
+| `Chip.tsx:33-37`            | 33     | lands on 45             |
+| `AdherenceDot.tsx:187`      | 11-12  | lands on 44-45          |
+| **`Input.tsx:57-58,158`**   | **44** | **no `hitSlop` at all** |
+
+`Input` is the one with no compensation: **every text field in the product, in both densities, is
+a real 44px control.** **Why it matters for P09:** the logger is the single screen the 48px rule
+was written for — one-thumb, mid-set, chalked hands — and it is the densest screen in the
+product. Resolve which document wins **before** the logger is built, not after 30 more controls
+inherit the token. If DESIGN.md wins, the two skills need amending in the same PR; if the skills
+win, one token changes and every `hitSlop` above follows.
+
+**Q7 · `numberOfLines={1}` truncates the label on two interactive primitives.**
+`Chip.tsx:78` and `SegmentedControl.tsx:205` cap a pressable, selectable control's label to one
+line; `SheetHeader.tsx:33` does the same to a sheet title. Each container correctly uses
+`minHeight`, so it _can_ grow at 200% text — the label ellipsizes instead of using the room.
+`Button.tsx:257-260` carries the counter-example and the rule: _"No `numberOfLines`:
+`accessibility` §3 forbids truncating a primary action's label."_ The three sites above carry no
+equivalent justification. Nice-to-have; both are reusable primitives that will eventually be
+handed a coach-authored string long enough to truncate.
+
+**Q8 · The hitSlop-centring formula `Math.ceil((tapTarget.MIN - size) / 2)` is hand-written four
+times** — `AdherenceDot.tsx:187`, `Chip.tsx:37`, `IconButton.tsx:41`, and a `MID_SET` variant at
+`NumberStepper.tsx:308`. Nice-to-have on its own; it is what makes **Q6** a four-site edit rather
+than a one-token edit.
+
+**Sharpening of Step 2's F17, not a new finding.** F17 counted 15 raw numeric style literals in
+`packages/ui/src` using a regex over literal `padding:` / `margin:` / `gap:`. That regex misses
+the `paddingVertical` / `marginTop` / `paddingHorizontal` variants, which exist in
+`Input.tsx:161`, `FormField.tsx:109`, `SegmentedControl.tsx:234`, `Sheet.tsx:183`,
+`SheetFooter.tsx:79`, `SheetHeader.tsx:59,64`, `Modal.tsx:109,118-119`,
+`ConfirmModal.tsx:113,118`, `Chip.tsx:130,138,158`, and `Calendar.tsx:110-111,415,495,509`.
+**F17's true count is higher than 91.** `fontSize` and `borderRadius` literals in `packages/ui`
+are genuinely clean — zero outside tests.
+
+**Extension to P04 `ui-primitives-core/07`, already ⚠️ Partial in [§8.4](#step2).** Step 2
+confirmed `expo-glass-effect` has two import sites, not the one `GlassSurface.tsx:1-5` and
+`CLAUDE.md` §3.1 both claim. The part Step 2 did not note: `useGlassAvailable` is
+**barrel-exported** (`index.ts:41`), so a screen can call it and hand-roll its own
+`canUseGlass` branch without ever rendering `<GlassSurface>` — which is precisely the
+"hand-roll a platform check" `ui-conventions` §5 forbids. Nothing does this today.
+
+**Checked and clean in `packages/ui`** — verified by reading, not grepping:
+
+- Every `Pressable` / `Button` / `IconButton` / `Chip` / `AdherenceDot` / `SegmentedControl` /
+  `NumberStepper` call site carries both `accessibilityLabel` and `accessibilityRole`.
+  `IconButton`'s label is a **required** prop, type-enforced with a `@ts-expect-error` test.
+- No icon-only control labels the icon instead of the action.
+- `NumberStepper.tsx:333-347` — `accessibilityRole="adjustable"` with `accessibilityValue`,
+  `accessibilityActions` and `onAccessibilityAction`. `accessibility` §8 names this the one
+  control that must get it right; it does.
+- No meaning in colour alone: `AdherenceDot`/`AdherenceDotRow` carry shape **and** a spoken
+  label; `ProgressRing` and `MacroBar` explicitly refuse `colors.state.*`.
+- `accessibilityState` present on every toggle and selection.
+- Decorative elements consistently hidden from the reading order.
+- **200% text is mechanically enforced**: `theme/theme-and-scale.test.tsx`'s
+  `fixedHeightBoxesAroundText` check fails on any fixed-height box around text; the single
+  sanctioned exception (`ProgressRing`, which grows its own diameter) is named in the test.
+- `GlassSurface` / `useGlassAvailable` **subscribe** to Reduce Transparency and Increase
+  Contrast rather than sampling once, and collapse to the opaque fallback — `accessibility` §5's
+  named common bug, avoided.
+- Charts render `accessibilityRole="image"` with a generated sentence summary, never raw points.
+- `Toast` announces via `announceForAccessibility` on appearance.
+- `expo-haptics` imported in exactly one file. No `any`, no `@ts-ignore`, no browser storage, no
+  commented-out code. Every numeric value renders through `Metric`, never raw `<Text>`.
+- Seven barrel-exported pure functions have no consumer outside the package (`chartYDomain`,
+  `chartSeriesShape`, `chartSummary`, `chartTrend`, `progressRingSweep`, `macroBarSegments`,
+  `macroBarFill`, plus `CALENDAR_CELL_GEOMETRY`). Each carries a written "so a future consumer
+  can reuse this" note naming P09/P13/P18. **Forward-declared API, not dead code** — recorded so
+  it is a tracked decision rather than a surprise when P09 is the first to import one.
+- `theme/contrast.ts` has no production consumer by design — it powers a 300-pairing contrast
+  audit. Not dead.
+
+---
+
+<a id="step3-security"></a>
+
+## 14. Security review findings
+
+Same severity vocabulary. The pass covered every item the step was asked to check; the ones that
+came back clean are recorded in [§14.3](#step3-security) rather than omitted, because "we looked
+and it holds" is the useful half of a security review.
+
+### 14.1 Should-fix-before-09 — 3
+
+**S1 · A staged source file containing a NUL byte bypasses the pre-commit secret scan entirely.
+Demonstrated, not inferred.** `scripts/check-secrets.sh` (P00 `quality-gates/02`) reads staged
+content with `git diff --cached -U0` (`:35`) and greps the resulting `+` lines for private keys,
+AWS access key IDs, Stripe live keys, Google API keys, bearer tokens, and credentialed Postgres
+URLs. **Git emits `Binary files … differ` — and therefore no `+` lines at all — for any file it
+considers binary, which includes any file with a NUL byte in its first 8,000 bytes.**
+
+Reproduced in a scratch repository: a `probe.ts` containing a NUL byte and the string
+`AKIAIOSFODNN7EXAMPLE` produced `Binary files /dev/null and b/probe.ts differ`, and the scanner's <!-- secret-scan-ignore: AWS documentation example key, not a credential -->
+own `grep -E '^\+[^+]'` matched **zero** lines. The key passes the gate silently.
+
+Two further facts make this more than theoretical:
+
+- **It has already happened by accident.** `reconcile.ts` carried a NUL byte from P07 until this
+  step removed it ([Q0](#step3-quality)). Its NUL sat at offset 14,574 — past git's 8,000-byte
+  binary sniff — so that file was still diffed as text and still scanned. One byte earlier in the
+  file and it would not have been.
+- **The scanner is emitting the symptom on every run.** `git commit` for fix X4 printed
+  `scripts/check-secrets.sh: line 35: warning: command substitution: ignored null byte in input`.
+  That warning has presumably been appearing, unread, on every commit that touched the file.
+
+The script's own header is honest about its limits — _"The scan cannot catch every secret — a
+value with no recognisable shape passes. The real control is discipline"_ — but it does not name
+this one, and this one is not about shape: a perfectly-shaped secret in a NUL-bearing file is
+never examined. **Not fixed here**, because the obvious one-token fix (`git diff --cached
+--text`) forces a full textual diff of genuinely binary files too — staging a font or a PNG would
+push megabytes through `grep`. The right repair is a decision about how to separate source from
+assets, which is judgement, not a mechanical edit. Suggested shape: fail the commit when
+`git diff --cached --numstat` reports `-` / `-` (binary) for a path whose extension is a source
+extension, which turns the blind spot into a loud refusal rather than trying to scan through it.
+**Why it matters for P09:** it does not block P09 technically. It is here because it is the one
+finding in this pass where a control the repository _believes it has_ can be absent without
+anyone noticing, and because P09 is the last quiet phase before store submission.
+
+**S2 · `me.update` writes an arbitrary `avatarAssetId` onto the caller's user row with no
+ownership check.** `apps/api/src/features/me/update-me.ts:33` is a bare
+`.set(input).where(eq(users.id, userId))`, and `packages/schemas/src/me.ts:26` admits any UUID.
+`identity.users.avatar_asset_id` has a real FK to `coaching.media_assets(id)` (migration
+`0013_media_assets.sql:42`), so the value must name a **real media asset — anyone's.**
+
+The gap is recorded, deliberately, in the enumeration test's own escape list.
+`apps/api/src/trpc/authz/resource-fields.ts:66`:
+
+> `avatarAssetId: 'A value the caller sets on their own row; scoped by ctx.user.id, not
+ownership.'` … _"Whether the referenced media asset belongs to the caller is out of this task's
+> scope (its Scope section names only `me.get`/`me.update`)."_
+
+The first half is true and the second half is the finding: being out of `account-lifecycle/01`'s
+scope put it in nobody's. **Not exploitable today** — P11 is unbuilt, nothing writes
+`media_assets`, no mobile code sets the field, and there is no `media.get` to turn an asset id
+into a signed URL. It becomes exploitable the moment P11 builds the avatar render path, because
+that path resolves `users.avatar_asset_id` to a signed URL and the natural implementation trusts
+the column. **Progress photos are the highest-sensitivity object in the product**
+(`security-and-privacy` §4), and they live in the same table. The cheap repairs are both one
+change: validate the asset belongs to the caller in `updateMe`, or drop `avatarAssetId` from
+`updateMeInput` until P11 owns it. **Not fixed here** — either is a shared-schema change with
+test churn, and choosing between them is P11's call, not this audit's. Logged now because the
+window in which it is free to fix closes at P11.
+
+**S3 · The enumeration test trusts every no-input procedure to be `ctx`-scoped, and one such
+procedure is on the wrong builder.** `apps/api/src/__tests__/authz.test.ts:181-184`:
+
+```ts
+// Branch 5: protected, no input at all → scoped by ctx alone.
+if (!inputSchema) {
+  return;
+}
+```
+
+The assumption is sound for the eleven procedures it currently covers (`me.requestDeletion`,
+`auth.signOutAllDevices`, `clientApp.leaveCoach`, …) — each resolves entirely from `ctx.user`.
+It is **not** a property the test verifies; it is one the test assumes. Paired with
+[Q2](#step3-quality), that assumption has already been handed a counter-example in waiting:
+`coach.clients.list` is a no-input procedure on `protectedProcedure`, so a client's session
+reaches it, and Branch 5 returns before anything is probed. The stub returns `[]`, so nothing
+leaks today — but the guard that exists specifically to stop "coach A reads coach B's client"
+will not fire when P10 fills the body in.
+
+This is the **third** hole found in the same test in two steps: Step 2's **F10** (array-of-ids
+inputs are never probed, because `field.endsWith('Id')` misses `clientIds`) and now Branch 5.
+Both are the same shape — a filter that silently classifies a procedure as "nothing to check"
+rather than failing closed. **Why it matters for P09:** P09's offline surface is array-shaped
+(F10) and P10 immediately follows with the coach dashboard (this one). Fixing F10's `/Ids?$/`
+and giving Branch 5 a positive assertion — no-input procedures must be on a role-narrowed
+builder — are the same afternoon's work and they are best done together.
+
+### 14.2 Nice-to-have — 2
+
+**S4 · The rate limiter fails open on any Redis failure, including the shared `auth.*` bucket.**
+`apps/api/src/lib/redis-safe.ts` wraps every Redis call and returns the caller's fallback on
+rejection; `trpc/middleware/rate-limit.ts:96` passes `null`, which the middleware reads as
+"allow". The decision is deliberate, documented, and correct for four of the five callers — the
+skill's own table gives `allow` for the rate limiter, a query miss for the caches, re-sign for
+signed URLs, empty for presence. The sentence worth revisiting is
+`redis-safe.ts`'s _"There is no caller whose correct fallback is 'fail the request'"_: with Redis
+down, `auth.signIn` / `auth.signUp` / `auth.requestReset` / `auth.resetPassword` lose their
+shared 10-per-15-minutes-per-IP bucket entirely, and credential stuffing against Argon2id is
+bounded only by CPU. Nothing else in the stack bounds it. Recorded as a decision to re-affirm
+rather than a defect: the counter-argument (a Redis outage must not lock everyone out of their
+account) is strong, and the right answer may be a small in-process fallback counter for that one
+bucket rather than failing closed.
+
+**S5 · Exercise-mutation ownership is enforced inline in the service layer and sits on the
+enumeration test's escape list.** `exerciseId` is in `NON_RESOURCE_ID_FIELDS`
+(`resource-fields.ts:53`) as _"Global exercise catalogue row, not client-scoped"_, which is right
+for **reading** — every coach may reference any exercise. But `exercises.update`, `archive` and
+`unarchive` **mutate**, and a custom exercise is coach-owned. The check exists and is correct —
+`services/exercises/authoring.ts:166`, `:205`, `:242` each compare `coach_id` and throw
+`EXERCISE_NOT_FOUND` (never `FORBIDDEN`, correctly closing the enumeration oracle) — but it is
+hand-written at three call sites rather than composed as middleware, against `api-conventions`
+§3's "never inline in a procedure body", and the enumeration test cannot see it.
+
+It is **well covered by explicit tests** (`exercises.mutations.test.ts:290,347`,
+`exercises.list.test.ts:358`, `exercises.search.test.ts:213` all assert the foreign-coach case),
+which is why this is Nice-to-have rather than higher. The residual risk is the fourth mutation:
+nothing fails the build if it forgets the check.
+
+### 14.3 Checked and clean
+
+Every item the step was asked to verify, with what was actually checked.
+
+| Area                                   | Result                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`ownsResource` coverage**            | **Complete.** A mechanical cross-check parsed every procedure in every router and flagged any that names a `RESOURCE_FIELD_KIND` id without `ownsResource` on the same procedure: **zero hits.** 31 attachments across `assignments` (7), `coach` (1), `invites` (1), `programs` (22).                                                                                                                                             |
+| **`ownsResource` itself**              | Reads `ctx.user` only, never input, to decide _who_ asks. Partial ownership is total failure — twelve ids of which eleven are owned is rejected outright, closing the binary-search oracle. Exhaustive over `coach`/`client`/`assistant` with no default branch. Sibling-client access (`clientA2`) **is** covered by `owns-resource.test.ts:178-181`.                                                                             |
+| **Zod on every procedure**             | Every procedure taking input has a schema from `packages/schemas`. The procedures without `.input()` are genuinely parameterless (`signOutAllDevices`, `completeOnboarding`, `requestDeletion`, `cancelDeletion`, `requestExport`, `leaveCoach`, `clientApp.coach`, `health.ping`) — plus `coach.clients.list`, which is [Q2](#step3-quality).                                                                                     |
+| **NOT_FOUND, never FORBIDDEN**         | Held everywhere checked. One message for a coach's foreign-client request, a client's foreign-resource request, and a well-formed id that never existed (`owns-resource.ts:12`).                                                                                                                                                                                                                                                   |
+| **Rate limiting**                      | **Structural, not opt-in.** `rateLimit(RATE_LIMIT_TIERS.default)` is attached to `publicProcedure`, from which every other builder derives — so an unconfigured procedure cannot be silently unlimited. All of `api-conventions` §7's tiers are present, including both axes of `resendGuardianConsent` (per user **and** per hashed address).                                                                                     |
+| **Token rotation and reuse detection** | Present and correct. `rotate-refresh-token.ts` revokes the **whole family** on genuine reuse (`:174`), with a distinguished benign-race branch (`:160`) for a device replaying its own just-replaced token. Argon2id via `@node-rs/argon2`.                                                                                                                                                                                        |
+| **Guardian consent — server-side?**    | **Yes, and structurally.** `guardianConsentGate` is middleware attached to `clientProcedure` and `coachOrClientProcedure` in `procedures.ts`, not a maintained list of gated paths. The three deliberately ungated builders each carry a written reason (§21.4 deletion and `me.get` must stay reachable). Not a client-side check anywhere.                                                                                       |
+| **Secrets / `EXPO_PUBLIC_`**           | Clean. Six `EXPO_PUBLIC_` variables, every one on `configuration` §3's allowed list. No `DATABASE_URL`, `JWT_SECRET`, R2, LiveKit, Stripe, RevenueCat-secret, Anthropic or Resend key behind the prefix. No `.env` tracked, no secret-shaped string in any tracked file, no `ios/` or `android/` tracked.                                                                                                                          |
+| **Token storage**                      | `expo-secure-store` only, imported in exactly one file (`features/auth/token-store.ts`), with `WHEN_UNLOCKED_THIS_DEVICE_ONLY`. **No `AsyncStorage` anywhere in the repo.** Nothing token-shaped in SQLite.                                                                                                                                                                                                                        |
+| **Signed URLs**                        | One live path today (`me.exportDownloadUrl`). Ownership resolved **before** minting, including the guardian-delegated case; 3,600s, exactly `security-and-privacy` §4's ≤1h ceiling; minted on demand and never stored on the row; never logged. Media upload/playback URLs are P11 and correctly absent.                                                                                                                          |
+| **Webhook signature verification**     | **N/A today, correctly.** No `/webhooks/*` route exists — RevenueCat, Stripe and LiveKit all land in P19/P20. Nothing to verify and nothing pretending to.                                                                                                                                                                                                                                                                         |
+| **PII in analytics**                   | **Enforced by types, then by a runtime backstop.** `AnalyticsProperties<N>` permits no free-form `string`, so a food name or an email fails to compile; `track-event.ts:52` additionally rejects at runtime anything not matching `/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/`, and reports the offending **key**, never the value. No exported client.                                                                                  |
+| **PII in logs**                        | Clean. All 24 non-test `console.*` calls carry ids and codes only. `outbox/flush.ts`'s three warn sites log `outboxId`, `procedure`, `attempts`, `errorCode` — never a payload. `guardian-consent.ts` logs at `info` with `userId` and `procedure`.                                                                                                                                                                                |
+| **Offline write boundaries (DB§14.3)** | **Cannot be abused today, and the structure is sound.** `server-authored-no-offline-write.test.ts` proves three properties over live router state: no coach-authored input schema declares `clientLocalId`, every one _rejects_ a payload carrying it (`strictObject`), and no coach-authored resolver imports the offline upsert helper. See below.                                                                               |
+| **`clientLocalId` discipline**         | Generated **once**, at `outbox/enqueue.ts:126`, persisted, replayed verbatim by the flush loop, never regenerated. `offline-sync` §3's single most important rule, held.                                                                                                                                                                                                                                                           |
+| **Local DB lifecycle**                 | `wipeLocalDatabase` refuses while the outbox is non-empty unless explicitly forced (`db/wipe.ts:47`); force is used only for a user-scope switch (`user-scope.ts:75`) and a schema-version mismatch (`schema-version.ts:153`). Exactly `offline-sync` §8, including the "block the wipe until the outbox is empty" clause.                                                                                                         |
+| **Certificate pinning (§21.2)**        | Absent, and **correctly deferred** — `phase-03-identity-and-auth/auth-client/02-trpc-auth-link.md:57` assigns it to P22 `release-engineering/build-profiles`. Not a gap.                                                                                                                                                                                                                                                           |
+| **Screenshot protection (§21.2)**      | Absent, and correctly deferred — `phase-18-.../progress-photos/04-privacy-and-screenshot-protection.md` owns it, and there are no progress photos yet.                                                                                                                                                                                                                                                                             |
+| **Migration safety**                   | **Zero** unsafe DDL across 32 migrations: no `ADD COLUMN NOT NULL DEFAULT`, no `ALTER COLUMN … TYPE`, no `RENAME COLUMN`, no `DROP COLUMN`. Plain `CREATE INDEX` throughout is correct — every one builds on an empty table in a greenfield schema — and `0031` correctly switches to `CONCURRENTLY` for the first index added to a live table, with a `-- drizzle:non-transactional` marker the runner honours (`migrate.ts:38`). |
+
+**One forward-looking note on the offline boundary, for P09 rather than as a finding.**
+`upsertWorkoutSession` (`lib/workout-session-upsert.ts`) has **no production caller yet** — P09
+is the first. Its `WorkoutSessionUpsertValues` type accepts `clientId` from its caller, and
+`offlineUpsert` never validates that value against `ctx.user.clientProfileId`; `client_id` is on
+the `NEVER_UPDATED_ON_CONFLICT` list, so a _replay_ cannot move a row between clients, but the
+**first** insert takes whatever the caller passes. That is the correct division of labour — the
+resolver owns identity, the helper owns idempotency — and it means P09's rule is: **`clientId`
+comes from `ctx`, never from the payload.** Nothing enforces it mechanically today because
+nothing calls it today.
