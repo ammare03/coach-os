@@ -1,6 +1,6 @@
 # Pre-Phase-09 Audit — CoachOS
 
-`Step 1: complete · **Step 2: complete** — all of P00–P08 verified · Step 3: not started · Step 4: not started`
+`Step 1: complete · Step 2: complete — all of P00–P08 verified · **Step 3: in progress** — mobile/API/db passes done, packages/web delegated passes pending · Step 4: not started`
 
 > **Step 2 is done.** Its per-phase verdicts are in [§8](#step2), the `pnpm check` re-run in
 > [§9](#step2-check), the 23 severity-tagged findings in [§10](#step2-findings), and the three
@@ -1829,3 +1829,83 @@ assertion measures), **F1**'s three missing peer dependencies (touches the lockf
 re-check), **F5**'s six missing indexes (they belong in the migration of the phase that queries
 them), and **F2**'s two missing package scripts (adding them fails the build until **R7** is
 resolved, which is the correct order but not a drive-by change).
+
+---
+
+<a id="step3"></a>
+
+## 12. Step 3 — code quality, convention, and security pass
+
+**What this step is.** Steps 1 and 2 audited the repository _against the plan tree_ — task by
+task, phase by phase. Step 3 does not re-walk the tree. It reads the code that is on `main` as
+code: does it follow the house style the ten skills encode, is any of it dead, and does the
+security posture hold under a direct read rather than a task-by-task one. Findings cross-
+reference the phase and task that produced the code so [Step 4](#step2-findings) can reconcile
+them against R1–R11 and F1–F23.
+
+**Skills loaded and applied:** `code-conventions`, `api-conventions`, `offline-sync`,
+`ui-conventions`, `accessibility`, `security-and-privacy`, `db-migrations`, `configuration`,
+`frontend-performance`, `git-workflow`.
+
+### 12.1 Scope decision — the settings surface is out of scope
+
+Ammar's instruction on 2026-09-09, at the opening of this step:
+
+> _"We now have a settings page feature implemented across several Phases. The plan hasn't been
+> completely implemented yet but you can assume it has been implemented and remove it from the
+> issues to be fixed. Everything else to be audited as it is. No changes were made to Phases
+> 00–08. The settings addition has been done from Phase 09 onwards."_
+
+Step 3 therefore treats the following as **resolved, not findings**, and does not restate them:
+
+| Previously                                                      | Now                                                                                                                          |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| **F12** (Blocking) — account deletion has no entry point        | Out of scope. The settings feature owns it.                                                                                  |
+| **R8** — finished settings UI no screen renders                 | Out of scope. Covers `UnitRow.tsx`, `AppearanceRow.tsx`, and `/your-data`'s reachability.                                    |
+| **§4.2**'s single orphan-file candidate, `AppearanceRow.tsx`    | Out of scope — and it was the _only_ orphan the re-run scan found (§13.1), so §4.2 now closes with **zero** open candidates. |
+| Step 1 [§6 question 7](#questions) — who owns a settings screen | Answered by Ammar: a settings feature exists from P09 onwards.                                                               |
+
+The plan tree on disk does not yet carry that feature — `.claude/plan/` has no settings
+directory under any phase, and `.claude/plan/README.md` §198 still points at
+`account-lifecycle/11`. That is consistent with Ammar's "the plan hasn't been completely
+implemented yet" and is recorded here only so a later reader does not re-derive the gap.
+
+**Second instruction, same session:** _"DO NOT implement anything new or anything related to
+the settings screen or anything from Phase 09 and upwards. Only code changes to Phase 00 to
+08."_ Every fix in [§11](#step2-fixes) row X4 obeys this.
+
+### 12.2 Areas covered
+
+| Area                                                                      | Coverage                                                                                                                                        |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/mobile` — 380 tracked source files                                  | RN patterns, hooks, lists, routing, state boundaries, dates/timezones, Reanimated, `EXPO_PUBLIC_`, offline-sync conformance, local-DB lifecycle |
+| `apps/api` — 301 files                                                    | Router/procedure shape, Zod coverage, authorization, rate limits, webhooks, errors, transactions, logging, signed URLs, offline upsert          |
+| `packages/db` — 41 files, 32 migrations                                   | Migration safety (expand/contract, `CONCURRENTLY`, unsafe DDL), the non-transactional runner path                                               |
+| `packages/ui` · `packages/utils` · `packages/schemas` · `packages/config` | Delegated to two parallel review passes; results folded into §13 and §14                                                                        |
+| `apps/web` — 17 files                                                     | Same delegated pass — guardian-consent PII, token handling, method safety                                                                       |
+| Cross-cutting                                                             | Dead code, orphans, unused exports, commented-out blocks, debug logging, TODOs, committed secrets, tracked native folders                       |
+
+### 12.3 The headline
+
+**The code is in materially better shape than the plan tree that describes it.** Step 1 said
+that about the tests; Step 3 says it about the source. Across 899 tracked source files:
+
+- **No `any`, no `@ts-ignore`, no `@ts-expect-error`, no non-null assertion** in committed
+  application code. Seven `eslint-disable` lines, every one a `react-hooks/exhaustive-deps`
+  suppression on a Reanimated shared value, each with a written reason on the same line.
+- **No commented-out code anywhere.** Not one block.
+- **One tracked `TODO`** in the whole repository (`packages/utils/src/seat-limit.ts:11`), and it
+  carries the phase and task that resolve it.
+- **Zero orphan files** once the settings surface is excluded (§13.1).
+- **No committed secrets, no tracked `ios/`/`android/`, no `.env`** — and a
+  `scripts/check-secrets.sh` gate exists.
+- **`clientLocalId` is generated exactly once**, at `outbox/enqueue.ts:126`, and never
+  regenerated on retry — `offline-sync` §3's single most important rule, held.
+- **Authorization coverage is complete for the current surface**: a mechanical cross-check of
+  every procedure in every router found **zero** procedures naming a registered resource id
+  without `ownsResource` attached to the same procedure (31 attachments across 4 routers).
+
+What Step 3 found instead is a small number of **drifts between a pinned decision and the
+code**, one **latent authorization hole that is not reachable today**, and one **defect that had
+been silently corrupting this audit's own evidence** — fixed, and described first because it
+changes how much the earlier scans can be trusted.

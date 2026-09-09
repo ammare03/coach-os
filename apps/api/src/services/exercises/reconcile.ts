@@ -368,7 +368,7 @@ export async function findDuplicateCandidates(
 
   const buckets = new Map<string, typeof rows>();
   for (const row of rows) {
-    const key = `${row.movementPattern} ${row.equipment.trim().toLowerCase()}`;
+    const key = `${row.movementPattern}\u0000${row.equipment.trim().toLowerCase()}`;
     const bucket = buckets.get(key);
     if (bucket) bucket.push(row);
     else buckets.set(key, [row]);
