@@ -2,6 +2,28 @@
 
 `Step 1: complete · Step 2: complete — all of P00–P08 verified · **Step 3: complete** — audit across all eight workspaces, then 12 fixes applied and verified ([§16](#remaining)) · Step 4: not started`
 
+> ### ⚠️ Step 4: do not reverse Step 3's fixes
+>
+> **Step 3 deliberately went beyond its own brief, with Ammar's explicit approval given during
+> the session.** Its prompt says _"minimal, low-risk, mechanical fixes only … anything needing
+> real judgment is logged as a finding, not applied."_ That held until the report was delivered.
+> Ammar then said: _"Anything remaining to fix for Phases 00-08? If so, please do it and log it
+> properly so that we can start Step 4."_ — and, on the nice-to-have tier specifically,
+> _"you can keep the nice to have cleanup if it's required."_
+>
+> **Twelve fixes were therefore applied and verified, not just logged.** They are tabled in
+> [§16.1](#remaining) with their commit hashes. The full `pnpm check` passes with all of them in
+> ([§16.6](#remaining)).
+>
+> Step 4's own prompt predates this and expects only a short list of Step 2–3 fixes. **Reconcile
+> against [§16](#remaining), not against §10 / §13 / §14 alone** — those sections describe the
+> findings _as discovered_, and most are now closed. Reporting them as open, or proposing to
+> revert the fixes to match the original brief, would both be wrong.
+>
+> What was **not** fixed is equally deliberate and equally recorded: seven decisions belong to
+> Ammar ([§16.3](#remaining)), three he declined this session ([§16.4](#remaining)), six belong to
+> a later phase ([§16.5](#remaining)).
+
 > **Steps 2 and 3 are done.** Step 2's per-phase verdicts are in [§8](#step2), its `pnpm check`
 > re-run in [§9](#step2-check), its 23 findings in [§10](#step2-findings), and its three changes
 > in [§11](#step2-fixes). Step 3's method and scope are in [§12](#step3), its 20 findings in
@@ -2631,6 +2653,10 @@ standing constraints given during the work:
 
 This section is the ledger. Every finding from Steps 1–3 appears exactly once, in one of five
 states, so Step 4 starts from a list rather than a re-read.
+
+**This section supersedes the open/closed state implied by §10, §13 and §14.** Those sections
+record each finding as it was discovered; this one records what happened to it. Where they
+disagree, this one is current.
 
 ### 16.1 Fixed — [§11](#step2-fixes) rows X4 onwards
 
