@@ -46,6 +46,12 @@ ruleTester.run('no-direct-outbox-write', rule, {
       errors: [{ messageId: 'outboxTableImport' }],
     },
     {
+      // Depth-agnostic: a schema reorganised into subdirectories is still
+      // the local schema, however many levels deep.
+      code: "import { outbox } from '../../db/schema/training/exercises.ts';",
+      errors: [{ messageId: 'outboxTableImport' }],
+    },
+    {
       code: 'db.run(sql`INSERT INTO outbox (id, procedure) VALUES (${id}, ${p})`);',
       errors: [{ messageId: 'outboxWriteSql' }],
     },
@@ -64,6 +70,26 @@ ruleTester.run('no-direct-outbox-write', rule, {
     },
     {
       code: 'const stmt = `REPLACE INTO outbox (id) VALUES (${id})`;',
+      errors: [{ messageId: 'outboxWriteSql' }],
+    },
+    // SQLite's full conflict-clause set — `INSERT OR REPLACE` was already
+    // caught, accidentally, by the bare `replace into` branch; the other
+    // four were the rule's blind spot and are exactly what a hand-rolled
+    // idempotent "enqueue if not already queued" write would reach for.
+    {
+      code: 'db.run(sql`INSERT OR IGNORE INTO outbox (id) VALUES (${id})`);',
+      errors: [{ messageId: 'outboxWriteSql' }],
+    },
+    {
+      code: 'db.run(sql`INSERT OR ABORT INTO outbox (id) VALUES (${id})`);',
+      errors: [{ messageId: 'outboxWriteSql' }],
+    },
+    {
+      code: 'db.run(sql`INSERT OR FAIL INTO outbox (id) VALUES (${id})`);',
+      errors: [{ messageId: 'outboxWriteSql' }],
+    },
+    {
+      code: 'db.run(sql`INSERT OR ROLLBACK INTO outbox (id) VALUES (${id})`);',
       errors: [{ messageId: 'outboxWriteSql' }],
     },
   ],
