@@ -105,6 +105,7 @@ desktop.ini
 # ── Claude Code ───────────────────────────────────────────────
 # The planning tree, the skills, and the audit log are deliberately local-only.
 .claude/audit/
+docs/audits/
 .claude/plan/
 .claude/skills/
 .claude/settings.local.json
