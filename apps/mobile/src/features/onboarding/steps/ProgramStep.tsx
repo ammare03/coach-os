@@ -15,7 +15,7 @@ import { Plus, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { ExercisePickerSheet } from '../components/ExercisePickerSheet.tsx';
+import { OnboardingExercisePickerSheet } from '../components/OnboardingExercisePickerSheet.tsx';
 import { useProgramDraft } from '../hooks/useProgramDraft.ts';
 
 // `phase-06-onboarding/coach-onboarding/03` — a deliberately minimal
@@ -132,7 +132,7 @@ export function ProgramStep({ error }: ProgramStepProps) {
         </Text>
       ) : null}
 
-      <ExercisePickerSheet
+      <OnboardingExercisePickerSheet
         isOpen={pickerDay !== null}
         dayName={pickerDay?.name ?? ''}
         alreadyAdded={pickerDay?.exercises.map((e) => e.exerciseId) ?? []}
