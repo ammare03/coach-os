@@ -198,6 +198,31 @@ function foreignIdFor(kind: ResourceKind): string {
   }
 }
 
+/**
+ * Protected procedures that take no input at all, and are therefore scoped
+ * entirely by `ctx.user`. Branch 5 has nothing to probe for these, so each
+ * needs a stated reason instead — an unscoped no-input procedure would
+ * otherwise pass this test in silence (pre-phase-09 audit, S3).
+ *
+ * The bar for an entry: the resolver reads `ctx.user.id` (or a profile id
+ * hanging off it) and nothing else that identifies a row. A procedure that
+ * returns anything belonging to somebody else does not belong here.
+ */
+const CTX_SCOPED_NO_INPUT: Record<string, string> = {
+  'auth.signOutAllDevices': "Revokes every family for ctx.user.id — the caller's own sessions.",
+  'clientApp.coach': "The caller's own coach, via ctx.user.clientProfileId.",
+  'clientApp.leaveCoach': "Detaches the caller's own client profile.",
+  'coach.clients.list':
+    'coachProcedure; resolves against ctx.user.coachProfileId. A stub returning [] until P10.',
+  'invites.listPending': "Invites created by ctx.user.coachProfileId — the caller's own.",
+  'me.get': "The caller's own users row.",
+  'me.medicalDisclaimer.status': "The caller's own acknowledgment, read by ctx.user.id.",
+  'me.completeOnboarding': "Marks the caller's own onboarding complete.",
+  'me.requestDeletion': "Opens a deletion request for the caller's own account.",
+  'me.cancelDeletion': "Cancels the caller's own deletion request.",
+  'me.requestExport': "Queues an export of the caller's own data.",
+};
+
 async function probeOneProcedure(procedure: WalkedProcedure): Promise<void> {
   const { path: dottedPath, inputSchema } = procedure;
   const failures: string[] = [];
@@ -214,13 +239,27 @@ async function probeOneProcedure(procedure: WalkedProcedure): Promise<void> {
     return;
   }
 
-  // Branch 5: protected, no input at all → scoped by ctx alone.
+  // Branch 5: protected, no input at all. There is no id to probe, so the
+  // procedure has to be scoped by `ctx` — but that is an assumption, not
+  // something this behavioural test can observe, and an unscoped one would
+  // pass silently. It is therefore an allowlist with a written reason each,
+  // the same shape as `PUBLIC_ALLOWLIST` and `NON_RESOURCE_ID_FIELDS`:
+  // a new no-input procedure fails here until someone states why it is safe.
   if (!inputSchema) {
+    if (!(dottedPath in CTX_SCOPED_NO_INPUT)) {
+      throw new Error(
+        `${dottedPath}: takes no input, so nothing can be probed — add it to ` +
+          'CTX_SCOPED_NO_INPUT with the reason it is scoped by ctx alone, or give it a ' +
+          'role-narrowed builder and an input the enumeration can reach',
+      );
+    }
     return;
   }
 
-  // Branches 3/4: classify every `*Id` field.
-  const idFields = topLevelFieldNames(inputSchema).filter((field) => field.endsWith('Id'));
+  // Branches 3/4: classify every `*Id` / `*Ids` field. The plural matters:
+  // until it was included, an unguarded `{ clientIds: string[] }` procedure
+  // passed this test outright (pre-phase-09 audit, F10).
+  const idFields = topLevelFieldNames(inputSchema).filter((field) => /Ids?$/.test(field));
   const fieldsToProbe: { field: string; kind: ResourceKind }[] = [];
   for (const field of idFields) {
     const kind = RESOURCE_FIELD_KIND[field];
@@ -240,7 +279,13 @@ async function probeOneProcedure(procedure: WalkedProcedure): Promise<void> {
   for (const { field, kind } of fieldsToProbe) {
     let input: Record<string, unknown>;
     try {
-      input = synthesiseInput(inputSchema, { [field]: foreignIdFor(kind) });
+      // A plural field takes the foreign id as a one-element array —
+      // `ownsResource`'s all-or-nothing rule means one foreign id in the
+      // batch is enough to require refusal.
+      const foreign: string | string[] = field.endsWith('Ids')
+        ? [foreignIdFor(kind)]
+        : foreignIdFor(kind);
+      input = synthesiseInput(inputSchema, { [field]: foreign });
     } catch (error) {
       failures.push(
         `${dottedPath}.${field}: ${error instanceof SynthesisFailure ? error.message : String(error)}`,
