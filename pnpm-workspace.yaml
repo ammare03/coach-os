@@ -76,3 +76,18 @@ overrides:
   # commitlint@21.2.2 is already latest and hasn't picked up a patched ajv;
   # this forces the fix directly. Remove once commitlint's own tree clears 3.1.6.
   fast-uri: '>=3.1.6'
+  # Ten @xmldom/xmldom advisories (GHSA-93r5-fhx6-vmg9, -965w-775f-mr7g,
+  # -x4fp-j954-r2f4, -8344-3jmq-59r6, -vr34-hp96-76pp, -3px3-54cx-rmw9,
+  # -27p8-2357-5qqv, -jxjr-3g7g-3944, -c7q8-3ch8-vqpv, -6mj3-qw4j-hgrw),
+  # published 2026-09-09. Transitive via the Expo prebuild toolchain only —
+  # @expo/config-plugins -> @expo/plist on the 0.8 line, and -> xcode ->
+  # simple-plist -> plist on the 0.9 line — so it is build-time code, never
+  # shipped. Both lines have a patch, and both stay on their own line: one
+  # blanket range would drag @expo/plist across a major.
+  '@xmldom/xmldom@^0.8.0': '0.8.15'
+  '@xmldom/xmldom@^0.9.0': '0.9.12'
+  # GHSA-2883-xcg3-v3hh (merge-key CPU exhaustion), same date. Reaches us on
+  # both lines through devDependencies only — eslint and commitlint's
+  # cosmiconfig on 4.x, babel-plugin-istanbul's load-nyc-config on 3.x.
+  'js-yaml@^3.0.0': '3.15.2'
+  'js-yaml@^4.0.0': '4.3.2'
