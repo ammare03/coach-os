@@ -14,10 +14,10 @@
 // yet to restore. This job's contract to them is `is_minor` itself being
 // correct on the clock; nothing else.
 //
-// Not yet wired to a BullMQ queue or a cron trigger — `queues/registry.ts`'s
-// `age-and-moderation-sweep` entry and its schedule are `background-jobs`
-// territory (Phase 2) to add when this function has a queue to run in;
-// this file is the work itself, callable and tested independently of that.
+// Wired to a daily BullMQ repeatable trigger in `../queues/enqueue.ts`
+// (`scheduleAgeSweep`) and run by `../worker.ts`'s `age-and-moderation-sweep`
+// `Worker` (pre-phase-09 audit) — this file remains the work itself,
+// callable and tested independently of that scheduling.
 import { schema, type DbClient, type User } from '@coachos/db';
 import { and, eq, isNotNull, lte } from 'drizzle-orm';
 

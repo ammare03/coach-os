@@ -2,16 +2,23 @@ import { createDbClient } from '@coachos/db';
 import { Worker } from 'bullmq';
 
 import { env } from './env.ts';
+import { runAgeSweep } from './jobs/age-sweep.ts';
 import { buildDataExport } from './jobs/data-export.ts';
 import { runExerciseReconcile, runExerciseReconcileSweep } from './jobs/exercise-reconcile.ts';
 import { purgeAccount } from './jobs/purge-account.ts';
+import { sweepDeletionRequests } from './jobs/sweep-deletion-requests.ts';
 import { logger } from './lib/logger.ts';
 import { initSentry } from './lib/sentry.ts';
 import { queueConnection } from './queues/connection.ts';
-import { scheduleWeeklyExerciseReconcile } from './queues/enqueue.ts';
+import {
+  scheduleAgeSweep,
+  scheduleDeletionRequestSweep,
+  scheduleWeeklyExerciseReconcile,
+} from './queues/enqueue.ts';
 import { registerGracefulShutdown } from './queues/graceful-shutdown.ts';
 import type {
   AccountDeletionJobData,
+  AgeSweepJobData,
   DataExportJobData,
   ExerciseReconcileJobData,
 } from './queues/types.ts';
@@ -47,12 +54,31 @@ const db = createDbClient({
 // `account-lifecycle/04` — the first processor this worker runs.
 // `'account-deletion'` must match `./queues/registry.ts`'s queue name
 // exactly; BullMQ resolves a `Worker` to a queue by that string, not by
-// import identity.
+// import identity. Two job kinds on one queue (`./queues/types.ts`): the
+// per-account `purge` `enqueuePurgeAccount` emits, and the daily `sweep`
+// `scheduleDeletionRequestSweep` installs below.
 workers.push(
   new Worker<AccountDeletionJobData>(
     'account-deletion',
     async (job) => {
+      if (job.data.kind === 'sweep') {
+        await sweepDeletionRequests(db);
+        return;
+      }
       await purgeAccount(db, job.data.userId);
+    },
+    { connection: queueConnection },
+  ),
+);
+
+// Pre-phase-09 audit: closes CLAUDE.md §21.5's daily minor→adult sweep,
+// which had a tested job function (`runAgeSweep`) but no queue or Worker
+// at all until this change.
+workers.push(
+  new Worker<AgeSweepJobData>(
+    'age-and-moderation-sweep',
+    async () => {
+      await runAgeSweep(db);
     },
     { connection: queueConnection },
   ),
@@ -95,6 +121,16 @@ workers.push(
 // already has.
 scheduleWeeklyExerciseReconcile().catch(() => {
   logger.error('worker.schedule_failed', { queue: 'exercise-reconcile' });
+});
+
+// Same idempotent-on-boot contract as the weekly reconcile above — see
+// `queues/enqueue.ts`'s comment above both functions for why each was
+// missing this entirely before this change (CLAUDE.md §21.4, §21.5).
+scheduleAgeSweep().catch(() => {
+  logger.error('worker.schedule_failed', { queue: 'age-and-moderation-sweep' });
+});
+scheduleDeletionRequestSweep().catch(() => {
+  logger.error('worker.schedule_failed', { queue: 'account-deletion' });
 });
 
 registerGracefulShutdown(workers);

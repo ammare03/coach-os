@@ -3,6 +3,7 @@ import { Queue, type DefaultJobOptions } from 'bullmq';
 import { queueConnection } from './connection.ts';
 import type {
   AccountDeletionJobData,
+  AgeSweepJobData,
   AiGenerationJobData,
   CheckinSchedulerJobData,
   DataExportJobData,
@@ -79,7 +80,25 @@ export const aiGenerationQueue = new Queue<AiGenerationJobData>('ai-generation',
   defaultJobOptions,
 });
 
+/**
+ * `account-lifecycle/04`. **Pre-phase-09 audit, step 3:** this queue existed
+ * here but was missing from `DATABASE.md` DB§15's own queue list — the
+ * document was the stale side, corrected in the same change that wired
+ * both this queue's `sweep` job and `age-and-moderation-sweep` below to a
+ * repeatable trigger (`../worker.ts`, `enqueue.ts`).
+ */
 export const accountDeletionQueue = new Queue<AccountDeletionJobData>('account-deletion', {
+  connection: queueConnection,
+  defaultJobOptions,
+});
+
+/**
+ * DB§15's `age-and-moderation-sweep` queue — documented there since before
+ * this audit, but never created here. **Pre-phase-09 audit, step 3:** the
+ * code was the stale side this time; added alongside the daily trigger in
+ * `enqueue.ts` and the `Worker` in `../worker.ts`.
+ */
+export const ageAndModerationSweepQueue = new Queue<AgeSweepJobData>('age-and-moderation-sweep', {
   connection: queueConnection,
   defaultJobOptions,
 });
