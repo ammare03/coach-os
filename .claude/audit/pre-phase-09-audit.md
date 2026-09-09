@@ -2083,27 +2083,34 @@ cannot leak, and `packages/db/src/**` already holds the line at **zero** bare se
 `packages/ui`'s 95 files were reviewed against `ui-conventions` and `accessibility` in a separate
 pass, cross-checked against the barrel and every consumer in `apps/*` and `packages/*`.
 
-**Q6 · The tap-target floor is 44px, and both governing skills say 48 — "no exceptions."**
-`packages/ui/src/theme/tokens.ts:186-189` sets `tapTarget.MIN` to **44** (52 "mid-set"), citing
-`DESIGN.md` §13. `accessibility` §1 says **"Tap target ≥ 48 × 48, both apps, no exceptions"** and
-`ui-conventions` §5 says **"minimum 48×48. No exceptions in the client app. Sweaty, chalky,
-moving."** This is not an oversight — it is a **conflict between DESIGN.md and the two skills**,
-and the token propagates through every primitive's `hitSlop` arithmetic:
+**Q6 · The design system's tap-target floor is 44px, and both governing skills say 48 — "no
+exceptions."** `packages/ui/src/theme/tokens.ts:186-189` sets `tapTarget.MIN` to **44** and
+`tapTarget.MID_SET` to **52**, citing `DESIGN.md` §13. `accessibility` §1 says **"Tap target ≥ 48
+× 48, both apps, no exceptions"** and `ui-conventions` §5 says **"minimum 48×48. No exceptions in
+the client app."** This is not an oversight — it is a **conflict between DESIGN.md and the two
+skills**, and the token propagates through every primitive's `hitSlop` arithmetic:
 
-| Component                   | Box    | With `hitSlop`          |
-| --------------------------- | ------ | ----------------------- |
-| `IconButton.tsx:34-41` (sm) | 32     | lands on 44             |
-| `Button.tsx:48-60` (sm)     | 32     | lands on 44             |
-| `Chip.tsx:33-37`            | 33     | lands on 45             |
-| `AdherenceDot.tsx:187`      | 11-12  | lands on 44-45          |
-| **`Input.tsx:57-58,158`**   | **44** | **no `hitSlop` at all** |
+| Component                   | Box   | Effective target                                  |
+| --------------------------- | ----- | ------------------------------------------------- |
+| `IconButton.tsx:34-41` (sm) | 32    | 44 via `hitSlop`                                  |
+| `Button.tsx:48-60` (sm)     | 32    | 44 via `hitSlop`                                  |
+| `Chip.tsx:33-37`            | 33    | 45 via `hitSlop`                                  |
+| `AdherenceDot.tsx:187`      | 11-12 | 44-45 via `hitSlop`                               |
+| `Input.tsx:158`             | —     | `minHeight: 44`, no `hitSlop` on the field itself |
 
-`Input` is the one with no compensation: **every text field in the product, in both densities, is
-a real 44px control.** **Why it matters for P09:** the logger is the single screen the 48px rule
-was written for — one-thumb, mid-set, chalked hands — and it is the densest screen in the
-product. Resolve which document wins **before** the logger is built, not after 30 more controls
-inherit the token. If DESIGN.md wins, the two skills need amending in the same PR; if the skills
-win, one token changes and every `hitSlop` above follows.
+**Two corrections to how this was first read, both checked against the source.** `Input` uses
+`minHeight: tapTarget.MIN`, **not** a fixed height — it grows at 200% text, and its own doc
+comment explains the missing `hitSlop` (_"the one primitive in the product where the tap target
+and the visible box are the same rectangle"_). And `MID_SET` = **52**, which `tokens.ts:184-185`
+assigns to _"anything used with sweaty hands mid-workout (logger steppers, nav items)"_ — so the
+controls P09 actually builds clear 48 comfortably.
+
+**That drops the severity to Nice-to-have.** Nothing about P09 makes this worse; the shortfall is
+a real but small one against the project's own stated bar, on secondary controls, everywhere at
+once. It is listed here rather than buried because it is a **conflict between two governing
+documents**, and whichever way it resolves the other needs amending in the same PR: if DESIGN.md
+wins, `accessibility` §1 and `ui-conventions` §5 are both wrong on a "no exceptions" line; if the
+skills win, one token changes and the four `hitSlop` sites in **Q8** follow.
 
 **Q7 · `numberOfLines={1}` truncates the label on two interactive primitives.**
 `Chip.tsx:78` and `SegmentedControl.tsx:205` cap a pressable, selectable control's label to one
@@ -2238,7 +2245,7 @@ test churn, and choosing between them is P11's call, not this audit's. Logged no
 window in which it is free to fix closes at P11.
 
 **S3 · The enumeration test trusts every no-input procedure to be `ctx`-scoped, and one such
-procedure is on the wrong builder.** `apps/api/src/__tests__/authz.test.ts:181-184`:
+procedure is on the wrong builder.** `apps/api/src/__tests__/authz.test.ts:217-220`:
 
 ```ts
 // Branch 5: protected, no input at all → scoped by ctx alone.
@@ -2247,8 +2254,11 @@ if (!inputSchema) {
 }
 ```
 
-The assumption is sound for the eleven procedures it currently covers (`me.requestDeletion`,
-`auth.signOutAllDevices`, `clientApp.leaveCoach`, …) — each resolves entirely from `ctx.user`.
+The assumption holds for **ten of the eleven** procedures it currently covers. Enumerated:
+`auth.signOutAllDevices`, `me.{get,completeOnboarding,requestDeletion,cancelDeletion,requestExport}`
+(all `protectedProcedure`, all resolving from `ctx.user.id` alone), `clientApp.{coach,leaveCoach}`
+(`clientProcedure`), `invites.listPending` (`coachProcedure`), and `health.ping` (public and
+allowlisted). Every one is either role-narrowed or genuinely self-scoped.
 It is **not** a property the test verifies; it is one the test assumes. Paired with
 [Q2](#step3-quality), that assumption has already been handed a counter-example in waiting:
 `coach.clients.list` is a no-input procedure on `protectedProcedure`, so a client's session
