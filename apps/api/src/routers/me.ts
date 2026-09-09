@@ -15,7 +15,7 @@ import { isConfirmedGuardianOf, requestExportForDependent } from '../services/ex
 import { EXPORT_ROW_COUNT_KEYS } from '../services/export/manifest.ts';
 import { requestExport } from '../services/export/request.ts';
 import { router } from '../trpc/init.ts';
-import { protectedProcedure } from '../trpc/procedures.ts';
+import { ownsResource, protectedProcedure } from '../trpc/procedures.ts';
 
 export const meRouter = router({
   // `phase-06-onboarding/onboarding-infrastructure/03` — `status` and
@@ -28,8 +28,19 @@ export const meRouter = router({
 
   // `01` — the allowlist lives in `updateMeInput` (`packages/schemas/src/me.ts`);
   // this procedure never accepts a wider shape than that schema admits.
+  //
+  // `avatarAssetId` is the one field naming a row the caller does not
+  // automatically own: `users.avatar_asset_id` FKs to `coaching.media_assets`,
+  // so without this guard a caller could point their avatar at anyone's
+  // asset — a progress photo included — and P11's render path would resolve
+  // it to a signed URL (pre-phase-09 audit, S2). The selector returns `[]`
+  // when the field is absent or being cleared, which `ownsResource` short-
+  // circuits, so an ordinary name or timezone update costs no query.
   update: protectedProcedure
     .input(meSchemas.updateMeInput)
+    .use(
+      ownsResource('mediaAsset', (i: { avatarAssetId?: string | null }) => i.avatarAssetId ?? []),
+    )
     .mutation(({ ctx, input }) => updateMe(ctx.db, ctx.user.id, input)),
 
   // `phase-06-onboarding/onboarding-infrastructure/02` — no input and no

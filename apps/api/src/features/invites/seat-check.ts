@@ -9,8 +9,10 @@ import { and, count, eq, inArray, isNull } from 'drizzle-orm';
 
 import { appError } from '../../lib/app-error.ts';
 
-const SEAT_LIMIT_MESSAGE =
-  'You have reached your client limit for this plan. Upgrade or add a seat pack to invite more clients.';
+// Template from `ERRORS.md` ER§1.3 — the one place this string is allowed to live.
+function seatLimitMessage(seatLimit: number): string {
+  return `You're at ${seatLimit} clients on your plan. Add 5 seats or move up a tier to invite more.`;
+}
 
 /**
  * Active clients (`client_profiles.status IN ('active', 'invited')`, the
@@ -75,6 +77,6 @@ export async function assertSeatAvailable(db: DbClient, coachProfileId: string):
 
   const seatsUsed = (activeRow?.value ?? 0) + (pendingRow?.value ?? 0);
   if (seatsUsed >= seatLimit) {
-    throw appError('SEAT_LIMIT_REACHED', SEAT_LIMIT_MESSAGE, { seatsUsed, seatLimit });
+    throw appError('SEAT_LIMIT_REACHED', seatLimitMessage(seatLimit), { seatsUsed, seatLimit });
   }
 }

@@ -15,10 +15,13 @@
 // (`const { invalidateQueries } = useQueryClient()`).
 //
 // `invalidateQueries({})` is flagged too: empty filters match every query,
-// so it is the same instruction typed differently. Anything with a real
-// argument passes — including a deliberately broad prefix like
-// `keys.clients.list()`, which is a narrowing decision someone made on
-// purpose and can defend in review.
+// so it is the same instruction typed differently. So is an explicit
+// `invalidateQueries(undefined)` (or `void 0`) — TanStack Query treats
+// undefined identically to no argument, and a ternary or optional chain in
+// a generic `onSettled` handler can produce it without anyone writing
+// `invalidateQueries()` literally. Anything with a real argument passes —
+// including a deliberately broad prefix like `keys.clients.list()`, which
+// is a narrowing decision someone made on purpose and can defend in review.
 'use strict';
 
 const BANNED_METHOD = 'invalidateQueries';
@@ -36,6 +39,12 @@ function isInvalidateQueriesCallee(callee) {
 /** `{}` — no properties, no spread. Matches every query, exactly like no argument at all. */
 function isEmptyObjectLiteral(node) {
   return node.type === 'ObjectExpression' && node.properties.length === 0;
+}
+
+/** `undefined` or `void 0` — TanStack Query treats an explicit undefined identically to no argument. */
+function isUndefinedArgument(node) {
+  if (node.type === 'Identifier' && node.name === 'undefined') return true;
+  return node.type === 'UnaryExpression' && node.operator === 'void';
 }
 
 /** @type {import('eslint').Rule.RuleModule} */
@@ -64,9 +73,16 @@ const rule = {
           context.report({ node, messageId: 'bareInvalidate' });
           return;
         }
+        if (node.arguments.length !== 1) {
+          return;
+        }
         const [first] = node.arguments;
-        if (node.arguments.length === 1 && isEmptyObjectLiteral(first)) {
+        if (isEmptyObjectLiteral(first)) {
           context.report({ node, messageId: 'emptyFilters' });
+          return;
+        }
+        if (isUndefinedArgument(first)) {
+          context.report({ node, messageId: 'bareInvalidate' });
         }
       },
     };

@@ -1,5 +1,6 @@
 import {
   accountDeletionQueue,
+  ageAndModerationSweepQueue,
   aiGenerationQueue,
   checkinSchedulerQueue,
   dataExportQueue,
@@ -90,7 +91,11 @@ export function enqueueAiGeneration(data: { generationId: string }) {
  * queuing a second purge on top of one still running.
  */
 export function enqueuePurgeAccount(data: { userId: string }) {
-  return accountDeletionQueue.add('purge', data, { jobId: `purge.${data.userId}` });
+  return accountDeletionQueue.add(
+    'purge',
+    { kind: 'purge', userId: data.userId },
+    { jobId: `purge.${data.userId}` },
+  );
 }
 
 /**
@@ -127,6 +132,65 @@ export function scheduleWeeklyExerciseReconcile() {
   return exerciseReconcileQueue.upsertJobScheduler(
     EXERCISE_RECONCILE_SCHEDULER_ID,
     { pattern: EXERCISE_RECONCILE_CRON },
+    { name: 'sweep', data: { kind: 'sweep' } },
+  );
+}
+
+/**
+ * Pre-phase-09 audit: `runAgeSweep` and `sweepDeletionRequests` existed,
+ * were tested, and had no repeatable trigger at all — CLAUDE.md §21.5's
+ * daily minor→adult sweep and §21.4's 7-day deletion grace both silently
+ * never fired. Both schedules below follow `scheduleWeeklyExerciseReconcile`'s
+ * four load-bearing properties: idempotent on the scheduler id (safe to
+ * call on every boot), a fixed job id (re-running replaces rather than
+ * duplicates), and a Redis failure here must not stop `../worker.ts` from
+ * running the queues it already has (see its own `.catch`).
+ */
+
+/** The BullMQ job-scheduler id behind the daily age/moderation sweep. One, forever. */
+const AGE_SWEEP_SCHEDULER_ID = 'age-and-moderation-sweep-daily';
+
+// 02:00 UTC — past midnight for both US and Indian coaches (CLAUDE.md §2's
+// two primary markets) and an hour clear of `EXERCISE_RECONCILE_CRON`'s
+// Monday 03:00 slot, so the two daily/weekly sweeps never compete for the
+// same DB connections (CLAUDE.md §21.5, DB§15).
+const AGE_SWEEP_CRON = '0 2 * * *';
+
+/**
+ * Installs the daily repeatable trigger for `age-and-moderation-sweep`.
+ * The emitted job carries `{ kind: 'sweep' }`; `../worker.ts`'s processor
+ * calls `runAgeSweep` directly — unlike `exercise-reconcile`, this sweep
+ * does not fan out into per-subject jobs, so one job is the whole run.
+ */
+export function scheduleAgeSweep() {
+  return ageAndModerationSweepQueue.upsertJobScheduler(
+    AGE_SWEEP_SCHEDULER_ID,
+    { pattern: AGE_SWEEP_CRON },
+    { name: 'sweep', data: { kind: 'sweep' } },
+  );
+}
+
+/** The BullMQ job-scheduler id behind the daily deletion-grace sweep. One, forever. */
+const DELETION_REQUEST_SWEEP_SCHEDULER_ID = 'account-deletion-sweep-daily';
+
+// 02:20 UTC — same off-peak window as the age sweep, offset 20 minutes so
+// the two daily table scans don't land in the same minute and contend for
+// the same connection-pool slot (CLAUDE.md §21.4's 7-day grace, DB§15).
+const DELETION_REQUEST_SWEEP_CRON = '20 2 * * *';
+
+/**
+ * Installs the daily repeatable trigger for the deletion-grace sweep, on
+ * the same `account-deletion` queue `enqueuePurgeAccount` uses — DB§15
+ * documents one queue per purpose, and this sweep's whole job is deciding
+ * which accounts to feed into that queue's existing `purge` jobs
+ * (`sweep-deletion-requests.ts`), not a purpose of its own. The emitted job
+ * carries `{ kind: 'sweep' }`; `../worker.ts`'s processor calls
+ * `sweepDeletionRequests` directly, same non-fan-out shape as the age sweep.
+ */
+export function scheduleDeletionRequestSweep() {
+  return accountDeletionQueue.upsertJobScheduler(
+    DELETION_REQUEST_SWEEP_SCHEDULER_ID,
+    { pattern: DELETION_REQUEST_SWEEP_CRON },
     { name: 'sweep', data: { kind: 'sweep' } },
   );
 }

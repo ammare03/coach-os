@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { centeredHitSlop } from '../theme/hitSlop.ts';
 import { radius, tapTarget, type Density } from '../theme/tokens.ts';
 import { useTheme } from '../theme/useTheme.ts';
 
@@ -34,7 +35,7 @@ const CHIP_HEIGHT = 33;
 const CHIP_PADDING_HORIZONTAL = 14;
 // CONTRACT.md rule 3 — the 44px floor is reached with symmetric `hitSlop`,
 // never by growing the visible chip past DESIGN.md's 33px literal.
-const CHIP_HIT_SLOP = Math.ceil((tapTarget.MIN - CHIP_HEIGHT) / 2);
+const CHIP_HIT_SLOP = centeredHitSlop(CHIP_HEIGHT, tapTarget.MIN);
 
 /**
  * A small labelled control with `selected`, an optional leading icon, and

@@ -31,7 +31,7 @@ import type { AddedExercise } from '../hooks/useProgramDraft.ts';
 // Multi-select, and the footer counts the selection ("Add 2 exercises"),
 // which `SheetFooter` requires and `DESIGN.md` §10.8 states as law.
 
-export interface ExercisePickerSheetProps {
+export interface OnboardingExercisePickerSheetProps {
   isOpen: boolean;
   /** Named in the header so a coach picking for Day 3 can see that they are. */
   dayName: string;
@@ -43,13 +43,13 @@ export interface ExercisePickerSheetProps {
 
 const CHECKBOX = 24;
 
-export function ExercisePickerSheet({
+export function OnboardingExercisePickerSheet({
   isOpen,
   dayName,
   alreadyAdded,
   onAdd,
   onDismiss,
-}: ExercisePickerSheetProps) {
+}: OnboardingExercisePickerSheetProps) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<readonly AddedExercise[]>([]);
 

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { centeredHitSlop } from '../theme/hitSlop.ts';
 import type { ThemeContextValue } from '../theme/ThemeProvider.tsx';
 import { density, radius, spacing, tapTarget, type Density } from '../theme/tokens.ts';
 import { DEFAULT_THEME, useTheme } from '../theme/useTheme.ts';
@@ -54,7 +55,7 @@ const FIXED_HEIGHT: Partial<Record<ButtonSize, number>> = {
 // the only size that needs `hitSlop` to reach it; `md` (density-driven,
 // 46/52) and `lg` (56) already clear it on their own.
 const HIT_SLOP: Record<ButtonSize, number> = {
-  sm: Math.ceil((tapTarget.MIN - 32) / 2),
+  sm: centeredHitSlop(32, tapTarget.MIN),
   md: 0,
   lg: 0,
 };

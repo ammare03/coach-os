@@ -20,11 +20,12 @@
 
 const TABLE_EXPORT = 'outbox';
 
-/** Relative paths into the device mirror's schema — `../../db/schema/sync.ts`, `../db/schema/index.ts`. */
-const LOCAL_SCHEMA_SOURCE = /(^|\/)db\/schema(\/[\w.-]+)?$/;
+/** Relative paths into the device mirror's schema, any depth — `../../db/schema/sync.ts`, `../db/schema/training/exercises.ts`. */
+const LOCAL_SCHEMA_SOURCE = /(^|\/)db\/schema(\/[\w.-]+)*$/;
 
-/** INSERT/REPLACE INTO, UPDATE, DELETE FROM — every statement that can create or change an outbox row. */
-const OUTBOX_WRITE = /\b(?:(?:insert|replace)\s+into|update|delete\s+from)\s+outbox\b/i;
+/** INSERT [OR ROLLBACK|ABORT|FAIL|IGNORE|REPLACE] INTO, bare REPLACE INTO, UPDATE, DELETE FROM — every statement that can create or change an outbox row, including SQLite's full conflict-clause set. */
+const OUTBOX_WRITE =
+  /\b(?:insert\s+(?:or\s+(?:rollback|abort|fail|ignore|replace)\s+)?into|replace\s+into|update|delete\s+from)\s+outbox\b/i;
 
 function isLocalSchemaSource(rawSource) {
   const withoutExtension = rawSource.replace(/\.[cm]?[jt]sx?$/, '');

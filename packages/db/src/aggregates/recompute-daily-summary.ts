@@ -1,13 +1,14 @@
 // PLACEHOLDER — DB§8.2. Real adherence-aware logic belongs to
-// phase-13-nutrition/nutrition-summary/01, not here. See README.md for
-// the full pairing requirement and which write paths must call this.
+// phase-13-nutrition/nutrition-summary/01-recompute-daily-summary.md, not
+// here. See README.md for the full pairing requirement and which write
+// paths must call this.
 //
-// This stub proves the transactional SHAPE only: it upserts a zeroed row
-// inside the caller's own transaction, so once the real formula replaces
-// this body, a thrown error anywhere inside it rolls back together with
-// whatever meal write triggered the call — never partially applied.
-import { dailyNutritionSummary } from '../schema/nutrition.ts';
-
+// F6 (pre-phase-09 audit): throws rather than upserting a zeroed row.
+// `v_client_overview.nutrition_adherence_7d` (DATABASE.md) averages this
+// table directly — a zeroed row reads as "this client ate nothing," not as
+// "not computed yet," and the adherence dashboard would show every client
+// as non-compliant. Matching recompute-personal-records.ts's precedent: no
+// safe placeholder value, so this writes nothing at all.
 import type { Transaction } from './types.ts';
 
 /**
@@ -17,29 +18,13 @@ import type { Transaction } from './types.ts';
  * function — `tx` is always the caller's own handle.
  */
 export async function recomputeDailySummary(
-  tx: Transaction,
+  _tx: Transaction,
   clientId: string,
   loggedDate: string,
 ): Promise<void> {
-  await tx
-    .insert(dailyNutritionSummary)
-    .values({
-      clientId,
-      date: loggedDate,
-      // PLACEHOLDER values — real sums arrive with the adherence formula.
-      totalCalories: '0',
-      totalProteinG: '0',
-      totalCarbsG: '0',
-      totalFatG: '0',
-    })
-    .onConflictDoUpdate({
-      target: [dailyNutritionSummary.clientId, dailyNutritionSummary.date],
-      set: {
-        totalCalories: '0',
-        totalProteinG: '0',
-        totalCarbsG: '0',
-        totalFatG: '0',
-        updatedAt: new Date(),
-      },
-    });
+  throw new Error(
+    `recomputeDailySummary(${clientId}, ${loggedDate}) is unimplemented — ` +
+      'phase-13-nutrition/nutrition-summary/01-recompute-daily-summary.md owns the real ' +
+      'adherence formula. Do not call this stub from a real write path.',
+  );
 }

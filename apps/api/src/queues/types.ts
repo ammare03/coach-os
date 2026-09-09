@@ -41,9 +41,26 @@ export interface AiGenerationJobData {
   generationId: string;
 }
 
-/** `account-lifecycle/04` — the DB§19.2 transactional purge, one job per account. */
-export interface AccountDeletionJobData {
-  userId: string;
+/**
+ * `account-lifecycle/04` — DB§15's `account-deletion` queue. A union, same
+ * shape as {@link ExerciseReconcileJobData}, because this queue carries two
+ * job kinds: the DB§19.2 transactional purge of one account, and the daily
+ * `sweep` that scans `identity.deletion_requests` for rows whose grace
+ * period has elapsed and drives them into `purge` (CLAUDE.md §21.4).
+ */
+export type AccountDeletionJobData =
+  /** One account's transactional purge. */
+  | { kind: 'purge'; userId: string }
+  /** The daily grace-period scan. Enumerates due rows and re-enqueues `purge`/steps them through coach-detach. */
+  | { kind: 'sweep' };
+
+/**
+ * `auth-server/07-age-gating-and-minors.md` — DB§15's `age-and-moderation-sweep`
+ * queue. Runs against every flagged user in one pass, so — unlike every
+ * other payload here — it carries no per-subject id.
+ */
+export interface AgeSweepJobData {
+  kind: 'sweep';
 }
 
 /**

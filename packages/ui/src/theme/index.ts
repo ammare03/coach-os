@@ -43,3 +43,4 @@ export {
 export { ThemeProvider, ThemeContext, type ThemeContextValue } from './ThemeProvider.tsx';
 export { useTheme, DEFAULT_THEME } from './useTheme.ts';
 export { createThemedStyles, createThemedValue } from './createThemedStyles.ts';
+export { useReducedMotion } from './useReducedMotion.ts';

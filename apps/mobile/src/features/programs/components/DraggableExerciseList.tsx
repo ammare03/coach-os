@@ -16,6 +16,7 @@ import {
   spacing,
   tapTarget,
   Text,
+  useReducedMotion,
   useTheme,
 } from '@coachos/ui';
 import { Check, Equal } from 'lucide-react-native';
@@ -37,7 +38,6 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { useReducedMotion } from '../../../lib/useReducedMotion.ts';
 import type { ProgramDayExercise } from '../api/programs.ts';
 import {
   constrainedDropIndexFor,

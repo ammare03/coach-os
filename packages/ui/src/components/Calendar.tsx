@@ -2,7 +2,7 @@ import type { CalendarDate } from '@coachos/utils';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -21,6 +21,7 @@ import {
   tapTarget,
   type Density,
 } from '../theme/tokens.ts';
+import { useReducedMotion } from '../theme/useReducedMotion.ts';
 import { useTheme } from '../theme/useTheme.ts';
 
 import {
@@ -125,34 +126,6 @@ function columnHitSlop(gap: number) {
 const MARKER_SIZE = 6;
 
 const riseEasing = Easing.bezier(easing.rise[0], easing.rise[1], easing.rise[2], easing.rise[3]);
-
-/**
- * Reduce Motion is a live setting, not a static capability — subscribed
- * rather than sampled once. Deliberately duplicated from
- * `SegmentedControl`: extracting it would edit a component this task has no
- * other business in (CLAUDE.md §0 rule 8). Promote it to
- * `theme/useReducedMotion.ts` on the third consumer.
- */
-function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
-      if (mounted) setReduced(value);
-    });
-    const subscription = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      (value: boolean) => setReduced(value),
-    );
-    return () => {
-      mounted = false;
-      subscription.remove();
-    };
-  }, []);
-
-  return reduced;
-}
 
 type DayState = 'default' | 'selected' | 'inRange' | 'disabled';
 

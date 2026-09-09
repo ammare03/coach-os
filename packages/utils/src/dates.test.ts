@@ -129,6 +129,18 @@ describe('formatRelativeToNow', () => {
   });
 });
 
+// Q14: `now` is an explicit parameter, not merely an implementation detail
+// hidden behind the fake-timer describe block above — this suite runs with
+// REAL timers throughout, and passes precisely to prove the function reads
+// no ambient clock when `now` is supplied.
+describe('formatRelativeToNow with an explicit `now`', () => {
+  it('is deterministic with no fake timers installed', () => {
+    const now = new Date('2026-08-15T00:00:00Z');
+    const at = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+    expect(formatRelativeToNow(at, now)).toBe('2 days ago');
+  });
+});
+
 describe('addCalendarDays', () => {
   it('adds within a month', () => {
     expect(addCalendarDays('2026-08-14', 3)).toBe('2026-08-17');

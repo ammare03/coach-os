@@ -1,12 +1,13 @@
 // DB§21: "meals on ~80% of days with believable macro variance." Runs over
 // the same 28-day window `training-history.ts` uses, for the same clients,
 // so a coach reviewing a client's week sees consistent training AND
-// nutrition history for the same days. Every meal's items are paired, in
-// the same transaction, with `recomputeDailySummary` — the exact discipline
-// `src/aggregates/README.md` documents and the literal DB§8.2 claim this
-// seed is the first realistic proof of ("impossible to write a meal and
-// not update the summary").
-import { recomputeDailySummary } from '../aggregates/recompute-daily-summary.ts';
+// nutrition history for the same days.
+//
+// Does NOT call `recomputeDailySummary` (F6, pre-phase-09 audit): that stub
+// now throws rather than upserting a zeroed row (see its own comment), so
+// `daily_nutrition_summary` is intentionally left empty by this seed —
+// missing rows, not zeroed ones, until phase-13-nutrition/nutrition-summary/01
+// computes the real per-day totals and adherence score.
 import type { Transaction } from '../aggregates/types.ts';
 import type { mealType as mealTypeEnum } from '../schema/enums.ts';
 import { mealItems, meals } from '../schema/nutrition.ts';
@@ -115,12 +116,6 @@ export async function seedNutritionHistory(
         await tx.insert(mealItems).values(itemRows);
         mealsCreated += 1;
         mealItemsCreated += itemRows.length;
-
-        // Paired in the same transaction as the meal_items insert above —
-        // the pattern derived-data/03 established. Placeholder zeros until
-        // phase-13-nutrition/nutrition-summary/01 replaces the stub; the
-        // call site is what matters here, not today's output value.
-        await recomputeDailySummary(tx, clientId, loggedDate);
       }
     }
   }

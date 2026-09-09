@@ -38,6 +38,17 @@ export const RESOURCE_FIELD_KIND: Record<string, ResourceKind> = {
   commentId: 'comment',
   checkinId: 'checkin',
   liveSessionId: 'liveSession',
+  // `me.update` (`account-lifecycle/01`). It names a `coaching.media_assets`
+  // row the caller may not own — `users.avatar_asset_id` FKs to that table —
+  // so it is guarded like any other cross-boundary id, not exempted as "a
+  // value the caller sets on their own row" (pre-phase-09 audit, S2).
+  avatarAssetId: 'mediaAsset',
+  // Plural. `assignments.bulkCreate` (`assignment/03`) takes a batch, and
+  // `ownsResource`'s selector already returns `string[]` for exactly this —
+  // partial ownership is total failure. Registered so the enumeration test
+  // probes it: until it did, an unguarded array-of-ids procedure passed
+  // (pre-phase-09 audit, F10).
+  clientIds: 'client',
 };
 
 /**
@@ -51,6 +62,13 @@ export const NON_RESOURCE_ID_FIELDS: Record<string, string> = {
   // but not owned by any one client; every coach may reference any
   // exercise (`CLAUDE.md` §8.3).
   exerciseId: 'Global exercise catalogue row, not client-scoped.',
+  // The plural forms of the same thing — `programs.exercises.reorder`,
+  // `.setSupersetGroup`, and `.setAlternatives`. Each is guarded by the
+  // `programDayId` / `programExerciseId` the same input carries, which IS
+  // registered above; the exercise ids themselves are catalogue references.
+  orderedExerciseIds: 'Global exercise catalogue rows, not client-scoped.',
+  exerciseIds: 'Global exercise catalogue rows, not client-scoped.',
+  alternativeExerciseIds: 'Global exercise catalogue rows, not client-scoped.',
   // A device row keyed to the caller's own `users.id`, never another
   // user's — scoped by `ctx.user.id` in the resolver itself, not by
   // `ownsResource`.
@@ -58,12 +76,6 @@ export const NON_RESOURCE_ID_FIELDS: Record<string, string> = {
   // The offline-outbox idempotency key (DB§14) — a value the client
   // generates, not an id that resolves to a row anyone owns.
   clientLocalId: 'Idempotency key, not a row reference.',
-  // `me.update` (`account-lifecycle/01`) writes this onto the caller's own
-  // `users` row — it is a value being *set*, not a resource being *read*,
-  // so there is nothing for `ownsResource` to check against. Whether the
-  // referenced media asset belongs to the caller is out of this task's
-  // scope (its Scope section names only `me.get`/`me.update`).
-  avatarAssetId: 'A value the caller sets on their own row; scoped by ctx.user.id, not ownership.',
   // `me.exportStatus` (`account-lifecycle/10`) — a `platform.export_requests`
   // row belonging to the caller's own account, never a coach/client
   // cross-boundary resource. Scoped by a plain `userId` equality check in

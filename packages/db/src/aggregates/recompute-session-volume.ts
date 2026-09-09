@@ -1,10 +1,13 @@
 // PLACEHOLDER — DB§8.2. Real volume logic (sum of weight_kg * reps across
-// non-warmup, non-deleted sets) belongs to phase-09-workout-logger/
-// personal-records/01, not here. See README.md.
-import { eq } from 'drizzle-orm';
-
-import { workoutSessions } from '../schema/training.ts';
-
+// non-warmup, non-deleted sets) belongs to
+// phase-09-workout-logger/session-runtime/07-completion.md, not here. See
+// README.md.
+//
+// F6 (pre-phase-09 audit): throws rather than writing '0'. `workouts.complete`
+// (session-runtime/07) is about to call this on every real session
+// completion — a stub that wrote '0' would look like an unusually light
+// session, not missing data. Matching recompute-personal-records.ts's
+// precedent: no safe placeholder value, so this writes nothing at all.
 import type { Transaction } from './types.ts';
 
 /**
@@ -12,11 +15,12 @@ import type { Transaction } from './types.ts';
  * `training.workout_sessions` row completed.
  */
 export async function recomputeSessionVolume(
-  tx: Transaction,
+  _tx: Transaction,
   workoutSessionId: string,
 ): Promise<void> {
-  await tx
-    .update(workoutSessions)
-    .set({ totalVolumeKg: '0' }) // PLACEHOLDER — real sum arrives with the volume formula
-    .where(eq(workoutSessions.id, workoutSessionId));
+  throw new Error(
+    `recomputeSessionVolume(${workoutSessionId}) is unimplemented — ` +
+      'phase-09-workout-logger/session-runtime/07-completion.md owns the real volume formula. ' +
+      'Do not call this stub from a real write path.',
+  );
 }

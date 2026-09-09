@@ -38,23 +38,34 @@ call to `recomputeDailySummary`, in the same transaction, is a bug — not a sty
 
 ## Current state: stubs, not real logic
 
-Every function above is a placeholder today. Each does the minimum needed to prove the
-transactional shape works — read what it needs, write an obviously-inert value (zero, or nothing
-at all), return — and is commented `PLACEHOLDER` at the point a later phase must replace it.
-**None of them contains real business logic.** Do not build on top of a stub's current output;
-replace the function body entirely.
+Every function above is a placeholder today. **None of them contains real business logic**, and
+none of them writes a fabricated value — all four either read-only or throw. Do not build on top
+of a stub's current output (there isn't one); replace the function body entirely.
 
 Owning phases, so there's no ambiguity about who implements the real version:
 
 - `recomputeDailySummary` → `phase-13-nutrition/nutrition-summary/01` (the adherence formula)
-- `recomputeStorageUsage` → `phase-11-media-pipeline/retention-and-quota` (byte counting + quota)
+- `recomputeStorageUsage` → `phase-11-media-pipeline/retention-and-quota/03` (byte counting + quota)
 - `recomputePersonalRecords` → `phase-09-workout-logger/personal-records/01` (Epley 1RM + PR rules)
-- `recomputeSessionVolume` → `phase-09-workout-logger/personal-records/01` (volume formula)
+- `recomputeSessionVolume` → `phase-09-workout-logger/session-runtime/07-completion` (volume formula)
 
-`recomputePersonalRecords` is deliberately the one exception to "write an inert zero": there is
-no safe placeholder value for a personal record (a fabricated `(record_type, value)` row would
-look like real athlete data, not obviously-fake scaffolding), so its stub only reads, never
-writes.
+F6 (pre-phase-09 audit): three of the four used to upsert an inert-looking zero (`'0'`, `0/0`, a
+zeroed row) — correct scaffolding for proving the transactional shape, but a real _lie_ once a
+caller starts depending on the output, since `'0'` reads as a genuine (if unusually low) value
+rather than "not computed yet." `phase-09` is the trigger: it's about to wire
+`recomputeSessionVolume` into `workouts.complete` for real. All three now **throw** instead —
+obviously missing beats silently wrong. `recomputePersonalRecords` was always the one exception
+(there is no safe placeholder value for a personal record — a fabricated `(record_type, value)`
+row would look like real athlete data, not obviously-fake scaffolding), so it already only read,
+never wrote, and needed no change.
+
+**Consequence for `pnpm db:seed`**: `seed/training-history.ts`, `seed/nutrition-history.ts`, and
+`seed.ts` itself used to call the three now-throwing functions. They no longer do — the seed
+leaves `daily_nutrition_summary`, `storage_usage`, and `workout_sessions.total_volume_kg` absent
+or `null` rather than computing the real formulas itself (which would duplicate business logic
+these owning phases haven't written yet, violating the one-implementation rule in
+`code-conventions`). A missing row/`null` is the correct "not computed yet" signal — see each
+call site's own comment for the reasoning.
 
 ## What this task does not do
 
@@ -69,6 +80,7 @@ writes.
 
 `recompute-daily-summary.test.ts` proves the pattern's core guarantee with a real Postgres
 (via Testcontainers, not a mock — see the `testing` skill): start a transaction, insert a meal
-item, call a version of the recompute step that throws, and confirm that after rollback **neither
-the meal item nor any summary row persisted.** That's the one guarantee this task can actually
-prove; the real formulas each owning phase adds get their own tests when they land.
+item, call `recomputeDailySummary` (which throws — see F6 above), and confirm that after
+rollback **neither the meal item nor any summary row persisted.** That's the one guarantee this
+task can actually prove while the stub throws; the real formulas each owning phase adds get
+their own tests when they land.

@@ -1,10 +1,10 @@
 import { Badge, GlassSurface, Pressable, Text, useTheme } from '@coachos/ui';
-import { duration, easing } from '@coachos/ui/theme';
+import { duration, easing, useReducedMotion } from '@coachos/ui/theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { ChartColumn, House, MessageSquare, Utensils, type LucideIcon } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { AccessibilityInfo, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -85,39 +85,6 @@ const LABEL_MAX_FONT_SCALE = 1.6;
 const BADGE_OFFSET = { top: -6, right: -10 } as const;
 
 const PILL_EASING = Easing.bezier(easing.fill[0], easing.fill[1], easing.fill[2], easing.fill[3]);
-
-/**
- * Reduce Motion is a live, toggleable setting rather than a static device
- * capability, so it is subscribed and not sampled once — the same treatment
- * `useGlassAvailable` gives Reduce Transparency.
- *
- * Deliberately `AccessibilityInfo` rather than Reanimated's own
- * `useReducedMotion`: this is the fourth copy of this hook in the repo
- * (`SegmentedControl`, `Skeleton`, `Toast`), all of which read
- * `AccessibilityInfo`, and matching them keeps one mechanism in the
- * codebase instead of two. Promote all of them to
- * `packages/ui/src/theme/useReducedMotion.ts` when someone owns that file —
- * this task may not, since `packages/ui` is shared with work in flight.
- */
-function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
-      if (mounted) setReduced(value);
-    });
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', (value) =>
-      setReduced(value),
-    );
-    return () => {
-      mounted = false;
-      subscription.remove();
-    };
-  }, []);
-
-  return reduced;
-}
 
 /**
  * The floating client dock — `DESIGN.md` §9's Dock component, built to

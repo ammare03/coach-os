@@ -125,6 +125,14 @@ function waitForResetEmail(): Promise<void> {
   return waitFor(() => sendEmailMock.mock.calls.length >= 1, 'the reset email to be sent');
 }
 
+/** Every address `sendEmail` was handed this test, in call order. */
+function sentRecipients(): string[] {
+  return sendEmailMock.mock.calls.flatMap((call) => {
+    const to = (call[0] as { to?: unknown } | undefined)?.to;
+    return typeof to === 'string' ? [to] : [];
+  });
+}
+
 // Proving an email was NOT sent is the one case with no condition to poll:
 // absence is only ever "nothing yet". This stays a bounded wait, and is
 // deliberately far longer than the 50ms it replaces — a false pass here is
@@ -158,6 +166,11 @@ describe('auth.requestReset', () => {
     const unknown = await caller(ip).auth.requestReset({ email: 'unknown@reset-test.com' });
     expect(known).toEqual(unknown);
     expect(known).toEqual({ success: true });
+    // The known address really does send, off the response path. Await it
+    // here or it lands after `clearMocks` and is counted against the NEXT
+    // test — which is exactly how this suite failed under load
+    // (pre-phase-09 audit, F23).
+    await waitForResetEmail();
   });
 
   it('sends an email only when the account exists', async () => {
@@ -169,8 +182,13 @@ describe('auth.requestReset', () => {
     // ...and settle, so a wrongly-sent second email fails this rather than
     // arriving just after the assertion.
     await waitForSendToSettle();
-    expect(sendEmailMock).toHaveBeenCalledTimes(1);
-    expect(sendEmailMock.mock.calls[0]?.[0]).toMatchObject({ to: 'sends@reset-test.com' });
+    // Counted by recipient, not in total. The claim is "the known address
+    // gets one, the unknown gets none" — and a total is also sensitive to
+    // any email another test leaked past its own boundary, which is what
+    // made this the one flaky assertion in the suite (F23).
+    const recipients = sentRecipients();
+    expect(recipients.filter((to) => to === 'sends@reset-test.com')).toHaveLength(1);
+    expect(recipients).not.toContain('does-not-exist@reset-test.com');
   });
 
   it('produces no token for a soft-deleted user', async () => {

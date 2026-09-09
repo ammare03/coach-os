@@ -303,6 +303,7 @@ export {
   type ThemeContextValue,
 } from './theme/ThemeProvider.tsx';
 export { useTheme, DEFAULT_THEME } from './theme/useTheme.ts';
+export { useReducedMotion } from './theme/useReducedMotion.ts';
 // The scheme-aware `StyleSheet` (`component-gallery/04`). A component that
 // sets a colour in a JS `style` object builds its sheet with this, so the
 // colour follows the active scheme instead of being baked to the dark

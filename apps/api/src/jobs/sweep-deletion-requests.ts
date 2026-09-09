@@ -27,9 +27,10 @@ import { processCoachDeletionStep } from './coach-deletion-flow.ts';
  * the first pass), and re-checking the window before it has elapsed is a
  * plain read.
  *
- * The scheduling mechanism itself (a BullMQ repeatable job, a cron
- * trigger) is out of this task's scope (its own Scope section) — this is
- * the job logic a later phase's scheduler calls, not the scheduler.
+ * The scheduling mechanism is a daily BullMQ repeatable trigger,
+ * `../queues/enqueue.ts`'s `scheduleDeletionRequestSweep`, run by
+ * `../worker.ts`'s `account-deletion` `Worker` on its `sweep` job kind
+ * (pre-phase-09 audit) — this file remains the job logic, not the scheduler.
  */
 export async function sweepDeletionRequests(db: DbClient): Promise<number> {
   const due = await db

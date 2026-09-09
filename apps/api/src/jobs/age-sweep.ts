@@ -14,10 +14,10 @@
 // yet to restore. This job's contract to them is `is_minor` itself being
 // correct on the clock; nothing else.
 //
-// Not yet wired to a BullMQ queue or a cron trigger — `queues/registry.ts`'s
-// `age-and-moderation-sweep` entry and its schedule are `background-jobs`
-// territory (Phase 2) to add when this function has a queue to run in;
-// this file is the work itself, callable and tested independently of that.
+// Wired to a daily BullMQ repeatable trigger in `../queues/enqueue.ts`
+// (`scheduleAgeSweep`) and run by `../worker.ts`'s `age-and-moderation-sweep`
+// `Worker` (pre-phase-09 audit) — this file remains the work itself,
+// callable and tested independently of that scheduling.
 import { schema, type DbClient, type User } from '@coachos/db';
 import { and, eq, isNotNull, lte } from 'drizzle-orm';
 
@@ -39,8 +39,17 @@ export interface AgeSweepResult {
  * for any user whose suspension has already passed (DB§15's shared job).
  */
 export async function runAgeSweep(db: DbClient, asOf: Date = new Date()): Promise<AgeSweepResult> {
+  // Exactly the columns read below — the age filter, the update's `id`, and
+  // `notifyAdultTransition`'s recipients. `code-conventions` §7: no SELECT
+  // *, so `password_hash` and every other minor client's full row don't
+  // pass through memory just to email two addresses.
   const minorClients = await db
-    .select()
+    .select({
+      id: schema.users.id,
+      dateOfBirth: schema.users.dateOfBirth,
+      email: schema.users.email,
+      guardianEmail: schema.users.guardianEmail,
+    })
     .from(schema.users)
     .where(and(eq(schema.users.role, 'client'), eq(schema.users.isMinor, true)));
 
@@ -67,7 +76,7 @@ export async function runAgeSweep(db: DbClient, asOf: Date = new Date()): Promis
   return { minorStatusCleared: nowAdults.length, suspensionsExpired: expiredSuspensions.length };
 }
 
-async function notifyAdultTransition(user: User): Promise<void> {
+async function notifyAdultTransition(user: Pick<User, 'email' | 'guardianEmail'>): Promise<void> {
   await sendEmail({
     to: user.email,
     subject: 'Your CoachOS account has been updated',

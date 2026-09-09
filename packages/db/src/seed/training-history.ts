@@ -5,14 +5,15 @@
 // real calendar weeks ending just before `SEED_ANCHOR_DATE`, so every
 // session lands in the past, never the future.
 //
-// Follows the pairing discipline `src/aggregates/README.md` documents:
-// `recomputeSessionVolume` runs for every session this module marks
-// completed, and `recomputePersonalRecords` runs once per (client,
-// exercise) after its set_logs are inserted — the same call sites
-// production code will use, so this seed doubles as a smoke test of the
-// pattern under realistic volume.
+// Follows the pairing discipline `src/aggregates/README.md` documents for
+// `recomputePersonalRecords`, which runs once per (client, exercise) after
+// its set_logs are inserted — the same call site production code will use.
+// `recomputeSessionVolume` is NOT called here (F6, pre-phase-09 audit): it
+// now throws rather than writing a placeholder '0' (see that file's own
+// comment), so `total_volume_kg` is left `null` below — genuinely missing
+// until phase-09-workout-logger/session-runtime/07 computes the real sum,
+// rather than a zero that would read as an unusually light session.
 import { recomputePersonalRecords } from '../aggregates/recompute-personal-records.ts';
-import { recomputeSessionVolume } from '../aggregates/recompute-session-volume.ts';
 import type { Transaction } from '../aggregates/types.ts';
 import { setLogs, workoutSessions } from '../schema/training.ts';
 
@@ -126,12 +127,9 @@ export async function seedTrainingHistory(
           clientNotes: !isSkipped && dayIndex === 0 ? faker.lorem.sentence() : null,
           status: isSkipped ? 'skipped' : 'completed',
           skipReason: isSkipped ? 'Family emergency, rescheduled the following day.' : null,
-          // Placeholder zero until phase-09-workout-logger/personal-records/01
-          // replaces the recompute stub — set here (rather than left to the
-          // insert default) so it's visibly paired with the
-          // recomputeSessionVolume call below, matching the production
-          // "mark completed -> recompute in the same transaction" shape.
-          totalVolumeKg: isSkipped ? null : '0',
+          // null, not '0' — recomputeSessionVolume throws until
+          // session-runtime/07 replaces it (F6, see the import comment above).
+          totalVolumeKg: null,
           clientLocalId: sessionKey,
           programSnapshot: {
             dayName: day.name,
@@ -154,12 +152,6 @@ export async function seedTrainingHistory(
         if (isSkipped) skippedSessionId = sessionId;
 
         if (isSkipped) continue;
-
-        // This UPDATE is the one documented exception to seed.ts's
-        // determinism contract (§4 there): `touch_updated_at()` stamps
-        // real `now()` on `workout_sessions.updated_at` here, unconditionally
-        // and correctly, and no seed-side value can override it.
-        await recomputeSessionVolume(tx, sessionId);
 
         for (const exercise of day.exercises) {
           const rows: (typeof setLogs.$inferInsert)[] = [];

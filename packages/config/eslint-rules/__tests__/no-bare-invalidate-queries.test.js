@@ -64,6 +64,17 @@ ruleTester.run('no-bare-invalidate-queries', rule, {
       errors: [{ messageId: 'emptyFilters' }],
     },
     {
+      // Explicit undefined is what a ternary or optional chain in a generic
+      // onSettled handler produces — TanStack Query treats it identically
+      // to no argument at all.
+      code: 'queryClient.invalidateQueries(undefined);',
+      errors: [{ messageId: 'bareInvalidate' }],
+    },
+    {
+      code: 'queryClient.invalidateQueries(void 0);',
+      errors: [{ messageId: 'bareInvalidate' }],
+    },
+    {
       // The onSettled position the `offline-sync` skill §6 puts every
       // optimistic mutation's invalidation in — the exact call site this
       // rule is guarding.

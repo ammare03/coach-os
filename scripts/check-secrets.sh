@@ -11,6 +11,10 @@
 # passes. The real control is discipline: secrets live in EAS Secrets and Fly
 # secrets, .env is gitignored, .env.example carries placeholders only (see the
 # `configuration` skill).
+#
+# It also cannot read a file git treats as binary: `git diff` emits
+# "Binary files ... differ" and no `+` lines at all, so check 2 below examines
+# nothing. Check 1b refuses that case outright rather than passing it silently.
 set -uo pipefail
 
 fail=0
@@ -27,6 +31,35 @@ while IFS= read -r file; do
       ;;
   esac
 done < <(git diff --cached --name-only --diff-filter=ACM)
+
+# --- 1b. Reject a source file git is treating as binary ---------------------
+# `git diff` reports "Binary files ... differ" for any file with a NUL byte in
+# its first 8000 bytes, producing no `+` lines — so check 2 would scan such a
+# file's contents as the empty string and pass it. A real asset is fine and
+# expected; a .ts/.tsx/.js/.sh/.sql/.json/.md that got there is a stray control
+# byte, and it takes the whole file out of every grep in the repo as well as
+# out of this scan. `--numstat` prints `-` for both counts on a binary path.
+BINARY_OK='ttf|otf|woff|woff2|eot|png|jpg|jpeg|gif|webp|avif|ico|icns|svgz|pdf|zip|gz|tgz|jks|p8|p12|keystore|mp4|mov|webm|mp3|wav|aac|bin|wasm|node'
+while IFS=$'\t' read -r added removed file; do
+  [ "$added" = "-" ] && [ "$removed" = "-" ] || continue
+  case "$file" in
+    *.*)
+      ext="${file##*.}"
+      if ! echo "$ext" | grep -qiE "^($BINARY_OK)$"; then
+        echo "✗ $file: git is treating this as a BINARY file, so its contents were not scanned."
+        echo "    Almost always a stray NUL or other control byte in a text file — write it as an"
+        echo "    escape (\\u0000) instead of a raw byte. Such a file is also invisible to grep and"
+        echo "    ripgrep, so it silently drops out of every search in the repo."
+        echo "    If it really is a binary asset, add its extension to BINARY_OK in this script."
+        fail=1
+      fi
+      ;;
+    *)
+      echo "✗ $file: git is treating this extensionless file as binary; it was not scanned."
+      fail=1
+      ;;
+  esac
+done < <(git diff --cached --numstat --diff-filter=ACM)
 
 # --- 2. Scan staged additions for secret-shaped values -----------------------
 # .env.example is excluded here (not from check 1 above) — it is the one file

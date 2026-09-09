@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { createThemedStyles } from '../theme/createThemedStyles.ts';
+import { centeredHitSlop } from '../theme/hitSlop.ts';
 import { radius, tapTarget } from '../theme/tokens.ts';
 import { useTheme } from '../theme/useTheme.ts';
 
@@ -38,7 +39,7 @@ const DIMENSION: Record<IconButtonSize, number> = {
 };
 
 const HIT_SLOP: Record<IconButtonSize, number> = {
-  sm: Math.ceil((tapTarget.MIN - DIMENSION.sm) / 2),
+  sm: centeredHitSlop(DIMENSION.sm, tapTarget.MIN),
   md: 0,
   lg: 0,
 };

@@ -40,8 +40,11 @@ export async function requestReset(
   const rateLimitKey = keys.rateLimitResetEmail(hashEmail(email));
   await enforceRateLimit(rateLimitKey, RESET_RATE_LIMIT.max);
 
+  // Only `id` is read below (`sendResetEmail`'s `userId` argument) —
+  // `code-conventions` §7: no SELECT * in application code, so this stops
+  // `password_hash` from ever passing through this scope.
   const [user] = await db
-    .select()
+    .select({ id: schema.users.id })
     .from(schema.users)
     .where(and(eq(schema.users.email, email), isNull(schema.users.deletedAt)));
 
