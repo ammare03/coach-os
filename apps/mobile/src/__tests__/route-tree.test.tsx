@@ -191,7 +191,10 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   ['(client)/(tabs)/nutrition', '/(client)/(tabs)/nutrition'],
   ['(client)/(tabs)/progress', '/(client)/(tabs)/progress'],
   ['(client)/(tabs)/coach', '/(client)/(tabs)/coach'],
-  ['(client)/workout/[sessionId]', '/(client)/workout/w1'],
+  // `(client)/workout/[sessionId]` was a placeholder here until
+  // `phase-09-workout-logger/session-runtime/02` composed the real logger
+  // shell; it moved to SUBSTITUTED for the same reason
+  // `(client)/(tabs)/index` did.
   ['(client)/workout/[sessionId]/summary', '/(client)/workout/w1/summary'],
   ['(client)/log-food', '/(client)/log-food'],
   ['(client)/scan', '/(client)/scan'],
@@ -274,6 +277,13 @@ const SUBSTITUTED = new Set([
   // mirror. What it renders is covered by
   // `src/features/workouts/components/__tests__/`.
   '(client)/(tabs)/index',
+  // Real as of `phase-09-workout-logger/session-runtime/02`, and the same
+  // reason again: the logger shell reads one session out of the local
+  // SQLite mirror asynchronously, so it renders a header and an empty
+  // body on this tree's first frame rather than its route key. What it
+  // renders is covered by
+  // `src/features/workouts/components/__tests__/SessionLoggerScreen.test.tsx`.
+  '(client)/workout/[sessionId]',
 ]);
 
 /**
