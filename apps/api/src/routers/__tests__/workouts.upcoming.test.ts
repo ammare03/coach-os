@@ -732,3 +732,17 @@ describe('workouts.upcoming - context', () => {
     expect(result.context.programName).toBeNull();
   });
 });
+
+// `phase-09-workout-logger/today-card/02` — the two consumers of this read
+// address it by two different mechanisms, and only one of them typechecks.
+// The Today card calls `api.workouts.upcoming` (inferred from `AppRouter`),
+// but `apps/mobile/src/lib/prefetch/trpc-client.ts` is an UNTYPED client and
+// `lib/prefetch/sessions.ts` names the procedure with the string literal
+// below. Renaming or moving the procedure would break prefetch silently, at
+// runtime, on the one screen that has to work with no signal — so the string
+// gets an assertion rather than trust.
+describe('the procedure path prefetch and the Today card share', () => {
+  it("resolves 'workouts.upcoming', the literal the untyped prefetch client sends", () => {
+    expect(Object.keys(appRouter._def.procedures)).toContain('workouts.upcoming');
+  });
+});

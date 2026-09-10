@@ -15,7 +15,7 @@ import { getLocalDb, type LocalDb } from '../../../db/client.ts';
 import { localSetLogs, localWorkoutSessions } from '../../../db/schema/local-training.ts';
 import { prefetchExercises } from '../../../lib/prefetch/exercises.ts';
 import {
-  parseSessionPayload,
+  readSessionPayload,
   readUpcomingContext,
   resolveDeviceTimeZone,
   upcomingDayContext,
@@ -46,10 +46,14 @@ import { api } from '../../../lib/trpc.ts';
 //     it resolves, and the device's until then; `now` is injectable so the
 //     boundary is testable at all.
 //
-// (c) **The payload is superjson, never `JSON.parse`.** `parseSessionPayload`
+// (c) **The payload is superjson, never `JSON.parse`.** `readSessionPayload`
 //     is the matching reader and the only one — plain JSON degrades
 //     `startedAt`/`completedAt` to strings, which is `offline-sync` §10's
-//     "everything timestamped at reconnect" wearing a different hat.
+//     "everything timestamped at reconnect" wearing a different hat. It
+//     also narrows: `lib/prefetch/history.ts` writes a different payload
+//     into the same column, and `today-card/02` found the date split
+//     between the two prefetchers is not airtight across a midnight or a
+//     device/user zone difference.
 //
 // (d) **The local read is deliberately not a TanStack Query.**
 //     `code-conventions` §5 routes SERVER data through TanStack Query;
@@ -208,13 +212,29 @@ export function pickTodaySession(rows: readonly LocalSessionRow[]): LocalSession
   return best;
 }
 
-/** Everything the card shows about a session, from the row and its superjson payload. */
+/**
+ * Everything the card shows about a session, from the row and its superjson
+ * payload.
+ *
+ * `payload` is nullable because `local_workout_sessions.payload_json` has a
+ * second writer: `lib/prefetch/history.ts` puts `{ session, setLogs }` in
+ * the same column and the two divide it by date, each from its own clock
+ * and zone (`readSessionPayload`). When the division slips, the row is
+ * still today's session and the client must still be able to open it — so
+ * the prescription is omitted rather than the card refusing to render.
+ * Every prescribed number degrades to its own "nothing to show" value, the
+ * same ones an empty block list produces.
+ */
 export function summariseSession(
   row: LocalSessionRow,
-  payload: LocalSessionPayload,
+  payload: LocalSessionPayload | null,
 ): TodaySessionSummary {
-  const blocks = [...payload.session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
-  const nameById = new Map(payload.exercises.map((exercise) => [exercise.id, exercise.name]));
+  const blocks = [...(payload?.session.exercises ?? [])].sort(
+    (a, b) => a.orderIndex - b.orderIndex,
+  );
+  const nameById = new Map(
+    (payload?.exercises ?? []).map((exercise) => [exercise.id, exercise.name]),
+  );
   // A name the cache does not hold drops its pill rather than rendering a
   // uuid — the payload always carries the exercises its own blocks
   // reference, so this only fires against a cache an older build wrote.
@@ -225,7 +245,7 @@ export function summariseSession(
   return {
     localId: row.clientLocalId,
     serverId: row.serverId,
-    name: row.name ?? payload.session.name ?? payload.session.dayName,
+    name: row.name ?? payload?.session.name ?? payload?.session.dayName ?? null,
     exerciseCount: blocks.length,
     targetSets: totalTargetSets(blocks),
     estimatedMinutes: estimateSessionMinutes(blocks),
@@ -332,7 +352,7 @@ export function useTodaySession(options: UseTodaySessionOptions = {}): UseTodayS
     const row = pickTodaySession(rows);
     if (!row) return { session: null, context };
 
-    const payload = parseSessionPayload(row.payloadJson);
+    const payload = readSessionPayload(row.payloadJson);
     return {
       session: { summary: summariseSession(row, payload), phase: await resolvePhase(db, row) },
       context,

@@ -1,14 +1,20 @@
 import { sql } from 'drizzle-orm';
+import { parse as superjsonParse } from 'superjson';
 
 import { getLocalDb, resetLocalDbForTests } from '../../db/client.ts';
 
+import { buildHistorySession, buildSetLog } from './__fixtures__/history.ts';
 import { buildBlock, buildContext, buildExercise, buildSession } from './__fixtures__/upcoming.ts';
+import { serialiseHistoryPayload } from './history.ts';
 import {
+  isSessionPayload,
   parseSessionPayload,
   prefetchSessions,
   prefetchSessionsAndExercises,
+  readSessionPayload,
   readUpcomingContext,
   resetPrefetchStateForTests,
+  serialiseSessionPayload,
   upcomingDayContext,
   upcomingRange,
 } from './sessions.ts';
@@ -284,6 +290,41 @@ describe('prefetchSessions', () => {
 
     expect(order).toEqual(['caller-continued', 'fetch-settled', 'prefetch-done']);
     expect(await readSessions()).toHaveLength(1);
+  });
+});
+
+describe('readSessionPayload', () => {
+  // `phase-09-workout-logger/today-card/02`. `local_workout_sessions.payload_json`
+  // has two writers and they divide it by date, each from its own clock and
+  // its own zone — so a consumer that merely finds a row cannot assume this
+  // module wrote it.
+  it('reads back a payload this module wrote, Dates intact', () => {
+    const startedAt = new Date('2026-08-15T05:30:00.000Z');
+    const payloadJson = serialiseSessionPayload({
+      session: buildSession({ status: 'in_progress', startedAt }),
+      exercises: [buildExercise()],
+    });
+
+    const payload = readSessionPayload(payloadJson);
+
+    expect(payload?.session.startedAt).toBeInstanceOf(Date);
+    expect(payload?.exercises[0]?.name).toBe('Back Squat');
+  });
+
+  it("returns null for `./history.ts`'s payload rather than pretending it is a prescription", () => {
+    const payloadJson = serialiseHistoryPayload({
+      session: buildHistorySession(),
+      setLogs: [buildSetLog()],
+    });
+
+    expect(isSessionPayload(superjsonParse(payloadJson))).toBe(false);
+    expect(readSessionPayload(payloadJson)).toBeNull();
+  });
+
+  it('still throws on a payload that will not deserialise at all', () => {
+    // Not the same thing as the wrong shape: that is genuine corruption, and
+    // the Today card's error state is the honest answer to it.
+    expect(() => readSessionPayload('not superjson')).toThrow();
   });
 });
 

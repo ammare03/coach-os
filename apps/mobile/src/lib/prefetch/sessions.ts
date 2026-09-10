@@ -89,9 +89,55 @@ export function serialiseSessionPayload(payload: LocalSessionPayload): string {
   return superjsonStringify(payload);
 }
 
-/** The matching reader for `local_workout_sessions.payload_json`. P09 calls this, never `JSON.parse`. */
+/**
+ * Deserialises `local_workout_sessions.payload_json`. Never `JSON.parse` —
+ * the payload is superjson.
+ *
+ * Trusts the row to be one this module wrote, so it is the right reader for
+ * a row you just wrote and the wrong one for a row you merely found:
+ * `readSessionPayload` below is the narrowing version, and the one a
+ * consumer should reach for.
+ */
 export function parseSessionPayload(payloadJson: string): LocalSessionPayload {
   return superjsonParse<LocalSessionPayload>(payloadJson);
+}
+
+/**
+ * Whether a parsed payload is THIS module's and not `./history.ts`'s
+ * `{ session, setLogs }`.
+ *
+ * The two prefetchers share one `payload_json` column and divide it by date
+ * — `./history.ts` rule (b) stops at yesterday so today and tomorrow stay
+ * this module's. But each computes that date from its own `new Date()` and
+ * its own zone, so the division is not airtight: a scheduler pass that
+ * straddles local midnight, or a client whose stored `users.timezone` is
+ * not the device's, leaves a history payload on a date the Today card is
+ * still reading. Prose in two files is not a discriminator; this is
+ * (`phase-09-workout-logger/today-card/02`).
+ */
+export function isSessionPayload(payload: unknown): payload is LocalSessionPayload {
+  if (typeof payload !== 'object' || payload === null) return false;
+  const candidate = payload as Partial<Record<keyof LocalSessionPayload, unknown>>;
+  return (
+    Array.isArray(candidate.exercises) &&
+    typeof candidate.session === 'object' &&
+    candidate.session !== null &&
+    Array.isArray((candidate.session as Partial<UpcomingSession>).exercises)
+  );
+}
+
+/**
+ * `parseSessionPayload` for a row this module may not have written.
+ *
+ * `null` means "readable, but not a prescription" — the caller renders the
+ * session without one rather than showing an error or, worse, a rest day
+ * for a date that has a session on it. A payload that will not parse at all
+ * still throws: that is genuine corruption, and `ERRORS.md` ER§1.4's
+ * `LOCAL_READ_FAILED` is the honest answer to it.
+ */
+export function readSessionPayload(payloadJson: string): LocalSessionPayload | null {
+  const payload: unknown = parseSessionPayload(payloadJson);
+  return isSessionPayload(payload) ? payload : null;
 }
 
 // ── `workouts.upcoming`'s context object (`phase-09-workout-logger/today-card/01`) ──
