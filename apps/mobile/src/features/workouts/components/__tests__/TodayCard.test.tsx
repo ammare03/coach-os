@@ -7,13 +7,13 @@ import type {
 } from '../../hooks/useTodaySession.ts';
 import { TodayCard } from '../TodayCard.tsx';
 
-// Frames `A`, `B`, `C`, `F` and `G` (`today-card/DESIGN-SPEC.md`). Queried
-// by accessible name wherever possible, so the test doubles as the
-// accessibility check the `testing` skill §6 asks for.
+// Every frame `A`–`G` (`today-card/DESIGN-SPEC.md`). Queried by accessible
+// name wherever possible, so the test doubles as the accessibility check
+// the `testing` skill §6 asks for.
 //
-// `today-card/03` owns frames `D` and `E`; the two assertions at the bottom
-// pin that this component renders nothing for them, so task 03 cannot land
-// a second copy by accident.
+// The last describe is `today-card/03`'s third acceptance criterion, which
+// is the one that cannot be read off a screenshot: session, rest day and no
+// program must never overlap or render for the wrong condition.
 
 const SUMMARY: TodaySessionSummary = {
   localId: 'local-1',
@@ -249,34 +249,231 @@ describe('frame G — the local read failed', () => {
   });
 });
 
-describe('frames D and E belong to today-card/03', () => {
-  it('renders nothing for a rest day', () => {
-    const { toJSON } = render(
-      <TodayCard
-        state={{ kind: 'rest-day', isRestDay: true }}
-        weightUnit="kg"
-        timeZone="UTC"
-        now={NOW}
-        onOpenSession={jest.fn()}
-        onViewSummary={jest.fn()}
-        onRetry={jest.fn()}
-      />,
-    );
-    expect(toJSON()).toBeNull();
+describe('a session whose payload the history writer clobbered', () => {
+  // `lib/prefetch/history.ts` and `lib/prefetch/sessions.ts` write two
+  // different shapes into the same `payload_json` column and divide it by
+  // date on independently-computed clocks, so across local midnight today's
+  // row can arrive in history's shape. `summariseSession` degrades to this
+  // all-zero summary rather than throwing, and the client keeps the session
+  // name and the Start button. The card's job is to state nothing false
+  // while that is true.
+  const DEGRADED: TodaySessionSummary = {
+    localId: 'local-1',
+    serverId: 'session-1',
+    name: 'Upper A',
+    exerciseCount: 0,
+    targetSets: 0,
+    estimatedMinutes: null,
+    previewExerciseNames: [],
+    remainingExerciseCount: 0,
+  };
+
+  it('never claims the client has zero exercises', () => {
+    renderCard(sessionState({ phase: 'scheduled' }, DEGRADED));
+
+    expect(screen.queryByText(/0 exercises/)).toBeNull();
+    expect(screen.queryByText(/exercise/)).toBeNull();
   });
 
-  it('renders nothing for a client with no program', () => {
-    const { toJSON } = render(
-      <TodayCard
-        state={{ kind: 'no-program', hasCoach: true }}
-        weightUnit="kg"
-        timeZone="UTC"
-        now={NOW}
-        onOpenSession={jest.fn()}
-        onViewSummary={jest.fn()}
-        onRetry={jest.fn()}
-      />,
+  it('drops the context line entirely rather than rendering an empty one', () => {
+    renderCard(sessionState({ phase: 'scheduled' }, DEGRADED));
+
+    // The name and the one action that matters both survive — the whole
+    // point of degrading instead of throwing.
+    expect(screen.getByText('Upper A')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start workout' })).toBeTruthy();
+    // …and the accessible label is the chip and the name, with no third
+    // fragment where the context line would have been.
+    expect(screen.getByLabelText('Scheduled today. Upper A')).toBeTruthy();
+  });
+
+  it('never says "Set 8 of 0" on a session already under way', () => {
+    renderCard(
+      sessionState(
+        {
+          phase: 'in-progress',
+          startedAt: new Date('2026-08-16T12:12:00.000Z'),
+          setsLogged: 8,
+        },
+        DEGRADED,
+      ),
     );
-    expect(toJSON()).toBeNull();
+
+    expect(screen.queryByText(/of 0/)).toBeNull();
+    expect(screen.getByText('Started 18 min ago')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
+  });
+
+  it('drops the Sets metric on a completed session rather than showing a zero total', () => {
+    renderCard(
+      sessionState(
+        {
+          phase: 'completed',
+          completedAt: new Date('2026-08-16T18:12:00.000Z'),
+          setsLogged: 22,
+          volumeKg: 12450,
+          durationSeconds: 3480,
+        },
+        DEGRADED,
+      ),
+    );
+
+    expect(screen.queryByText('Sets')).toBeNull();
+    expect(screen.queryByText(/of 0/)).toBeNull();
+    // The facts that survive the clobbered payload still render.
+    expect(screen.getByText('Finished at 6:12 pm')).toBeTruthy();
+    expect(screen.getByText('58 min')).toBeTruthy();
+  });
+});
+
+describe('frame D — a rest day', () => {
+  it('states the fact and never congratulates', () => {
+    renderCard({ kind: 'rest-day', isRestDay: true });
+
+    expect(screen.getByText('Rest day')).toBeTruthy();
+    expect(screen.getByText('Nothing scheduled today.')).toBeTruthy();
+  });
+
+  it('is not an error and not a congratulation', () => {
+    renderCard({ kind: 'rest-day', isRestDay: true }, { onStartAdHoc: jest.fn() });
+
+    // The three ways this state gets written wrong: a training principle
+    // asserted (`COPY.md` CO§1.2), praise (CO§2), or error framing.
+    expect(screen.queryByText(/recovery/i)).toBeNull();
+    expect(screen.queryByText(/enjoy/i)).toBeNull();
+    expect(screen.queryByText(/rest is/i)).toBeNull();
+    expect(screen.queryByTestId('today-card-error')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
+
+  it('swaps only the chip label when the day is unprogrammed rather than a rest day', () => {
+    renderCard({ kind: 'rest-day', isRestDay: false });
+
+    expect(screen.getByText('Nothing scheduled')).toBeTruthy();
+    expect(screen.getByText('Nothing scheduled today.')).toBeTruthy();
+    expect(screen.queryByText('Rest day')).toBeNull();
+  });
+
+  it('reads as one accessible item on a rest day', () => {
+    renderCard({ kind: 'rest-day', isRestDay: true });
+
+    expect(screen.getByLabelText('Rest day. Nothing scheduled today.')).toBeTruthy();
+  });
+
+  it('does not say the same fact twice on an unprogrammed day', () => {
+    renderCard({ kind: 'rest-day', isRestDay: false });
+
+    expect(screen.getByLabelText('Nothing scheduled today.')).toBeTruthy();
+  });
+
+  it('hides the ad-hoc action until today-card/04 supplies it', () => {
+    renderCard({ kind: 'rest-day', isRestDay: true });
+
+    expect(screen.queryByRole('button', { name: 'Log something anyway' })).toBeNull();
+    // The state itself still renders — an absent optional action is never
+    // an excuse for a blank stage.
+    expect(screen.getByTestId('today-card')).toBeTruthy();
+  });
+
+  it('offers a secondary action once it is supplied, so the state is never a dead end', () => {
+    const onStartAdHoc = jest.fn();
+    renderCard({ kind: 'rest-day', isRestDay: true }, { onStartAdHoc });
+
+    fireEvent.press(screen.getByRole('button', { name: 'Log something anyway' }));
+
+    expect(onStartAdHoc).toHaveBeenCalled();
+  });
+});
+
+describe('frame E — no program assigned', () => {
+  it('uses EmptyState with exactly one action', () => {
+    const onStartAdHoc = jest.fn();
+    renderCard({ kind: 'no-program', hasCoach: true }, { onStartAdHoc });
+
+    expect(screen.getByRole('header', { name: 'No program yet.' })).toBeTruthy();
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Log a workout anyway' })).toBeTruthy();
+  });
+
+  it('starts the ad-hoc flow', () => {
+    const onStartAdHoc = jest.fn();
+    renderCard({ kind: 'no-program', hasCoach: true }, { onStartAdHoc });
+
+    fireEvent.press(screen.getByRole('button', { name: 'Log a workout anyway' }));
+
+    expect(onStartAdHoc).toHaveBeenCalled();
+  });
+
+  it('states the fact passively, never editorialising about the coach', () => {
+    renderCard({ kind: 'no-program', hasCoach: true }, { onStartAdHoc: jest.fn() });
+
+    expect(
+      screen.getByText('No program has been assigned yet. You can still log a workout.'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/your coach has/i)).toBeNull();
+  });
+
+  it('swaps the body for a client with no coach, rather than adding a state', () => {
+    renderCard({ kind: 'no-program', hasCoach: false }, { onStartAdHoc: jest.fn() });
+
+    expect(
+      screen.getByText('You don’t have a coach right now. You can still log a workout.'),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Log a workout anyway' })).toBeTruthy();
+  });
+
+  it('drops the offer rather than promising a workout it cannot start yet', () => {
+    renderCard({ kind: 'no-program', hasCoach: true });
+
+    expect(screen.getByText('No program has been assigned yet.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Log a workout anyway' })).toBeNull();
+    // Still not a blank stage (`ui-conventions` §4).
+    expect(screen.getByTestId('today-card-no-program')).toBeTruthy();
+  });
+
+  it('drops the offer for a coachless client too', () => {
+    renderCard({ kind: 'no-program', hasCoach: false });
+
+    expect(screen.getByText('You don’t have a coach right now.')).toBeTruthy();
+    expect(screen.queryByText(/still log a workout/)).toBeNull();
+  });
+});
+
+describe('the three-way branch', () => {
+  // `today-card/03`'s third acceptance criterion. `useTodaySession` decides
+  // which state applies; these assertions pin that the card never leaks one
+  // state's content into another once it has.
+  const restDay: TodaySessionState = { kind: 'rest-day', isRestDay: true };
+  const noProgram: TodaySessionState = { kind: 'no-program', hasCoach: true };
+
+  it('shows a session and nothing else', () => {
+    renderCard(sessionState({ phase: 'scheduled' }), { onStartAdHoc: jest.fn() });
+
+    expect(screen.getByText('Upper A')).toBeTruthy();
+    expect(screen.queryByText('Nothing scheduled today.')).toBeNull();
+    expect(screen.queryByText('Rest day')).toBeNull();
+    expect(screen.queryByTestId('today-card-no-program')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Log something anyway' })).toBeNull();
+  });
+
+  it('shows a rest day and nothing else', () => {
+    renderCard(restDay, { onStartAdHoc: jest.fn() });
+
+    expect(screen.getByText('Nothing scheduled today.')).toBeTruthy();
+    expect(screen.queryByText('Upper A')).toBeNull();
+    expect(screen.queryByText('Scheduled today')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Start workout' })).toBeNull();
+    expect(screen.queryByTestId('today-card-no-program')).toBeNull();
+  });
+
+  it('shows the no-program empty state and nothing else', () => {
+    renderCard(noProgram, { onStartAdHoc: jest.fn() });
+
+    expect(screen.getByTestId('today-card-no-program')).toBeTruthy();
+    // Frame `E` is the one state that is not a card at all.
+    expect(screen.queryByTestId('today-card')).toBeNull();
+    expect(screen.queryByText('Nothing scheduled today.')).toBeNull();
+    expect(screen.queryByText('Rest day')).toBeNull();
+    expect(screen.queryByText('Upper A')).toBeNull();
   });
 });

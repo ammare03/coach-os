@@ -33,15 +33,18 @@ import type {
 import { ExercisePill } from './ExercisePill.tsx';
 import { TodayCardArt } from './TodayCardArt.tsx';
 import { TodayCardError } from './TodayCardError.tsx';
+import { TodayCardNoProgram } from './TodayCardNoProgram.tsx';
 
 // The Today hero (`today-card/DESIGN-SPEC.md` §1–§4). One shape, five
 // slots — state chip → name → context line → state graphic → primary
 // action — filled differently per state and never restructured.
 //
-// This task builds frames `A` (scheduled), `B` (in progress), `C`
-// (completed), `F` (loading) and `G` (error). Frames `D` (rest day) and `E`
-// (no program) belong to `today-card/03` and render nothing here; see the
-// switch at the bottom.
+// Frames `A` (scheduled), `B` (in progress), `C` (completed), `F`
+// (loading) and `G` (error) came from `today-card/01`. `today-card/03`
+// added frames `D` (rest day) and `E` (no program): `D` is the same hero
+// with three of its five slots empty and a quieter chip, `E` is the one
+// state that is NOT a card at all — with no program there is nothing for
+// the hero's slots to hold, so it is `EmptyState`.
 //
 // Two rules the primitive cannot enforce and this file must not break
 // (`DESIGN.md` §4): never nest a `GlassSurface` inside this one, and never
@@ -62,9 +65,16 @@ export interface TodayCardProps {
   onPrefetchSession?: ((localId: string) => void) | undefined;
   onRetry: () => void;
   /**
-   * `today-card/04` owns the ad-hoc flow. Until it lands the completed
-   * card's secondary action is absent rather than inert — a button that
-   * does nothing is worse than one that is not there.
+   * `today-card/04` owns the ad-hoc flow, and this is the seam it plugs
+   * into. All three of DESIGN-SPEC §3.9's entry points hang off this one
+   * prop — `Log another workout` (completed), `Log something anyway` (rest
+   * day) and `Log a workout anyway` (no program).
+   *
+   * Until task `04` lands, every one of them is **absent rather than
+   * inert**: a button that does nothing is worse than one that is not
+   * there. The two states that would otherwise promise a workout drop that
+   * promise from their copy too, rather than making an offer the screen
+   * cannot keep — see `TodayCardNoProgram`.
    */
   onStartAdHoc?: (() => void) | undefined;
 }
@@ -95,6 +105,19 @@ const PULSE_MIN_OPACITY = 0.3;
 
 /** §2.3 — the graphic column clears the isometric art at 250px. */
 const GRAPHIC_MAX_WIDTH = 250;
+
+/** §2.3's `nm2` measure — a sentence wants a shorter line than a name. */
+const REST_DAY_LINE_MAX_WIDTH = 240;
+
+/** §2.3's hollow ring. A hairline, not a spacing step, so not on §1.4's scale. */
+const HOLLOW_RING_WIDTH = 1.5;
+
+/**
+ * Frame `D`'s one line, and `COPY.md` CO§4.1's sanctioned string for "no
+ * session today" verbatim. A fact, in the client's own words, with no
+ * judgement attached to it in either direction.
+ */
+const REST_DAY_LINE = 'Nothing scheduled today.';
 
 /** §2.3's determinate bar. `spacing(6)` is the same 6 the token scale carries. */
 const BAR_HEIGHT = spacing(6);
@@ -136,9 +159,10 @@ export function TodayCard({
       );
 
     case 'rest-day':
+      return <RestDayHero isRestDay={state.isRestDay} onStartAdHoc={onStartAdHoc} />;
+
     case 'no-program':
-      // Frames `D` and `E` are built by `today-card/03`, in the next commit.
-      return null;
+      return <TodayCardNoProgram hasCoach={state.hasCoach} onStartAdHoc={onStartAdHoc} />;
   }
 }
 
@@ -187,7 +211,7 @@ function SessionHero({
         accessibilityLabel={[chipLabel, name, contextLine].filter(Boolean).join('. ')}
         style={styles.inner}
       >
-        <StateChip label={chipLabel} phase={phase.phase} />
+        <StateChip label={chipLabel} glyph={PHASE_GLYPH[phase.phase]} />
         {/* No `numberOfLines` anywhere below: at 200% text the card grows
             (`accessibility` §3). */}
         <Text size="stat" tone="bright" style={styles.name}>
@@ -269,6 +293,74 @@ function PrimarySessionAction({
         {label}
       </Button>
     </View>
+  );
+}
+
+// ── Rest day (frame `D`) ────────────────────────────────────────────────
+
+/**
+ * The same hero, quieter (DESIGN-SPEC §3.4). Three of the five slots are
+ * empty by design — no name, no context line, no state graphic — and the
+ * two that remain are the chip and the action.
+ *
+ * **The copy is `COPY.md` CO§4.1's sanctioned pair, verbatim:** the fact
+ * ("Nothing scheduled today.") and one next step (*Log something anyway*).
+ * Task `03`'s own suggested "Rest day — recovery is part of the plan" is
+ * rejected by DESIGN-SPEC §0 and is not what ships: it asserts a training
+ * principle (CO§1.2, never prescribe), it is a judgement the product does
+ * not get to make (CO§0), and it is CO§2's motivational voice. The same
+ * rule forbids "Enjoy your rest" and every other congratulation.
+ *
+ * The line sits at `h2` rather than `stat` because it is a sentence and not
+ * a name, which is also what makes the card read quieter than frame `A`.
+ *
+ * Nothing here is an error, and nothing here is `colors.state.notStarted`:
+ * a rest day is a designed part of the program, not an absence of
+ * adherence, and grey would say the opposite.
+ */
+function RestDayHero({
+  isRestDay,
+  onStartAdHoc,
+}: {
+  isRestDay: boolean;
+  onStartAdHoc?: (() => void) | undefined;
+}) {
+  // §3.4's one string swap, not a second state. `false` is "the program
+  // materialised no session for today but does not mark today a rest day",
+  // which should stop happening once §5.1's API context lands — until then
+  // the chip states what is known and claims nothing more.
+  const chipLabel = isRestDay ? 'Rest day' : 'Nothing scheduled';
+
+  return (
+    <HeroSurface>
+      {/* No art. §6 forbids a graphic carrying a meaning the text does not,
+          and a loaded barbell on a rest day is the clearest case of it. */}
+      <View
+        accessible
+        // Deliberately not `${chipLabel}. ${REST_DAY_LINE}` — in the
+        // non-rest-day case that reads "Nothing scheduled. Nothing
+        // scheduled today.", which is the same fact twice (`accessibility`
+        // §2: one item, and it should sound like one).
+        accessibilityLabel={isRestDay ? `Rest day. ${REST_DAY_LINE}` : REST_DAY_LINE}
+        style={styles.inner}
+      >
+        <StateChip label={chipLabel} glyph="hollow-ring" />
+        <Text size="h2" tone="bright" style={styles.restDayLine}>
+          {REST_DAY_LINE}
+        </Text>
+      </View>
+
+      {onStartAdHoc ? (
+        <View style={styles.actions}>
+          {/* Secondary, not primary: the client was not asked to train
+              today, so the offer must not read as an instruction. It exists
+              at all so the state is never a dead end. */}
+          <Button variant="secondary" size="md" density="client" fullWidth onPress={onStartAdHoc}>
+            Log something anyway
+          </Button>
+        </View>
+      ) : null}
+    </HeroSurface>
   );
 }
 
@@ -365,38 +457,57 @@ const CHIP_LABEL: Record<TodaySessionPhase['phase'], string> = {
 };
 
 /**
- * §4 — the state never rides on hue. Every chip carries a second,
- * non-colour channel (filled dot / pulsing dot / check glyph) and the label
- * is always present as the third. All three use the brand ramp: §2.4 is
- * explicit that the prototype's urgent-red "scheduled" chip is not ported,
- * because `DESIGN.md` §8 reserves that hue for missed, overdue, and
- * destructive, and a red chip on the client's home screen is `COPY.md`
- * CO§2's loss framing rendered in colour.
+ * The chip's second, non-colour channel — §4's requirement that the state
+ * never rides on hue. Verified by desaturating, not by eye: frame `K` puts
+ * all four side by side with saturation at zero.
  */
-function StateChip({ label, phase }: { label: string; phase: TodaySessionPhase['phase'] }) {
+type ChipGlyph = 'dot' | 'pulsing-dot' | 'check' | 'hollow-ring';
+
+const PHASE_GLYPH: Record<TodaySessionPhase['phase'], ChipGlyph> = {
+  scheduled: 'dot',
+  'in-progress': 'pulsing-dot',
+  completed: 'check',
+};
+
+/**
+ * §4 — the state never rides on hue. Every chip carries a second,
+ * non-colour channel (filled dot / pulsing dot / check glyph / hollow ring
+ * on a recessed fill) and the label is always present as the third. The
+ * three session chips use the brand ramp: §2.4 is explicit that the
+ * prototype's urgent-red "scheduled" chip is not ported, because
+ * `DESIGN.md` §8 reserves that hue for missed, overdue, and destructive,
+ * and a red chip on the client's home screen is `COPY.md` CO§2's loss
+ * framing rendered in colour.
+ *
+ * The rest-day chip is the one that recedes (§2.3): a recessed fill and a
+ * `border.strong` edge instead of the brand tint, so the card reads quieter
+ * than a scheduled one without reading disabled.
+ */
+function StateChip({ label, glyph }: { label: string; glyph: ChipGlyph }) {
   const themed = useThemedStyles();
   const { colors } = useTheme();
+  const quiet = glyph === 'hollow-ring';
 
   return (
-    <View style={themed.chip}>
+    <View style={quiet ? [themed.chip, themed.chipQuiet] : themed.chip}>
       <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        {phase === 'completed' ? (
+        {glyph === 'check' ? (
           <Check size={12} color={colors.brand.DEFAULT} strokeWidth={3} />
         ) : (
-          <StateDot pulsing={phase === 'in-progress'} />
+          <StateDot pulsing={glyph === 'pulsing-dot'} hollow={quiet} />
         )}
       </View>
       {/* The only uppercase text on the screen (`DESIGN.md` §1.2: never
           uppercase anything but the eyebrow). The string itself stays
           sentence case, so the accessible label reads normally. */}
-      <Text size="eyebrow" tone="warm" className="uppercase">
+      <Text size="eyebrow" tone={quiet ? 'muted' : 'warm'} className="uppercase">
         {label}
       </Text>
     </View>
   );
 }
 
-function StateDot({ pulsing }: { pulsing: boolean }) {
+function StateDot({ pulsing, hollow = false }: { pulsing: boolean; hollow?: boolean }) {
   const themed = useThemedStyles();
   const reducedMotion = useReducedMotion();
   const opacity = useSharedValue(1);
@@ -419,7 +530,9 @@ function StateDot({ pulsing }: { pulsing: boolean }) {
   }, [pulsing, reducedMotion]);
 
   const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
-  return <Animated.View style={[themed.dot, style]} />;
+  return (
+    <Animated.View style={hollow ? [themed.dot, themed.dotHollow, style] : [themed.dot, style]} />
+  );
 }
 
 // ── State graphic ───────────────────────────────────────────────────────
@@ -448,15 +561,23 @@ function StateGraphic({
   }
 
   if (phase.phase === 'in-progress') {
+    // A determinate bar with no denominator is not a quieter bar, it is a
+    // wrong one — it would sit permanently empty under a session the client
+    // is eight sets into. Same degraded summary as `describeContext`.
+    if (session.targetSets <= 0) return null;
     return <ProgressBar logged={phase.setsLogged} target={session.targetSets} />;
   }
 
   return (
     <View style={styles.metrics}>
-      <MetricCell
-        label="Sets"
-        value={`${String(phase.setsLogged)} of ${String(session.targetSets)}`}
-      />
+      {/* Dropped rather than shown as "22 of 0", the same way Volume and
+          Time drop when they cannot be computed. */}
+      {session.targetSets > 0 ? (
+        <MetricCell
+          label="Sets"
+          value={`${String(phase.setsLogged)} of ${String(session.targetSets)}`}
+        />
+      ) : null}
       {phase.volumeKg === null ? null : (
         <MetricCell
           label="Volume"
@@ -573,6 +694,14 @@ function plural(count: number, singular: string, pluralForm: string): string {
  *
  * Segments that cannot be computed are OMITTED, never rendered as a dash:
  * `~— min` is the failure §3.1 names.
+ *
+ * **A zero is not a fact here, it is a missing one.** `summariseSession`
+ * degrades to an all-zero summary when today's row carries the history
+ * writer's payload shape instead of the prefetch writer's — the two-writer
+ * race `lib/prefetch/history.ts` documents — and the client is still shown
+ * the session and can still start it. So every count is gated on being
+ * positive: "0 exercises" and "Set 8 of 0" both read as claims about the
+ * client's workout, and both would be false.
  */
 export function describeContext(
   session: TodaySessionSummary,
@@ -585,19 +714,32 @@ export function describeContext(
   }
 
   if (phase.phase === 'in-progress') {
+    const elapsed = formatElapsed(phase.startedAt, now);
+    // "Set 8 of 0" is a false statement about the client's own workout, so
+    // the position drops WHOLE and the line states the one fact it still
+    // holds. Two complete strings rather than a conditionally-assembled
+    // one: `product-copy` §6 — drop a segment, never build a sentence from
+    // fragments.
+    if (session.targetSets <= 0) return `Started ${elapsed}`;
     return [
       `Set ${String(phase.setsLogged)} of ${String(session.targetSets)}`,
-      `started ${formatElapsed(phase.startedAt, now)}`,
+      `started ${elapsed}`,
     ].join(' · ');
   }
 
-  const segments = [plural(session.exerciseCount, 'exercise', 'exercises')];
+  const segments: string[] = [];
+  if (session.exerciseCount > 0) {
+    segments.push(plural(session.exerciseCount, 'exercise', 'exercises'));
+  }
   if (session.estimatedMinutes !== null) {
     // The `~` is load-bearing: the estimate is a population average, not a
     // promise about this client's pace.
     segments.push(`~${String(session.estimatedMinutes)} min`);
   }
   if (session.targetSets > 0) segments.push(plural(session.targetSets, 'set', 'sets'));
+  // Every segment gone leaves the empty string, and `SessionHero` renders
+  // no context line at all for it — an absent line, never a blank one and
+  // never a "0 exercises" that reads as a fact.
   return segments.join(' · ');
 }
 
@@ -622,6 +764,12 @@ const styles = StyleSheet.create({
   contextLine: {
     marginTop: spacing(3),
     fontVariant: ['tabular-nums'],
+  },
+  restDayLine: {
+    marginTop: spacing(12),
+    // A measure, not a spacing step. No `numberOfLines`: at 200% text the
+    // line wraps and the card grows (`accessibility` §3).
+    maxWidth: REST_DAY_LINE_MAX_WIDTH,
   },
   pills: {
     flexDirection: 'row',
@@ -694,11 +842,27 @@ const useThemedStyles = createThemedStyles(({ colors, dataviz }) => ({
     borderWidth: 1,
     borderColor: withAlpha(colors.brand.DEFAULT, '0.42'),
   },
+  // §2.3's quiet chip. `bg.inset` IS the prototype's `rgb(19,26,41)`, so
+  // this is the same fill expressed through the token rather than the hex.
+  chipQuiet: {
+    backgroundColor: withAlpha(colors.bg.inset, '0.45'),
+    borderColor: colors.border.strong,
+  },
   dot: {
     width: spacing(6),
     height: spacing(6),
     borderRadius: radius.cell,
     backgroundColor: colors.brand.DEFAULT,
+  },
+  // The shape channel for a rest day: a ring rather than a disc, one step
+  // larger so the outline is legible at 1.5px, and it survives greyscale.
+  dotHollow: {
+    width: spacing(8),
+    height: spacing(8),
+    borderRadius: radius.full,
+    backgroundColor: 'transparent',
+    borderWidth: HOLLOW_RING_WIDTH,
+    borderColor: colors.fg.muted,
   },
   track: {
     height: BAR_HEIGHT,
