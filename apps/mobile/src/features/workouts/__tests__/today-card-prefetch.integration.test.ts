@@ -1,3 +1,4 @@
+import { addCalendarDays, localDateRangeUtc, toLocalDate } from '@coachos/utils';
 import { renderHook, waitFor } from '@testing-library/react-native';
 import type { UpcomingWorkouts } from 'api/src/features/workouts/upcoming.ts';
 import { eq, sql } from 'drizzle-orm';
@@ -17,6 +18,11 @@ import {
   prefetchSessionsAndExercises,
   resetPrefetchStateForTests,
 } from '../../../lib/prefetch/sessions.ts';
+import {
+  publishClientTimeZone,
+  resetClientTimeZoneForTests,
+  resolveDeviceTimeZone,
+} from '../../../lib/time-zone/store.ts';
 import { useTodaySession, type TodaySessionState } from '../hooks/useTodaySession.ts';
 
 // `phase-09-workout-logger/today-card/02` — the whole loop, end to end and
@@ -152,6 +158,7 @@ beforeEach(() => {
   sqliteFake.__reset();
   resetLocalDbForTests();
   resetPrefetchStateForTests();
+  resetClientTimeZoneForTests();
   mockUpcomingInputs.length = 0;
   mockRefetch.mockClear();
   mockMe = { timezone: ZONE };
@@ -412,6 +419,55 @@ describe('prefetch to local SQLite to the Today card, with no network in between
     expect(state.session.estimatedMinutes).toBeNull();
     expect(state.session.previewExerciseNames).toEqual([]);
     expect(state.session.remainingExerciseCount).toBe(0);
+
+    unmount();
+  });
+
+  it('reads the day in the zone the prefetch wrote it in, before me.get has answered', async () => {
+    // `docs/UNFORGET.md` S32's second half: the writer and the reader used
+    // to be two sources for "the client's zone". On a cold start the
+    // scheduler runs long before any component has mounted `me.get`, so if
+    // the reader resolved the day from `me.get` alone and the writer from
+    // the device, a client whose two zones differ read a day nothing had
+    // written a prescription onto. Both now go through
+    // `lib/time-zone/store.ts`.
+    //
+    // `Etc/GMT+12` is UTC-12, behind every inhabited zone, so at half past
+    // local midnight on the device it is still the previous day there.
+    const deviceZone = resolveDeviceTimeZone();
+    const deviceToday = toLocalDate(new Date('2026-08-15T12:00:00.000Z'), deviceZone);
+    const at = new Date(localDateRangeUtc(deviceToday, deviceZone).start.getTime() + 30 * 60_000);
+    const storedZone = 'Etc/GMT+12';
+    const storedToday = toLocalDate(at, storedZone);
+    // Stated rather than assumed: without this the assertions below could
+    // pass by agreeing with the device instead of with the stored zone.
+    expect(storedToday).toBe(addCalendarDays(deviceToday, -1));
+
+    publishClientTimeZone(storedZone);
+    await runPrefetch(
+      upcomingResponse({
+        sessions: [buildSession({ scheduledDate: storedToday, exercises: BLOCKS })],
+        context: buildContext({
+          days: [
+            buildDayContext({ date: storedToday }),
+            buildDayContext({ date: addCalendarDays(storedToday, 1), dayName: 'Pull A' }),
+          ],
+        }),
+      }),
+      at,
+      storedZone,
+    );
+
+    // The profile query has not come back yet — this is the cold start the
+    // persisted copy exists for.
+    mockMe = undefined;
+
+    const { result, unmount } = renderToday(at);
+    await waitFor(() => expect(result.current.state.kind).toBe('session'));
+
+    expect(result.current.timeZone).toBe(storedZone);
+    expect(result.current.header.date).toBe(storedToday);
+    expect(expectSession(result.current.state).session.targetSets).toBe(13);
 
     unmount();
   });

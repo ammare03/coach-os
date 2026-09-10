@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 
 import { clearPersistedQueryCache } from '../lib/query/persister.ts';
+import { resetClientTimeZone } from '../lib/time-zone/store.ts';
 
 import type { LocalDb } from './client.ts';
 import { getLocalDb } from './client.ts';
@@ -77,6 +78,9 @@ export async function ensureLocalDatabaseBelongsTo(
     throw new Error(`could not wipe the local database for a different user: ${wiped.outcome}`);
   }
   await clearPersistedQueryCache();
+  // Same reason, for the in-memory copy the wipe cannot reach
+  // (`lib/time-zone/store.ts`).
+  resetClientTimeZone();
 
   // `wipeLocalDatabase` deleted the file; `getLocalDb()` re-bootstraps a
   // fresh, empty one on the next open (`client.ts`'s own contract).

@@ -12,6 +12,7 @@ import { parse as superjsonParse, stringify as superjsonStringify } from 'superj
 import { getLocalDb, type LocalDb } from '../../db/client.ts';
 import { localWorkoutSessions } from '../../db/schema/local-training.ts';
 import { meta } from '../../db/schema/sync.ts';
+import { ensureClientTimeZoneHydrated } from '../time-zone/store.ts';
 
 import { collectReferencedExerciseIds, prefetchExercises } from './exercises.ts';
 import { prefetchQuery } from './trpc-client.ts';
@@ -30,15 +31,18 @@ import { prefetchQuery } from './trpc-client.ts';
 //     to the client's local day, and every place that computes the boundary
 //     independently is a place it gets computed differently.
 //
-// (b) The zone is a parameter, defaulted to the device's. For this call the
-//     device zone is the right default and not a bug — the rows describe
-//     this client's own training, being prefetched onto this client's own
-//     phone, which is the same case `features/sync/queued-at.ts` documents.
-//     `code-conventions` §6's "never the device timezone" governs a coach
-//     in Mumbai reading a client in Toronto, which this is not. A caller
-//     holding the authoritative `users.timezone` (from `me.get`) should
-//     still pass it — hence the parameter, rather than reading `Intl`
-//     inline where nothing could override it.
+// (b) The zone is a parameter, and its default is
+//     `lib/time-zone/store.ts` — the client's stored `users.timezone`,
+//     falling back to the device's only until something has resolved it.
+//     **This rule used to say the device zone was the right default and
+//     that is now superseded** (`docs/UNFORGET.md` S32): this module and
+//     `./history.ts` each defaulted independently, and the Today card
+//     resolved the day from the stored zone, so a client whose two zones
+//     differ had the column's date division slip by a whole day. The
+//     stored zone is also what the server means by this client's today —
+//     `advance-assignment.ts` (b) materialises against it. `./scheduler.ts`
+//     resolves the value once per pass and passes it to both prefetchers;
+//     the parameter stays so the boundary is testable.
 //
 // (c) A local row with unsynced changes is never overwritten. Server truth
 //     wins for the coach-authored prescription, but the session row also
@@ -57,16 +61,6 @@ export interface LocalSessionPayload {
 export interface UpcomingRange {
   from: CalendarDate;
   to: CalendarDate;
-}
-
-/**
- * The client's own zone, as the device reports it. Separated out so
- * `upcomingRange` has one obvious seam for a test — and for a caller that
- * has the server's stored `users.timezone` to hand — instead of reaching
- * into `Intl` mid-calculation.
- */
-export function resolveDeviceTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
 /** Today and tomorrow as client-local calendar dates. Rule (a) lives here and nowhere else. */
@@ -108,11 +102,11 @@ export function parseSessionPayload(payloadJson: string): LocalSessionPayload {
  *
  * The two prefetchers share one `payload_json` column and divide it by date
  * — `./history.ts` rule (b) stops at yesterday so today and tomorrow stay
- * this module's. But each computes that date from its own `new Date()` and
- * its own zone, so the division is not airtight: a scheduler pass that
- * straddles local midnight, or a client whose stored `users.timezone` is
- * not the device's, leaves a history payload on a date the Today card is
- * still reading. Prose in two files is not a discriminator; this is
+ * this module's. `./scheduler.ts` now derives that date once per pass and
+ * gives it to both, so the division no longer slips (`docs/UNFORGET.md`
+ * S32). This stays anyway: it is what makes a row written by an older
+ * build, or by a future third writer, degrade instead of throwing, and
+ * prose in two files was never a discriminator
  * (`phase-09-workout-logger/today-card/02`).
  */
 export function isSessionPayload(payload: unknown): payload is LocalSessionPayload {
@@ -291,7 +285,7 @@ export async function writeSessions(
 }
 
 export interface PrefetchSessionsOptions {
-  /** The client's zone. Defaults to the device's — see rule (b). */
+  /** The client's zone. Defaults to the one shared resolver — see rule (b). */
   timeZone?: string;
   /** Injected so the day boundary is testable; `CLAUDE.md` §25.5 stays broken when it isn't. */
   now?: Date;
@@ -316,9 +310,14 @@ export interface PrefetchSessionsResult extends WriteSessionsResult {
 export async function prefetchSessions(
   options: PrefetchSessionsOptions = {},
 ): Promise<PrefetchSessionsResult> {
+  // Awaited rather than read synchronously so a direct caller — one that
+  // did not come through `./scheduler.ts`, which resolves the zone for the
+  // whole pass — still gets the persisted `users.timezone` rather than the
+  // device's. Memoised after the first call, and nothing on a render path
+  // reaches this.
   const range = upcomingRange(
     options.now ?? new Date(),
-    options.timeZone ?? resolveDeviceTimeZone(),
+    options.timeZone ?? (await ensureClientTimeZoneHydrated()),
   );
   const fetched = await (options.fetchUpcoming ?? fetchViaTrpc)(range);
   const db = options.db ?? (await getLocalDb());
