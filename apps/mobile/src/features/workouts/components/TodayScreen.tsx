@@ -5,6 +5,7 @@ import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 import { useWeightUnit } from '../../../hooks/useWeightUnit.ts';
 import { useClientTabBarInset } from '../../navigation/client/client-dock-geometry.ts';
+import { useStartAdHocSession } from '../hooks/useStartAdHocSession.ts';
 import { useTodaySession } from '../hooks/useTodaySession.ts';
 
 import { TodayCard } from './TodayCard.tsx';
@@ -31,8 +32,6 @@ export interface TodayScreenProps {
   onOpenSettings: () => void;
   /** Warms the logger's data on press-in, before navigation (`UI-UX.md` §UX3.3). */
   onPrefetchSession?: ((localId: string) => void) | undefined;
-  /** `today-card/04` supplies this. Absent until then — see `TodayCard`. */
-  onStartAdHoc?: (() => void) | undefined;
 }
 
 export function TodayScreen({
@@ -40,7 +39,6 @@ export function TodayScreen({
   onViewSummary,
   onOpenSettings,
   onPrefetchSession,
-  onStartAdHoc,
 }: TodayScreenProps) {
   const themed = useThemedStyles();
   const bottomInset = useClientTabBarInset();
@@ -50,6 +48,31 @@ export function TodayScreen({
   const topInset = useContext(SafeAreaInsetsContext)?.top ?? 0;
   const { state, header, timeZone, retry } = useTodaySession();
   const weightUnit = useWeightUnit();
+  // The zone comes from the hook above rather than being resolved a second
+  // time: the row this writes has to land on the same calendar day the card
+  // is currently showing (`today-card/04`, rule (c)).
+  const { startAdHoc } = useStartAdHocSession({ timeZone });
+
+  // Composed here rather than taken as a prop, because the two halves it
+  // needs already live here: the resolved zone, and `onOpenSession` — the
+  // same navigation an assigned session uses, since an ad-hoc session opens
+  // the identical logger (`today-card/04` acceptance criterion 3).
+  //
+  // On failure the local read is re-run instead of a new error state being
+  // invented: `startAdHoc` only returns null when the device's own SQLite
+  // mirror refused to write, and that is the same handle the read uses, so
+  // the honest outcome is either that the card comes back normally (press
+  // again) or that it lands in §3.7's section error, which `ERRORS.md`
+  // ER§1.4's `LOCAL_READ_FAILED` already covers.
+  const handleStartAdHoc = () => {
+    void startAdHoc().then((started) => {
+      if (started === null) {
+        retry();
+        return;
+      }
+      onOpenSession(started.localId);
+    });
+  };
 
   return (
     <View style={[styles.screen, themed.screen, { paddingTop: topInset }]}>
@@ -82,7 +105,7 @@ export function TodayScreen({
           onViewSummary={onViewSummary}
           onPrefetchSession={onPrefetchSession}
           onRetry={retry}
-          onStartAdHoc={onStartAdHoc}
+          onStartAdHoc={handleStartAdHoc}
         />
       </ScrollView>
     </View>

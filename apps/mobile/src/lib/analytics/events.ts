@@ -187,7 +187,15 @@ export interface AnalyticsEventRegistry {
   // AN§3.1 Training — the core loop
   workout_started: {
     session_id: Uuid;
-    assignment_id: Uuid;
+    /**
+     * Absent for an ad-hoc session, which has no assignment by definition
+     * (`today-card/04`, DB§5.2). Optional rather than nullable: `trackEvent`
+     * drops — and in development throws on — a property whose value is not a
+     * permitted one, and `undefined` is not, so the key is omitted instead.
+     */
+    assignment_id?: Uuid;
+    /** Splits the funnel top without needing `assignment_id` to be present to do it. */
+    is_ad_hoc: boolean;
     exercise_count: number;
     was_offline: boolean;
   };

@@ -40,6 +40,9 @@ function renderCard(
     onOpenSession: jest.fn(),
     onViewSummary: jest.fn(),
     onRetry: jest.fn(),
+    // Required since `today-card/04` — all three of §3.9's entry points
+    // hang off it, and `TodayScreen` always supplies it.
+    onStartAdHoc: jest.fn(),
     ...overrides,
   };
   render(<TodayCard {...props} />);
@@ -199,13 +202,10 @@ describe('frame C — a session completed today', () => {
     expect(props.onViewSummary).toHaveBeenCalledWith('local-1');
   });
 
-  it('hides the ad-hoc action until today-card/04 supplies it', () => {
-    renderCard(sessionState(phase));
-
-    expect(screen.queryByRole('button', { name: 'Log another workout' })).toBeNull();
-  });
-
-  it('offers the ad-hoc action once it is supplied', () => {
+  // `today-card/04`. Live on every render now, not conditionally: the
+  // handler is required, so there is no state in which the completed card
+  // offers only one action.
+  it('offers the ad-hoc action alongside the summary', () => {
     const onStartAdHoc = jest.fn();
     renderCard(sessionState(phase), { onStartAdHoc });
 
@@ -366,16 +366,7 @@ describe('frame D — a rest day', () => {
     expect(screen.getByLabelText('Nothing scheduled today.')).toBeTruthy();
   });
 
-  it('hides the ad-hoc action until today-card/04 supplies it', () => {
-    renderCard({ kind: 'rest-day', isRestDay: true });
-
-    expect(screen.queryByRole('button', { name: 'Log something anyway' })).toBeNull();
-    // The state itself still renders — an absent optional action is never
-    // an excuse for a blank stage.
-    expect(screen.getByTestId('today-card')).toBeTruthy();
-  });
-
-  it('offers a secondary action once it is supplied, so the state is never a dead end', () => {
+  it('offers a secondary action, so the state is never a dead end', () => {
     const onStartAdHoc = jest.fn();
     renderCard({ kind: 'rest-day', isRestDay: true }, { onStartAdHoc });
 
@@ -422,20 +413,16 @@ describe('frame E — no program assigned', () => {
     expect(screen.getByRole('button', { name: 'Log a workout anyway' })).toBeTruthy();
   });
 
-  it('drops the offer rather than promising a workout it cannot start yet', () => {
-    renderCard({ kind: 'no-program', hasCoach: true });
+  // The action-less pair the two states used to fall back to is gone with
+  // `today-card/04` — `TodayScreen` always supplies the handler, so the
+  // offer is never one the screen cannot keep.
+  it('makes the same offer to a coachless client as to a coached one', () => {
+    renderCard({ kind: 'no-program', hasCoach: false }, { onStartAdHoc: jest.fn() });
 
-    expect(screen.getByText('No program has been assigned yet.')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Log a workout anyway' })).toBeNull();
-    // Still not a blank stage (`ui-conventions` §4).
     expect(screen.getByTestId('today-card-no-program')).toBeTruthy();
-  });
-
-  it('drops the offer for a coachless client too', () => {
-    renderCard({ kind: 'no-program', hasCoach: false });
-
-    expect(screen.getByText('You don’t have a coach right now.')).toBeTruthy();
-    expect(screen.queryByText(/still log a workout/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Log a workout anyway' })).toBeTruthy();
+    // Never editorialises about the coach either way (`COPY.md` CO§3).
+    expect(screen.queryByText(/your coach has/i)).toBeNull();
   });
 });
 

@@ -65,18 +65,18 @@ export interface TodayCardProps {
   onPrefetchSession?: ((localId: string) => void) | undefined;
   onRetry: () => void;
   /**
-   * `today-card/04` owns the ad-hoc flow, and this is the seam it plugs
-   * into. All three of DESIGN-SPEC §3.9's entry points hang off this one
-   * prop — `Log another workout` (completed), `Log something anyway` (rest
-   * day) and `Log a workout anyway` (no program).
+   * The ad-hoc flow (`today-card/04`). All three of DESIGN-SPEC §3.9's
+   * entry points hang off this one prop — `Log another workout`
+   * (completed), `Log something anyway` (rest day) and `Log a workout
+   * anyway` (no program) — because they differ only in label, and a client
+   * only ever sees one of them at a time.
    *
-   * Until task `04` lands, every one of them is **absent rather than
-   * inert**: a button that does nothing is worse than one that is not
-   * there. The two states that would otherwise promise a workout drop that
-   * promise from their copy too, rather than making an offer the screen
-   * cannot keep — see `TodayCardNoProgram`.
+   * **Required.** It was optional while task `04` was unbuilt, so the three
+   * buttons could be absent rather than inert; `TodayScreen` now always
+   * supplies it, and an optional prop here would only preserve a state
+   * nothing can produce.
    */
-  onStartAdHoc?: (() => void) | undefined;
+  onStartAdHoc: () => void;
 }
 
 // §2.2. `duration.enter` (300ms) for the card, and `easing.rise` — the
@@ -177,7 +177,7 @@ interface SessionHeroProps {
   onOpenSession: (localId: string) => void;
   onViewSummary: (localId: string) => void;
   onPrefetchSession?: ((localId: string) => void) | undefined;
-  onStartAdHoc?: (() => void) | undefined;
+  onStartAdHoc: () => void;
 }
 
 function SessionHero({
@@ -240,17 +240,9 @@ function SessionHero({
             >
               View summary
             </Button>
-            {onStartAdHoc ? (
-              <Button
-                variant="secondary"
-                size="md"
-                density="client"
-                fullWidth
-                onPress={onStartAdHoc}
-              >
-                Log another workout
-              </Button>
-            ) : null}
+            <Button variant="secondary" size="md" density="client" fullWidth onPress={onStartAdHoc}>
+              Log another workout
+            </Button>
           </>
         ) : (
           <PrimarySessionAction
@@ -323,7 +315,7 @@ function RestDayHero({
   onStartAdHoc,
 }: {
   isRestDay: boolean;
-  onStartAdHoc?: (() => void) | undefined;
+  onStartAdHoc: () => void;
 }) {
   // §3.4's one string swap, not a second state. `false` is "the program
   // materialised no session for today but does not mark today a rest day",
@@ -350,16 +342,14 @@ function RestDayHero({
         </Text>
       </View>
 
-      {onStartAdHoc ? (
-        <View style={styles.actions}>
-          {/* Secondary, not primary: the client was not asked to train
-              today, so the offer must not read as an instruction. It exists
-              at all so the state is never a dead end. */}
-          <Button variant="secondary" size="md" density="client" fullWidth onPress={onStartAdHoc}>
-            Log something anyway
-          </Button>
-        </View>
-      ) : null}
+      <View style={styles.actions}>
+        {/* Secondary, not primary: the client was not asked to train today,
+            so the offer must not read as an instruction. It exists at all
+            so the state is never a dead end. */}
+        <Button variant="secondary" size="md" density="client" fullWidth onPress={onStartAdHoc}>
+          Log something anyway
+        </Button>
+      </View>
     </HeroSurface>
   );
 }

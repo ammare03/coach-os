@@ -3,9 +3,9 @@
 // `upcoming` lands early because `phase-08-offline-core/prefetch/01` needs
 // it to populate the device's `local_workout_sessions` before the signal
 // disappears, and P08 precedes P09 in build order.
-import type { z } from 'zod';
+import { z } from 'zod';
 
-import { calendarDate, strictObject } from './primitives.ts';
+import { calendarDate, clientLocalId, strictObject } from './primitives.ts';
 
 /**
  * The widest span `workouts.upcoming` will answer. Prefetch asks for two
@@ -42,3 +42,44 @@ export const upcomingWorkoutsInput = strictObject({
     { message: `the range may not span more than ${MAX_UPCOMING_RANGE_DAYS} days`, path: ['to'] },
   );
 export type UpcomingWorkoutsInput = z.infer<typeof upcomingWorkoutsInput>;
+
+/**
+ * `workouts.startAdHoc` — a session with no program behind it
+ * (`phase-09-workout-logger/today-card/04`). Both `assignment_id` and
+ * `program_day_id` end up null, which DB§5.2's own comment says the columns
+ * are nullable precisely to allow.
+ *
+ * Three things it deliberately does not take:
+ *
+ * - **No `clientId`.** The client is `ctx.user.clientProfileId` and never
+ *   the wire (`api-conventions` §3, the same shape as `upcoming`), so there
+ *   is no caller-supplied id `ownsResource` would have to guard.
+ * - **No exercises.** An ad-hoc session starts empty and gains exercises
+ *   inside the logger (`today-card/DESIGN-SPEC.md` §0) — an upfront picker
+ *   would put a network-shaped `exercises.search` into the one flow that
+ *   has to work with no signal.
+ * - **No `status`.** Creating an ad-hoc session *is* starting it: the
+ *   client is handed straight to the logger with no second "Start" step
+ *   anywhere in frame `H`, so the row is born `in_progress`.
+ */
+export const startAdHocSessionInput = strictObject({
+  /** DB§14.1's idempotency key. The outbox merges it into every payload it sends. */
+  clientLocalId,
+  /**
+   * The client's own local calendar day, resolved on device
+   * (`CLAUDE.md` §25.5). Device-authored on purpose: a client who has been
+   * offline since last night is the only party that knows which local day
+   * they were actually training on.
+   */
+  scheduledDate: calendarDate,
+  /**
+   * The instant the client tapped, captured on device and replayed verbatim
+   * by the outbox — never `new Date()` at flush time, which is
+   * `offline-sync` §10's "everything timestamped at reconnect". It is both
+   * the session's `started_at` and, because creating the row is the only
+   * local change being described, the `updated_at` DB§14.3's last-write-wins
+   * comparison reads (`apps/api/src/lib/workout-session-upsert.ts`).
+   */
+  startedAt: z.date(),
+});
+export type StartAdHocSessionInput = z.infer<typeof startAdHocSessionInput>;
