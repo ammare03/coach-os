@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
 import { createDbClient, schema, type DbClient } from '@coachos/db';
-import { addCalendarDays, toLocalDate } from '@coachos/utils';
+import { addCalendarDays, isoWeekdayOfCalendarDate, toLocalDate } from '@coachos/utils';
 import { TRPCError } from '@trpc/server';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 
@@ -194,6 +194,75 @@ async function insertProgramDay(
     coachNotes: 'Film the top set',
   });
   return day.id;
+}
+
+/**
+ * A program whose weeks and days are described explicitly, for the context
+ * tests: rest days materialise no session, which is the whole reason
+ * `UpcomingContext` exists.
+ */
+async function insertProgram(
+  coachProfileId: string,
+  spec: {
+    durationWeeks: number;
+    days: { weekNumber: number; dayNumber: number; name: string; isRestDay?: boolean }[];
+  },
+): Promise<{ programId: string; dayIds: Map<string, string>; name: string }> {
+  seq += 1;
+  const name = `Context Program ${seq}`;
+  const [program] = await db
+    .insert(schema.programs)
+    .values({ coachId: coachProfileId, name, durationWeeks: spec.durationWeeks })
+    .returning({ id: schema.programs.id });
+  if (!program) throw new Error('seed insert into programs did not return a row');
+
+  const weekIds = new Map<number, string>();
+  const dayIds = new Map<string, string>();
+  for (const day of spec.days) {
+    let weekId = weekIds.get(day.weekNumber);
+    if (!weekId) {
+      const [week] = await db
+        .insert(schema.programWeeks)
+        .values({ programId: program.id, weekNumber: day.weekNumber })
+        .returning({ id: schema.programWeeks.id });
+      if (!week) throw new Error('seed insert into program_weeks did not return a row');
+      weekId = week.id;
+      weekIds.set(day.weekNumber, weekId);
+    }
+    const [row] = await db
+      .insert(schema.programDays)
+      .values({
+        programWeekId: weekId,
+        dayNumber: day.dayNumber,
+        name: day.name,
+        isRestDay: day.isRestDay ?? false,
+      })
+      .returning({ id: schema.programDays.id });
+    if (!row) throw new Error('seed insert into program_days did not return a row');
+    dayIds.set(`${String(day.weekNumber)}:${String(day.dayNumber)}`, row.id);
+  }
+
+  return { programId: program.id, dayIds, name };
+}
+
+async function insertAssignment(args: {
+  programId: string;
+  clientId: string;
+  coachId: string;
+  startDate: string;
+}): Promise<string> {
+  const [assignment] = await db
+    .insert(schema.assignments)
+    .values({
+      programId: args.programId,
+      clientId: args.clientId,
+      coachId: args.coachId,
+      startDate: args.startDate,
+      status: 'active',
+    })
+    .returning({ id: schema.assignments.id });
+  if (!assignment) throw new Error('seed insert into assignments did not return a row');
+  return assignment.id;
 }
 
 async function insertSession(args: {
@@ -461,5 +530,205 @@ describe('workouts.upcoming', () => {
     expect(
       result.exercises.find((exercise) => exercise.id === withoutDemo)?.demoVideoUrl,
     ).toBeNull();
+  });
+});
+
+// `phase-09-workout-logger/today-card/01` — the API gap
+// `today-card/DESIGN-SPEC.md` §5.1 documents. A rest day materialises NO
+// session row (`lib/materialise-sessions.ts`: `if (day.isRestDay) continue`),
+// so "no row for today" is ambiguous on the device between *rest day*, *a
+// day the program leaves unprogrammed*, and *no program at all*. Task 03
+// has to render three different screens for those and cannot without this
+// object.
+//
+// `today` is whatever day the suite runs on, so every start date below is
+// derived from it rather than hardcoded — otherwise the suite would pass or
+// fail depending on the calendar.
+describe('workouts.upcoming - context', () => {
+  /** The Monday of the calendar week `today` falls in — materialisation's own anchor. */
+  const mondayOfThisWeek = addCalendarDays(today, -(isoWeekdayOfCalendarDate(today) - 1));
+  const todayNumber = isoWeekdayOfCalendarDate(today);
+  const tomorrowNumber = isoWeekdayOfCalendarDate(tomorrow);
+
+  it('reports no active assignment, and still answers for every date in the range', async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+
+    const result = await caller(client.ctx).workouts.upcoming({ from: today, to: tomorrow });
+
+    expect(result.context).toEqual({
+      hasActiveAssignment: false,
+      programName: null,
+      totalWeeks: null,
+      days: [
+        { date: today, isRestDay: false, weekNumber: null, dayName: null },
+        { date: tomorrow, isRestDay: false, weekNumber: null, dayName: null },
+      ],
+    });
+  });
+
+  it("reports today's rest day, which has no session row to infer it from", async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const program = await insertProgram(coach.profileId, {
+      durationWeeks: 12,
+      days: [{ weekNumber: 1, dayNumber: todayNumber, name: 'Rest', isRestDay: true }],
+    });
+    await insertAssignment({
+      programId: program.programId,
+      clientId: client.profileId,
+      coachId: coach.profileId,
+      startDate: mondayOfThisWeek,
+    });
+
+    const result = await caller(client.ctx).workouts.upcoming({ from: today, to: today });
+
+    // No session at all — exactly the ambiguity this object resolves.
+    expect(result.sessions).toEqual([]);
+    expect(result.context.hasActiveAssignment).toBe(true);
+    expect(result.context.days).toEqual([
+      { date: today, isRestDay: true, weekNumber: 1, dayName: 'Rest' },
+    ]);
+  });
+
+  it('supplies the header its "Week n of m" and the program name', async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const program = await insertProgram(coach.profileId, {
+      durationWeeks: 12,
+      days: [{ weekNumber: 6, dayNumber: todayNumber, name: 'Upper A' }],
+    });
+    // Started five weeks ago, so this calendar week is the program's week 6.
+    await insertAssignment({
+      programId: program.programId,
+      clientId: client.profileId,
+      coachId: coach.profileId,
+      startDate: addCalendarDays(mondayOfThisWeek, -35),
+    });
+
+    const result = await caller(client.ctx).workouts.upcoming({ from: today, to: today });
+
+    expect(result.context).toMatchObject({
+      hasActiveAssignment: true,
+      programName: program.name,
+      totalWeeks: 12,
+    });
+    expect(result.context.days[0]).toEqual({
+      date: today,
+      isRestDay: false,
+      weekNumber: 6,
+      dayName: 'Upper A',
+    });
+  });
+
+  it('answers per date, not once for the range', async () => {
+    // The reason `days` is a list rather than DESIGN-SPEC 5.1's flat
+    // scalars: a client opening the app just after midnight, before the
+    // nightly prefetch runs, must not be shown yesterday's answer.
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const days: { weekNumber: number; dayNumber: number; name: string; isRestDay?: boolean }[] = [
+      { weekNumber: 1, dayNumber: todayNumber, name: 'Rest', isRestDay: true },
+    ];
+    // A Sunday "today" puts tomorrow in week 2; the day is still programmed,
+    // it just belongs to the next week's row.
+    days.push({
+      weekNumber: tomorrowNumber > todayNumber ? 1 : 2,
+      dayNumber: tomorrowNumber,
+      name: 'Lower B',
+    });
+    const program = await insertProgram(coach.profileId, { durationWeeks: 12, days });
+    await insertAssignment({
+      programId: program.programId,
+      clientId: client.profileId,
+      coachId: coach.profileId,
+      startDate: mondayOfThisWeek,
+    });
+
+    const result = await caller(client.ctx).workouts.upcoming({ from: today, to: tomorrow });
+
+    expect(result.context.days).toHaveLength(2);
+    expect(result.context.days[0]).toMatchObject({ date: today, isRestDay: true, dayName: 'Rest' });
+    expect(result.context.days[1]).toMatchObject({
+      date: tomorrow,
+      isRestDay: false,
+      dayName: 'Lower B',
+    });
+  });
+
+  it('reports a week that exists but leaves this day unprogrammed - not a rest day', async () => {
+    // Distinct from a rest day, and the card says so: the chip reads
+    // "Nothing scheduled" rather than "Rest day" (DESIGN-SPEC 3.4).
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const otherDay = todayNumber === 7 ? 1 : todayNumber + 1;
+    const program = await insertProgram(coach.profileId, {
+      durationWeeks: 12,
+      days: [{ weekNumber: 1, dayNumber: otherDay, name: 'Upper A' }],
+    });
+    await insertAssignment({
+      programId: program.programId,
+      clientId: client.profileId,
+      coachId: coach.profileId,
+      startDate: mondayOfThisWeek,
+    });
+
+    const result = await caller(client.ctx).workouts.upcoming({ from: today, to: today });
+
+    expect(result.context.days[0]).toEqual({
+      date: today,
+      isRestDay: false,
+      weekNumber: 1,
+      dayName: null,
+    });
+  });
+
+  it("reports no week for a date past the program's final week", async () => {
+    const coach = await insertCoach();
+    const client = await insertClient(coach.profileId);
+    const program = await insertProgram(coach.profileId, {
+      durationWeeks: 1,
+      days: [{ weekNumber: 1, dayNumber: todayNumber, name: 'Upper A' }],
+    });
+    // Started four weeks ago: a one-week program has long since run out.
+    await insertAssignment({
+      programId: program.programId,
+      clientId: client.profileId,
+      coachId: coach.profileId,
+      startDate: addCalendarDays(mondayOfThisWeek, -28),
+    });
+
+    const result = await caller(client.ctx).workouts.upcoming({ from: today, to: today });
+
+    expect(result.context).toMatchObject({ hasActiveAssignment: true, totalWeeks: 1 });
+    // Never "Week 5 of 1": the week does not exist, so the header drops the
+    // segment rather than inventing one.
+    expect(result.context.days[0]).toEqual({
+      date: today,
+      isRestDay: false,
+      weekNumber: null,
+      dayName: null,
+    });
+  });
+
+  it("never reads another client's assignment", async () => {
+    const coach = await insertCoach();
+    const mine = await insertClient(coach.profileId);
+    const theirs = await insertClient(coach.profileId);
+    const program = await insertProgram(coach.profileId, {
+      durationWeeks: 12,
+      days: [{ weekNumber: 1, dayNumber: todayNumber, name: 'Upper A' }],
+    });
+    await insertAssignment({
+      programId: program.programId,
+      clientId: theirs.profileId,
+      coachId: coach.profileId,
+      startDate: mondayOfThisWeek,
+    });
+
+    const result = await caller(mine.ctx).workouts.upcoming({ from: today, to: today });
+
+    expect(result.context.hasActiveAssignment).toBe(false);
+    expect(result.context.programName).toBeNull();
   });
 });

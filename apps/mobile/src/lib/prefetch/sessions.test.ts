@@ -2,12 +2,14 @@ import { sql } from 'drizzle-orm';
 
 import { getLocalDb, resetLocalDbForTests } from '../../db/client.ts';
 
-import { buildBlock, buildExercise, buildSession } from './__fixtures__/upcoming.ts';
+import { buildBlock, buildContext, buildExercise, buildSession } from './__fixtures__/upcoming.ts';
 import {
   parseSessionPayload,
   prefetchSessions,
   prefetchSessionsAndExercises,
+  readUpcomingContext,
   resetPrefetchStateForTests,
+  upcomingDayContext,
   upcomingRange,
 } from './sessions.ts';
 
@@ -66,7 +68,11 @@ describe('prefetchSessions', () => {
   const exercises = [buildExercise(), buildExercise({ id: 'exercise-2', name: 'Bench Press' })];
 
   function fetchBoth() {
-    return jest.fn(async () => ({ sessions: [today, tomorrow], exercises }));
+    return jest.fn(async () => ({
+      sessions: [today, tomorrow],
+      exercises,
+      context: buildContext(),
+    }));
   }
 
   it("writes today's and tomorrow's sessions with a complete payload", async () => {
@@ -124,6 +130,7 @@ describe('prefetchSessions', () => {
       fetchUpcoming: jest.fn(async () => ({
         sessions: [buildSession({ status: 'in_progress', startedAt })],
         exercises,
+        context: buildContext(),
       })),
     });
 
@@ -150,6 +157,7 @@ describe('prefetchSessions', () => {
           buildSession({ id: 'session-today', clientLocalId: 'local-today', name: 'Renamed' }),
         ],
         exercises,
+        context: buildContext(),
       })),
     });
 
@@ -183,6 +191,67 @@ describe('prefetchSessions', () => {
     });
   });
 
+  // `phase-09-workout-logger/today-card/01`. A rest day materialises no
+  // session row at all, so the context object is the ONLY thing that tells
+  // the device "rest day" from "no program" — which makes persisting it,
+  // and persisting it even when the range produced nothing, load-bearing.
+  it("caches workouts.upcoming's context object alongside the sessions", async () => {
+    await prefetchSessions({
+      now: new Date('2026-08-15T06:00:00.000Z'),
+      timeZone: 'UTC',
+      fetchUpcoming: fetchBoth(),
+    });
+
+    const context = await readUpcomingContext(await getLocalDb());
+
+    expect(context).toMatchObject({
+      hasActiveAssignment: true,
+      programName: 'Hypertrophy Block 2',
+      totalWeeks: 12,
+    });
+    expect(upcomingDayContext(context, '2026-08-15')).toMatchObject({ weekNumber: 6 });
+  });
+
+  it('caches the context for a rest day, where there is no session row to hang it on', async () => {
+    await prefetchSessions({
+      now: new Date('2026-08-15T06:00:00.000Z'),
+      timeZone: 'UTC',
+      fetchUpcoming: jest.fn(async () => ({
+        sessions: [],
+        exercises: [],
+        context: buildContext({
+          days: [
+            { date: '2026-08-15', isRestDay: true, weekNumber: 6, dayName: 'Rest' },
+            { date: '2026-08-16', isRestDay: false, weekNumber: 6, dayName: 'Pull A' },
+          ],
+        }),
+      })),
+    });
+
+    expect(await readSessions()).toHaveLength(0);
+    const context = await readUpcomingContext(await getLocalDb());
+    expect(upcomingDayContext(context, '2026-08-15')?.isRestDay).toBe(true);
+    expect(upcomingDayContext(context, '2026-08-16')?.isRestDay).toBe(false);
+  });
+
+  it('overwrites the cached context rather than accumulating rows', async () => {
+    const options = { now: new Date('2026-08-15T06:00:00.000Z'), timeZone: 'UTC' };
+    await prefetchSessions({ ...options, fetchUpcoming: fetchBoth() });
+    await prefetchSessions({
+      ...options,
+      fetchUpcoming: jest.fn(async () => ({
+        sessions: [],
+        exercises: [],
+        context: buildContext({ hasActiveAssignment: false, programName: null, totalWeeks: null }),
+      })),
+    });
+
+    const db = await getLocalDb();
+    const metaRows = db.all<Row>(sql`SELECT * FROM meta`);
+    expect(metaRows.filter((row) => row.key === 'upcoming_context')).toHaveLength(1);
+    expect(await readUpcomingContext(db)).toMatchObject({ hasActiveAssignment: false });
+  });
+
   it('returns to the caller while the fetch is still in flight', async () => {
     // The acceptance criterion "prefetch does not block the calling UI
     // thread", as something observable: the caller keeps running, and the
@@ -190,10 +259,14 @@ describe('prefetchSessions', () => {
     const order: string[] = [];
     const fetchUpcoming = jest.fn(
       () =>
-        new Promise<{ sessions: (typeof today)[]; exercises: typeof exercises }>((resolve) => {
+        new Promise<{
+          sessions: (typeof today)[];
+          exercises: typeof exercises;
+          context: ReturnType<typeof buildContext>;
+        }>((resolve) => {
           setTimeout(() => {
             order.push('fetch-settled');
-            resolve({ sessions: [today], exercises });
+            resolve({ sessions: [today], exercises, context: buildContext() });
           }, 10);
         }),
     );
@@ -222,6 +295,7 @@ describe('prefetchSessionsAndExercises', () => {
       fetchUpcoming: jest.fn(async () => ({
         sessions: [buildSession()],
         exercises: [buildExercise()],
+        context: buildContext(),
       })),
     });
 

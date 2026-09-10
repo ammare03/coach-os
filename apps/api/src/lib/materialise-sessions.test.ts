@@ -18,6 +18,7 @@ import {
   calendarDateForProgramDay,
   computeSessionClientLocalId,
   materialiseSessions,
+  programDayForCalendarDate,
 } from './materialise-sessions.ts';
 
 let pgContainer: StartedTestContainer;
@@ -217,6 +218,62 @@ describe('calendarDateForProgramDay (decision (a): weekday-aligned, short first 
     expect(calendarDateForProgramDay('2026-03-02', 1, 1)).toBe('2026-03-02'); // Monday
     expect(calendarDateForProgramDay('2026-03-02', 1, 7)).toBe('2026-03-08'); // the DST Sunday
     expect(calendarDateForProgramDay('2026-03-02', 2, 1)).toBe('2026-03-09'); // the following Monday
+  });
+});
+
+describe('programDayForCalendarDate (the inverse, for `today-card/01`)', () => {
+  it('round-trips every day of the first four weeks, for every start weekday', () => {
+    // The property that matters: the pair describes ONE mapping. A second
+    // copy of the weekday-alignment rule in `features/workouts/upcoming.ts`
+    // is how the Today card would come to disagree with the sessions
+    // materialisation actually produced.
+    const startDates = [
+      '2026-08-10', // Monday
+      '2026-08-11', // Tuesday
+      '2026-08-13', // Thursday
+      '2026-08-16', // Sunday
+    ];
+
+    for (const startDate of startDates) {
+      for (let weekNumber = 1; weekNumber <= 4; weekNumber += 1) {
+        for (let dayNumber = 1; dayNumber <= 7; dayNumber += 1) {
+          const date = calendarDateForProgramDay(startDate, weekNumber, dayNumber);
+          if (date === null) continue; // the short first week has no date to invert
+          expect(programDayForCalendarDate(startDate, date)).toEqual({ weekNumber, dayNumber });
+        }
+      }
+    }
+  });
+
+  it("returns null for a date before the program's Monday-of-week-one anchor", () => {
+    expect(programDayForCalendarDate('2026-08-10', '2026-08-09')).toBeNull();
+  });
+
+  it('returns null inside the short first week, matching the forward direction', () => {
+    // start_date Tuesday: Monday of week 1 materialised no session, so
+    // asking what Monday "is" has to answer nothing rather than week 1 day 1.
+    expect(calendarDateForProgramDay('2026-08-11', 1, 1)).toBeNull();
+    expect(programDayForCalendarDate('2026-08-11', '2026-08-10')).toBeNull();
+  });
+
+  it("keeps answering past the program's final week — the caller decides what that means", () => {
+    // It does not know `duration_weeks`; `upcoming.ts` looks for a matching
+    // `program_weeks` row and reports `weekNumber: null` when there is none.
+    expect(programDayForCalendarDate('2026-08-10', '2027-08-09')).toEqual({
+      weekNumber: 53,
+      dayNumber: 1,
+    });
+  });
+
+  it('spans a DST transition as pure calendar arithmetic, with no shift', () => {
+    expect(programDayForCalendarDate('2026-03-02', '2026-03-08')).toEqual({
+      weekNumber: 1,
+      dayNumber: 7,
+    });
+    expect(programDayForCalendarDate('2026-03-02', '2026-03-09')).toEqual({
+      weekNumber: 2,
+      dayNumber: 1,
+    });
   });
 });
 

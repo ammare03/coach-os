@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
 
 import { schema, type Transaction } from '@coachos/db';
-import { addCalendarDays, isoWeekdayOfCalendarDate, type CalendarDate } from '@coachos/utils';
+import {
+  addCalendarDays,
+  diffCalendarDays,
+  isoWeekdayOfCalendarDate,
+  type CalendarDate,
+} from '@coachos/utils';
 import { asc, eq } from 'drizzle-orm';
 
 // `assignment/03-session-materialisation.md` — the single highest-risk task
@@ -188,6 +193,51 @@ export function calendarDateForProgramDay(
   const mondayOfWeekOne = addCalendarDays(startDate, -(startWeekday - 1));
   const mondayOfThisWeek = addCalendarDays(mondayOfWeekOne, 7 * (weekNumber - 1));
   return addCalendarDays(mondayOfThisWeek, dayNumber - 1);
+}
+
+/** Which `(program_weeks.week_number, program_days.day_number)` a calendar date lands on. */
+export interface ProgramDayPosition {
+  weekNumber: number;
+  dayNumber: number;
+}
+
+/**
+ * The exact inverse of {@link calendarDateForProgramDay}, and deliberately
+ * next to it: the two describe one mapping, and a second copy of the
+ * weekday-alignment rule living in `../features/workouts/upcoming.ts` is
+ * how the Today card would come to disagree with the sessions
+ * materialisation actually produced (`code-conventions` §1). The round trip
+ * is pinned by a test in `./materialise-sessions.test.ts`.
+ *
+ * `null` for any date the program does not cover: before its Monday-of-week-
+ * one anchor, or inside decision (a)'s short first week (a weekday that had
+ * already passed when the program started, and which therefore materialised
+ * no session and never will).
+ *
+ * It does **not** know the program's `duration_weeks` — a `weekNumber` past
+ * the end is still the honest answer to "which week would this be"; the
+ * caller decides what to do with a week the program does not have, by
+ * looking for a matching `program_weeks` row.
+ *
+ * `phase-09-workout-logger/today-card/01` is the first caller: a rest day
+ * materialises no session (see the `isRestDay` skip below), so the device
+ * cannot tell "rest day" from "no program" without asking which program day
+ * today actually is.
+ */
+export function programDayForCalendarDate(
+  startDate: CalendarDate,
+  date: CalendarDate,
+): ProgramDayPosition | null {
+  const startWeekday = isoWeekdayOfCalendarDate(startDate);
+  const mondayOfWeekOne = addCalendarDays(startDate, -(startWeekday - 1));
+  const offset = diffCalendarDays(mondayOfWeekOne, date);
+  if (offset < 0) return null;
+
+  const weekNumber = Math.floor(offset / 7) + 1;
+  const dayNumber = (offset % 7) + 1;
+  if (weekNumber === 1 && dayNumber < startWeekday) return null;
+
+  return { weekNumber, dayNumber };
 }
 
 /**

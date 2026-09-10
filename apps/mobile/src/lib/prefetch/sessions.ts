@@ -1,5 +1,7 @@
 import { addCalendarDays, toLocalDate, type CalendarDate } from '@coachos/utils';
 import type {
+  UpcomingContext,
+  UpcomingDayContext,
   UpcomingExercise,
   UpcomingSession,
   UpcomingWorkouts,
@@ -9,6 +11,7 @@ import { parse as superjsonParse, stringify as superjsonStringify } from 'superj
 
 import { getLocalDb, type LocalDb } from '../../db/client.ts';
 import { localWorkoutSessions } from '../../db/schema/local-training.ts';
+import { meta } from '../../db/schema/sync.ts';
 
 import { collectReferencedExerciseIds, prefetchExercises } from './exercises.ts';
 import { prefetchQuery } from './trpc-client.ts';
@@ -89,6 +92,75 @@ export function serialiseSessionPayload(payload: LocalSessionPayload): string {
 /** The matching reader for `local_workout_sessions.payload_json`. P09 calls this, never `JSON.parse`. */
 export function parseSessionPayload(payloadJson: string): LocalSessionPayload {
   return superjsonParse<LocalSessionPayload>(payloadJson);
+}
+
+// ── `workouts.upcoming`'s context object (`phase-09-workout-logger/today-card/01`) ──
+//
+// It is per CLIENT and per RANGE, not per session, so it has no row in
+// `local_workout_sessions` to live on — and a rest day, which is the whole
+// reason it exists, has no session row at all. `meta` is DB§13's existing
+// home for exactly this shape of scalar (it already holds `schema_version`,
+// `user_id`, `last_sync_at`), so this adds no table and inherits the two
+// behaviours that matter: it is inside `coachos.db`, so the logout wipe and
+// the schema-version drop both take it with them.
+//
+// Serialised with superjson for the same reason the session payload is —
+// one transformer across the wire, the outbox, and this cache. The context
+// carries no `Date` today; pinning the transformer now means a field that
+// does can be added without a silent string-for-Date regression.
+
+/** `meta.key` for the cached `UpcomingContext`. One row, overwritten each prefetch. */
+export const UPCOMING_CONTEXT_META_KEY = 'upcoming_context';
+
+export function serialiseUpcomingContext(context: UpcomingContext): string {
+  return superjsonStringify(context);
+}
+
+export function parseUpcomingContext(value: string): UpcomingContext {
+  return superjsonParse<UpcomingContext>(value);
+}
+
+export async function writeUpcomingContext(db: LocalDb, context: UpcomingContext): Promise<void> {
+  await db
+    .insert(meta)
+    .values({ key: UPCOMING_CONTEXT_META_KEY, value: serialiseUpcomingContext(context) })
+    .onConflictDoUpdate({
+      target: meta.key,
+      set: { value: serialiseUpcomingContext(context) },
+    });
+}
+
+/**
+ * `null` when nothing has been prefetched yet — a first launch, or a device
+ * whose cache was just dropped. The caller must treat that as "unknown",
+ * never as "no program": telling a client with a program that they have
+ * none is the worse of the two wrong answers.
+ *
+ * A malformed row degrades to `null` rather than throwing, matching
+ * `db/schema-version.ts`'s treatment of a corrupted `meta` value — a bad
+ * cache entry must not be able to take the Today screen down.
+ */
+export async function readUpcomingContext(db: LocalDb): Promise<UpcomingContext | null> {
+  const [row] = await db
+    .select({ value: meta.value })
+    .from(meta)
+    .where(eq(meta.key, UPCOMING_CONTEXT_META_KEY))
+    .limit(1);
+
+  if (!row?.value) return null;
+  try {
+    return parseUpcomingContext(row.value);
+  } catch {
+    return null;
+  }
+}
+
+/** The cached context's entry for one calendar date, or `null` if the range never covered it. */
+export function upcomingDayContext(
+  context: UpcomingContext | null,
+  date: CalendarDate,
+): UpcomingDayContext | null {
+  return context?.days.find((day) => day.date === date) ?? null;
 }
 
 function payloadFor(session: UpcomingSession, exercises: UpcomingExercise[]): LocalSessionPayload {
@@ -205,6 +277,10 @@ export async function prefetchSessions(
   const fetched = await (options.fetchUpcoming ?? fetchViaTrpc)(range);
   const db = options.db ?? (await getLocalDb());
   const written = await writeSessions(db, fetched.sessions, fetched.exercises);
+  // Written unconditionally, including when the range produced no session
+  // at all — that is precisely the case the Today card needs it for
+  // (`today-card/DESIGN-SPEC.md` §5.1).
+  await writeUpcomingContext(db, fetched.context);
   return { ...written, range, fetched };
 }
 

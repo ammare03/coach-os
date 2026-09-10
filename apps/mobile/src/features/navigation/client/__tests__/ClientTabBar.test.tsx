@@ -14,6 +14,51 @@ import ClientProgressScreen from '../../../../app/(client)/(tabs)/progress.tsx';
 import { clientTabBarInset } from '../client-dock-geometry.ts';
 import { CLIENT_TABS, ClientTabBar } from '../ClientTabBar.tsx';
 
+// The Today tab is a real screen as of `phase-09-workout-logger/today-card/01`,
+// and this file renders the real route on purpose — the last assertion
+// below is that the screen consumes the dock's own inset derivation, which
+// a stub screen could not prove.
+//
+// So the SCREEN stays real and only its data is stood in for: the tRPC
+// client (these bare trees mount no provider) and `useTodaySession`, whose
+// asynchronous local-SQLite read would otherwise land after this file's
+// assertions and warn about an update outside `act()`. Both stubs answer
+// "nothing yet", which is the state a tab bar test wants anyway; what the
+// screen renders for real data is
+// `features/workouts/components/__tests__/TodayCard.test.tsx`'s job.
+jest.mock('../../../../lib/trpc.ts', () => ({
+  api: {
+    me: { get: { useQuery: () => ({ data: undefined }) } },
+    clientApp: { coach: { useQuery: () => ({ data: undefined, isSuccess: false }) } },
+    workouts: {
+      upcoming: {
+        useQuery: () => ({
+          data: undefined,
+          dataUpdatedAt: 0,
+          isPending: true,
+          refetch: jest.fn(),
+        }),
+      },
+    },
+  },
+}));
+
+jest.mock('../../../../features/workouts/hooks/useTodaySession.ts', () => ({
+  useTodaySession: () => ({
+    state: { kind: 'loading', showSkeleton: false },
+    header: {
+      dateLabel: 'Tuesday, 16 Aug',
+      date: '2026-08-16',
+      programName: null,
+      weekNumber: null,
+      totalWeeks: null,
+      coachFirstName: null,
+    },
+    timeZone: 'UTC',
+    retry: jest.fn(),
+  }),
+}));
+
 // The real navigator, not a hand-built `BottomTabBarProps` fixture: the tab
 // bar's whole job is to read react-navigation's state and drive it, and a
 // fixture would assert that the fixture is shaped the way this file thinks
@@ -85,8 +130,11 @@ describe('the client dock', () => {
   });
 
   it('navigates when a tab is pressed', () => {
+    // Today is a real screen now, so it is identified by the scroll stage
+    // every client tab renders rather than by a placeholder's route text;
+    // Nutrition is still a placeholder and still renders its own.
     renderClientTabs();
-    expect(screen.getByText('(client)/(tabs)/index')).toBeTruthy();
+    expect(screen.getByTestId('client-tab-screen')).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Nutrition, tab 2 of 4'));
 
