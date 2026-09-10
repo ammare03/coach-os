@@ -1,9 +1,10 @@
 import { workouts as workoutsSchemas } from '@coachos/schemas';
 
 import { startAdHocSession } from '../features/workouts/start-ad-hoc.ts';
+import { startSession } from '../features/workouts/start.ts';
 import { listUpcomingWorkouts } from '../features/workouts/upcoming.ts';
 import { router } from '../trpc/init.ts';
-import { clientProcedure } from '../trpc/procedures.ts';
+import { clientProcedure, ownsResource } from '../trpc/procedures.ts';
 
 // Filled by phase-09-workout-logger, apart from `upcoming` — which
 // `phase-08-offline-core/prefetch/01` needs and P08 precedes P09, so it
@@ -35,5 +36,19 @@ export const workoutsRouter = router({
         throw new Error('workouts.startAdHoc: authenticated client has no clientProfileId');
       }
       return startAdHocSession(ctx.db, ctx.user.clientProfileId, input);
+    }),
+
+  // Unlike the two above, this one DOES name a row the caller could point
+  // elsewhere — `workoutSessionId` is a real server id — so it carries
+  // `ownsResource` (`api-conventions` §3). Chained after `.input()`, or the
+  // selector receives `unknown` and rejects everything.
+  start: clientProcedure
+    .input(workoutsSchemas.startSessionInput)
+    .use(ownsResource('workoutSession', (i: { workoutSessionId: string }) => i.workoutSessionId))
+    .mutation(({ ctx, input }) => {
+      if (ctx.user.clientProfileId === null) {
+        throw new Error('workouts.start: authenticated client has no clientProfileId');
+      }
+      return startSession(ctx.db, ctx.user.clientProfileId, input);
     }),
 });

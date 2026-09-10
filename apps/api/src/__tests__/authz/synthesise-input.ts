@@ -127,6 +127,13 @@ function synthesiseValue(schema: z.ZodType, path: string): unknown {
       return synthesiseNumber(def, path);
     case 'boolean':
       return true;
+    // A real `Date`, not an ISO string: `z.date()` is what an offline
+    // mutation carries an action-time instant in — the outbox replays it
+    // through superjson, so it arrives as a `Date` and the schema rejects
+    // anything else (`workouts.start`, `session-runtime/01`). Any instant
+    // will do; the probe only cares whether the guard fires.
+    case 'date':
+      return new Date(0);
     case 'enum': {
       const first = def.entries && Object.values(def.entries)[0];
       if (first === undefined) {

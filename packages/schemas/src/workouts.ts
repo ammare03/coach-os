@@ -5,7 +5,7 @@
 // disappears, and P08 precedes P09 in build order.
 import { z } from 'zod';
 
-import { calendarDate, clientLocalId, strictObject } from './primitives.ts';
+import { calendarDate, clientLocalId, id, strictObject } from './primitives.ts';
 
 /**
  * The widest span `workouts.upcoming` will answer. Prefetch asks for two
@@ -83,3 +83,39 @@ export const startAdHocSessionInput = strictObject({
   startedAt: z.date(),
 });
 export type StartAdHocSessionInput = z.infer<typeof startAdHocSessionInput>;
+
+/**
+ * `workouts.start` — the scheduled→in_progress transition for an ASSIGNED
+ * session (`phase-09-workout-logger/session-runtime/01`). The ad-hoc
+ * counterpart above creates a row; this one only ever moves a row the
+ * coach's program already materialised.
+ *
+ * The distinction is why this input is shaped differently from
+ * `startAdHocSessionInput`: there is nothing to insert, so the row is named
+ * by its id rather than by an idempotency key. Keying the transition on the
+ * device's copy of `workout_sessions.client_local_id` would make it the
+ * conflict target of an upsert that must never insert — and would insert a
+ * second workout for any row whose stored key is null, since the column is
+ * nullable and `sessions_client_local` is partial.
+ */
+export const startSessionInput = strictObject({
+  /** The server's own id. `ownsResource('workoutSession', …)` guards it. */
+  workoutSessionId: id,
+  /**
+   * Accepted because `apps/mobile`'s flush loop merges the outbox row's key
+   * into every payload it sends, and `strictObject` rejects what it does not
+   * name. **The server does not key on it** — idempotency here is the
+   * transition's own (a session already in progress is left exactly as it
+   * is), not `ON CONFLICT`'s. Echoed back so a caller can match a replayed
+   * response to the mutation that produced it.
+   */
+  clientLocalId,
+  /**
+   * The instant the client tapped Start, captured on device and replayed
+   * verbatim by the outbox — never `new Date()` at flush time, which is
+   * `offline-sync` §10's "everything timestamped at reconnect". Applied only
+   * to a session that is still `scheduled`, so a replay cannot move it.
+   */
+  startedAt: z.date(),
+});
+export type StartSessionInput = z.infer<typeof startSessionInput>;
