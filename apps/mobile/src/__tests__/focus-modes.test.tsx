@@ -10,7 +10,6 @@ import {
 
 import ClientTabsLayout from '../app/(client)/(tabs)/_layout.tsx';
 import ClientCoachScreen from '../app/(client)/(tabs)/coach.tsx';
-import ClientTodayScreen from '../app/(client)/(tabs)/index.tsx';
 import ClientNutritionScreen from '../app/(client)/(tabs)/nutrition.tsx';
 import ClientProgressScreen from '../app/(client)/(tabs)/progress.tsx';
 import ClientLayout from '../app/(client)/_layout.tsx';
@@ -43,6 +42,17 @@ import { RouteStub } from '../test-support/route-stub.tsx';
  */
 function CoachProgramsScreen() {
   return <RouteStub route="(coach)/(tabs)/programs" />;
+}
+
+/**
+ * Real as of `phase-09-workout-logger/today-card/01`, and stubbed for
+ * exactly the reason above: the Today screen reads `me.get`,
+ * `clientApp.coach` and `workouts.upcoming` through TanStack Query, plus
+ * the local SQLite mirror. What it renders is
+ * `features/workouts/components/__tests__/TodayCard.test.tsx`'s job.
+ */
+function ClientTodayScreen() {
+  return <RouteStub route="(client)/(tabs)/index" />;
 }
 
 // `phase-05-app-shell/navigation-primitives/01`, as a test rather than a

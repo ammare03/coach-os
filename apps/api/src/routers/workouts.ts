@@ -1,5 +1,6 @@
 import { workouts as workoutsSchemas } from '@coachos/schemas';
 
+import { startAdHocSession } from '../features/workouts/start-ad-hoc.ts';
 import { listUpcomingWorkouts } from '../features/workouts/upcoming.ts';
 import { router } from '../trpc/init.ts';
 import { clientProcedure } from '../trpc/procedures.ts';
@@ -22,4 +23,17 @@ export const workoutsRouter = router({
       to: input.to,
     });
   }),
+
+  // Same shape, same reason: no `ownsResource`, because the only ids in the
+  // input are the client's own idempotency key and a calendar date. The row
+  // is created for `ctx.user.clientProfileId` and nothing else
+  // (`../features/workouts/start-ad-hoc.ts` decision (b)).
+  startAdHoc: clientProcedure
+    .input(workoutsSchemas.startAdHocSessionInput)
+    .mutation(({ ctx, input }) => {
+      if (ctx.user.clientProfileId === null) {
+        throw new Error('workouts.startAdHoc: authenticated client has no clientProfileId');
+      }
+      return startAdHocSession(ctx.db, ctx.user.clientProfileId, input);
+    }),
 });

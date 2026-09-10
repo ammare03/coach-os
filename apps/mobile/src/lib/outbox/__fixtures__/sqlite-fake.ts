@@ -186,6 +186,42 @@ export function createSqliteFake() {
         else row[column] = token.replace(/^'|'$/g, '');
       });
       const rows = tableRows(insertInto[1]);
+
+      // `ON CONFLICT (col[, col]) DO UPDATE SET a = excluded.a, …` /
+      // `DO NOTHING`. Without this the fake happily stores two rows with
+      // the same primary key, which real SQLite cannot do — and a test
+      // asserting on an upsert then reads the STALE row and passes for the
+      // wrong reason. Added by `phase-09-workout-logger/today-card/01`,
+      // whose `meta.upcoming_context` write is the first Drizzle
+      // `onConflictDoUpdate` this fake sees.
+      const conflict =
+        /\son\s+conflict\s*\(([^)]*)\)\s*do\s+(nothing|update\s+set\s+([\s\S]*?))\s*$/i.exec(
+          statement,
+        );
+      if (conflict?.[1]) {
+        const targets = conflict[1].split(',').map((column) => stripQuotes(column));
+        const existing = rows.find((candidate) =>
+          targets.every((column) => candidate[column] === row[column]),
+        );
+        if (existing) {
+          if (/^nothing$/i.test(conflict[2] ?? '')) return makeResult([existing], null, 0, 0);
+          // `excluded.<col>` is the row this statement tried to insert; a
+          // bound `?` reads the next parameter, exactly as SQLite does.
+          for (const pair of splitTopLevel(conflict[3] ?? '', ',')) {
+            const [left, right] = pair.split('=').map((part) => part.trim());
+            if (!left || right === undefined) continue;
+            const column = stripQuotes(left);
+            const excluded = /^"?excluded"?\.(.+)$/i.exec(right);
+            existing[column] = excluded?.[1]
+              ? row[stripQuotes(excluded[1])]
+              : right === '?'
+                ? take()
+                : right.replace(/^'|'$/g, '');
+          }
+          return makeResult([existing], null, 1, rows.length);
+        }
+      }
+
       rows.push(row);
       return makeResult([row], null, 1, rows.length);
     }

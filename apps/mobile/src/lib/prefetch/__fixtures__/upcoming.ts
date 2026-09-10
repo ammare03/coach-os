@@ -1,4 +1,6 @@
 import type {
+  UpcomingContext,
+  UpcomingDayContext,
   UpcomingExercise,
   UpcomingSession,
   UpcomingSessionExercise,
@@ -63,6 +65,48 @@ export function buildExercise(overrides: Partial<UpcomingExercise> = {}): Upcomi
     cues: ['Brace hard', 'Knees out'],
     demoAssetId: 'asset-1',
     demoVideoUrl: 'https://r2.test/demos/back-squat.mp4',
+    ...overrides,
+  };
+}
+
+export function buildDayContext(overrides: Partial<UpcomingDayContext> = {}): UpcomingDayContext {
+  return {
+    date: '2026-08-15',
+    isRestDay: false,
+    weekNumber: 6,
+    dayName: 'Push A',
+    ...overrides,
+  };
+}
+
+/**
+ * `workouts.upcoming`'s context object (`today-card/01`). The default is a
+ * client mid-program on a training day; the two states the Today card has
+ * to tell apart are `buildContext({ hasActiveAssignment: false, ... })` and
+ * a `days` entry with `isRestDay: true`.
+ */
+export function buildContext(overrides: Partial<UpcomingContext> = {}): UpcomingContext {
+  return {
+    hasActiveAssignment: true,
+    programName: 'Hypertrophy Block 2',
+    totalWeeks: 12,
+    days: [buildDayContext(), buildDayContext({ date: '2026-08-16', dayName: 'Pull A' })],
+    ...overrides,
+  };
+}
+
+/** The whole response, for a fetcher stub. */
+export function buildUpcoming(
+  overrides: Partial<{
+    sessions: UpcomingSession[];
+    exercises: UpcomingExercise[];
+    context: UpcomingContext;
+  }> = {},
+) {
+  return {
+    sessions: [buildSession()],
+    exercises: [buildExercise()],
+    context: buildContext(),
     ...overrides,
   };
 }

@@ -43,4 +43,11 @@ export {
 export { ThemeProvider, ThemeContext, type ThemeContextValue } from './ThemeProvider.tsx';
 export { useTheme, DEFAULT_THEME } from './useTheme.ts';
 export { createThemedStyles, createThemedValue } from './createThemedStyles.ts';
+// A feature composing a translucent fill from a scheme colour it read
+// through `useTheme()` — a chip tinted `brand` at 14%, a well at 50% —
+// needs the same composition `deriveSchemeTokens` uses. Exported so that is
+// one function rather than an rgba literal per call site, which would
+// hardcode the default brand and break a white-label override
+// (`tokens.ts`'s own note on why nothing imports `colors` directly).
+export { withAlpha, hexToRgbChannels } from './to-rgb-channels.ts';
 export { useReducedMotion } from './useReducedMotion.ts';

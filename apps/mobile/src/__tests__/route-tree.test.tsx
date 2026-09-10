@@ -184,7 +184,10 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   ['(coach)/live/[sessionId]', '/(coach)/live/l1'],
   ['(coach)/settings/index', '/(coach)/settings'],
 
-  ['(client)/(tabs)/index', '/(client)/(tabs)'],
+  // `(client)/(tabs)/index` was a placeholder here until
+  // `phase-09-workout-logger/today-card/01` composed the real Today
+  // screen; it moved to SUBSTITUTED for the same reason
+  // `(coach)/exercise-library` did.
   ['(client)/(tabs)/nutrition', '/(client)/(tabs)/nutrition'],
   ['(client)/(tabs)/progress', '/(client)/(tabs)/progress'],
   ['(client)/(tabs)/coach', '/(client)/(tabs)/coach'],
@@ -265,6 +268,12 @@ const SUBSTITUTED = new Set([
   // What it renders is covered by
   // `src/features/programs/screens/__tests__/ProgramTemplatesScreen.test.tsx`.
   '(coach)/(tabs)/programs',
+  // Real as of `phase-09-workout-logger/today-card/01`, and the same
+  // reason again: the Today screen reads `me.get`, `clientApp.coach` and
+  // `workouts.upcoming` through TanStack Query, plus the local SQLite
+  // mirror. What it renders is covered by
+  // `src/features/workouts/components/__tests__/`.
+  '(client)/(tabs)/index',
 ]);
 
 /**
