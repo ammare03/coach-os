@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import { wipeLocalDatabase, type WipeResult } from '../../db/wipe.ts';
 import { clearPersistedQueryCache } from '../../lib/query/persister.ts';
+import { resetClientTimeZone } from '../../lib/time-zone/store.ts';
 
 import type { AccessTokenRole } from './jwt.ts';
 
@@ -81,6 +82,10 @@ export async function wipeLocalDataOnSignOut(
   const result = await wipeLocalDatabase({ force: options.force ?? false });
   if (result.outcome !== 'blocked') {
     await clearPersistedQueryCache();
+    // The previous user's day boundary must not decide the next user's
+    // first prefetch pass (`lib/time-zone/store.ts`). The persisted copy
+    // went with the database; this drops the in-memory one.
+    resetClientTimeZone();
   }
   return result;
 }

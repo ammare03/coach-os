@@ -4,10 +4,11 @@ import { useAuthStore } from '../../features/auth/store.ts';
 import { ensureConnectivityTracking, useConnectivityStore } from '../connectivity/store.ts';
 import { getErrorCode } from '../error-code.ts';
 import { flushOutbox } from '../outbox/flush.ts';
+import { ensureClientTimeZoneHydrated } from '../time-zone/store.ts';
 
 import { prefetchFoods } from './foods.ts';
 import { prefetchHistory } from './history.ts';
-import { prefetchSessionsAndExercises } from './sessions.ts';
+import { prefetchSessionsAndExercises, upcomingRange } from './sessions.ts';
 
 /**
  * How long after a run starts the foreground trigger stops re-running.
@@ -33,11 +34,14 @@ export type PrefetchRunOutcome =
 
 export interface RunPrefetchOptions {
   /**
-   * Defaults, through tasks 01 and 02, to the device zone — which for a
-   * client prefetching their own data on their own phone is their zone
-   * (`code-conventions` §6 forbids the device zone only where one user reads
-   * another's days, which this is not). Overridable for the same reason
-   * those two expose it: the day boundary has to be testable.
+   * Defaults to `lib/time-zone/store.ts` — the client's stored
+   * `users.timezone`, and the device's only until something has resolved
+   * it. **This used to default to the device zone in each step
+   * independently, which is `docs/UNFORGET.md` S32**: the Today card
+   * resolves the day from the stored zone, and the two prefetchers divide
+   * one `payload_json` column by that date, so a client whose two zones
+   * differ lost their whole prescription. Overridable because the day
+   * boundary has to be testable.
    */
   timeZone?: string;
   now?: Date;
@@ -81,19 +85,44 @@ async function runStep(name: PrefetchStepName, step: () => Promise<unknown>): Pr
  * name. Nothing here has a latency budget — it is already behind the UI.
  *
  * Sessions run first because today's workout is the one thing that must be
- * there when the signal is not. History's writes are independent of order
- * either way (it hands `upcomingOwnsFrom` to `writeHistorySessions`).
+ * there when the signal is not.
+ *
+ * **The day boundary is decided here, once, and handed down** — the fix for
+ * `docs/UNFORGET.md` S32, in three parts:
+ *
+ * 1. One `now` for the pass. Because the steps run one after another, a
+ *    pass that begins at 23:59:59 reached the history step on the next
+ *    calendar day, and every date that step derived was a day out.
+ * 2. One `timeZone` for the pass, from the one resolver the Today card
+ *    also reads (`lib/time-zone/store.ts`). Two sources for "the client's
+ *    zone" is how the writer and the reader disagreed for hours at a time,
+ *    not milliseconds.
+ * 3. History is *told* where the sessions step's ownership begins, rather
+ *    than recomputing an equal-looking date from its own range. The two
+ *    steps put different shapes into one `payload_json` column; the date
+ *    that divides it is now a single value passed between them, so neither
+ *    range can be changed later in a way that silently re-opens the seam.
  */
 async function execute(options: RunPrefetchOptions): Promise<PrefetchRunOutcome> {
   const failed: PrefetchStepName[] = [];
 
-  if (!(await runStep('sessions', () => prefetchSessionsAndExercises(options)))) {
+  const now = options.now ?? new Date();
+  // Never rejects, so it cannot cost the pass a step; resolves to the
+  // device zone on a device whose local database will not open.
+  const timeZone = options.timeZone ?? (await ensureClientTimeZoneHydrated());
+  const upcoming = upcomingRange(now, timeZone);
+
+  if (!(await runStep('sessions', () => prefetchSessionsAndExercises({ now, timeZone })))) {
     failed.push('sessions');
   }
   if (!(await runStep('foods', () => prefetchFoods()))) {
     failed.push('foods');
   }
-  if (!(await runStep('history', () => prefetchHistory(options)))) {
+  if (
+    !(await runStep('history', () =>
+      prefetchHistory({ now, timeZone, upcomingOwnsFrom: upcoming.from }),
+    ))
+  ) {
     failed.push('history');
   }
 

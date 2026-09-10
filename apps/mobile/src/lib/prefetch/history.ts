@@ -14,8 +14,9 @@ import { getLocalDb, type LocalDb } from '../../db/client.ts';
 import { localComments } from '../../db/schema/local-feedback.ts';
 import { localMeals } from '../../db/schema/local-nutrition.ts';
 import { localWorkoutSessions } from '../../db/schema/local-training.ts';
+import { ensureClientTimeZoneHydrated } from '../time-zone/store.ts';
 
-import { resolveDeviceTimeZone } from './sessions.ts';
+import { upcomingRange } from './sessions.ts';
 import { prefetchQuery } from './trpc-client.ts';
 
 // `prefetch/02` — the trailing 30 days of sessions, meals, and coach
@@ -28,8 +29,8 @@ import { prefetchQuery } from './trpc-client.ts';
 // (a) The window boundary comes from `@coachos/utils` and nowhere else.
 //     `toLocalDate` + `addCalendarDays`, never `toISOString().slice(0, 10)`
 //     — `CLAUDE.md` §25.5, and the same rule `./sessions.ts` (a) states.
-//     The zone is a parameter defaulted to the device's, for the reason
-//     `./sessions.ts` (b) gives.
+//     The zone is a parameter defaulted to `lib/time-zone/store.ts`'s one
+//     resolver, for the reason `./sessions.ts` (b) gives.
 //
 // (b) Today and tomorrow belong to task 01. `local_workout_sessions` has
 //     one `payload_json` per row, and the two prefetchers put different
@@ -37,6 +38,16 @@ import { prefetchQuery } from './trpc-client.ts';
 //     logger needs, this writes the sets that were actually logged. So
 //     this one stops at yesterday, deterministically, rather than
 //     depending on which prefetcher ran last.
+//
+//     **Where "yesterday" comes from is the whole of `docs/UNFORGET.md`
+//     S32.** It used to be this module's own `range.to`, recomputed from
+//     its own `new Date()` and its own zone default — so a pass that
+//     straddled local midnight, or a client whose stored zone was not the
+//     device's, let this module claim a day `./sessions.ts` had already
+//     written a prescription onto. `upcomingOwnsFrom` is now an input:
+//     `./scheduler.ts` passes the *same* `upcomingRange(...).from` it gave
+//     the sessions step, so the two cannot divide the column differently
+//     however either of their own ranges is later changed.
 //
 // (c) A row the device has not synced is never overwritten — the same rule
 //     as `./sessions.ts` (c), applied to meals as well. `offline-sync` §5
@@ -298,10 +309,16 @@ export async function writeHistoryComments(
 }
 
 export interface PrefetchHistoryOptions {
-  /** The client's zone. Defaults to the device's — `./sessions.ts` (b). */
+  /** The client's zone. Defaults to the one shared resolver — `./sessions.ts` (b). */
   timeZone?: string;
   /** Injected so the window boundary is testable; `CLAUDE.md` §25.5 stays broken when it isn't. */
   now?: Date;
+  /**
+   * The first date `./sessions.ts` owns — rule (b). Defaults to the same
+   * `upcomingRange(now, timeZone).from` that prefetch computes, so a direct
+   * caller behaves exactly as `./scheduler.ts` makes it behave.
+   */
+  upcomingOwnsFrom?: CalendarDate;
   fetchHistory?: HistoryFetcher;
   db?: LocalDb;
 }
@@ -324,15 +341,17 @@ export interface PrefetchHistoryResult {
 export async function prefetchHistory(
   options: PrefetchHistoryOptions = {},
 ): Promise<PrefetchHistoryResult> {
-  const range = historyRange(
-    options.now ?? new Date(),
-    options.timeZone ?? resolveDeviceTimeZone(),
-  );
+  // Awaited for the reason `./sessions.ts`'s matching line gives.
+  const now = options.now ?? new Date();
+  const timeZone = options.timeZone ?? (await ensureClientTimeZoneHydrated());
+  const range = historyRange(now, timeZone);
   const fetched = await (options.fetchHistory ?? fetchViaTrpc)(range);
   const db = options.db ?? (await getLocalDb());
 
   const sessions = await writeHistorySessions(db, fetched.sessions, {
-    upcomingOwnsFrom: range.to,
+    // Rule (b): the sessions prefetch's own boundary, never a second one
+    // derived from `range` — that is what `docs/UNFORGET.md` S32 was.
+    upcomingOwnsFrom: options.upcomingOwnsFrom ?? upcomingRange(now, timeZone).from,
   });
   const meals = await writeHistoryMeals(db, fetched.meals);
   const comments = await writeHistoryComments(db, fetched.comments);

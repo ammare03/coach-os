@@ -1,8 +1,10 @@
+import { toLocalDate } from '@coachos/utils';
 import type { NetworkState } from 'expo-network';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { useAuthStore } from '../../features/auth/store.ts';
 import { resetConnectivityForTests, useConnectivityStore } from '../connectivity/store.ts';
+import { publishClientTimeZone, resetClientTimeZoneForTests } from '../time-zone/store.ts';
 
 import {
   PREFETCH_MIN_INTERVAL_MS,
@@ -24,7 +26,13 @@ jest.mock('expo-sqlite', () => require('../outbox/__fixtures__/sqlite-fake.ts').
 
 // Tasks 01 and 02 are seams: what this task owns is the trigger, the gate,
 // and the de-duplication. Each fetcher has its own tests.
-jest.mock('./sessions.ts', () => ({ prefetchSessionsAndExercises: jest.fn() }));
+// Only the step is a seam. `upcomingRange` stays real: the scheduler
+// derives the pass's one day boundary through it, and a stub would let the
+// assertions below agree with themselves rather than with the writer.
+jest.mock('./sessions.ts', () => ({
+  ...jest.requireActual('./sessions.ts'),
+  prefetchSessionsAndExercises: jest.fn(),
+}));
 jest.mock('./foods.ts', () => ({ prefetchFoods: jest.fn() }));
 jest.mock('./history.ts', () => ({ prefetchHistory: jest.fn() }));
 jest.mock('../outbox/flush.ts', () => ({ flushOutbox: jest.fn() }));
@@ -91,7 +99,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  jest.useRealTimers();
   resetPrefetchSchedulerForTests();
+  resetClientTimeZoneForTests();
   resetConnectivityForTests();
   useAuthStore.getState().setSignedOut();
   jest.restoreAllMocks();
@@ -125,10 +135,15 @@ describe('ensurePrefetchOnForeground', () => {
 
     foreground();
 
-    // The handler is back and the JS thread is free: the run has started
-    // (its first step is pending) and nothing awaited it.
-    expect(sessions.prefetchSessionsAndExercises).toHaveBeenCalledTimes(1);
+    // The handler is back and the JS thread is free: nothing awaited the
+    // run, so no step has resolved yet. The first step starts a microtask
+    // later than the handler returns — `execute()` reads the client's
+    // persisted timezone before it derives the pass's day boundary — which
+    // is still off the render path and still nothing the caller waits on.
+    expect(foods.prefetchFoods).not.toHaveBeenCalled();
+
     await settle();
+    expect(sessions.prefetchSessionsAndExercises).toHaveBeenCalledTimes(1);
     expect(foods.prefetchFoods).not.toHaveBeenCalled();
   });
 
@@ -270,6 +285,71 @@ describe('runPrefetch', () => {
       now,
       timeZone: 'Asia/Kolkata',
     });
-    expect(history.prefetchHistory).toHaveBeenCalledWith({ now, timeZone: 'Asia/Kolkata' });
+    expect(history.prefetchHistory).toHaveBeenCalledWith({
+      now,
+      timeZone: 'Asia/Kolkata',
+      upcomingOwnsFrom: '2026-08-15',
+    });
+  });
+});
+
+// `docs/UNFORGET.md` S32. The two date-ranged steps divide one
+// `local_workout_sessions.payload_json` column by date; a pass in which
+// they derive that date from different inputs hands the Today card the
+// wrong shape. These pin the inputs, not the outcome —
+// `./day-boundary.test.ts` pins the outcome end to end.
+describe('one day boundary per pass', () => {
+  function optionsPassedTo(step: { mock: { calls: unknown[][] } }): {
+    now?: Date;
+    timeZone?: string;
+    upcomingOwnsFrom?: string;
+  } {
+    return (step.mock.calls[0]?.[0] ?? {}) as {
+      now?: Date;
+      timeZone?: string;
+      upcomingOwnsFrom?: string;
+    };
+  }
+
+  it('materialises one instant for the whole pass, even across local midnight', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
+    jest.setSystemTime(new Date('2026-08-14T18:29:59.500Z'));
+    // The steps are sequential: the foods step is the gap the clock used
+    // to move through, leaving history a calendar day ahead of sessions.
+    foods.prefetchFoods.mockImplementation(() => {
+      jest.setSystemTime(new Date('2026-08-14T18:30:01.000Z'));
+      return Promise.resolve();
+    });
+    setConnected(true);
+
+    await runPrefetch();
+
+    const sessionsNow = optionsPassedTo(sessions.prefetchSessionsAndExercises).now;
+    const historyNow = optionsPassedTo(history.prefetchHistory).now;
+    expect(sessionsNow).toBeInstanceOf(Date);
+    expect(historyNow?.getTime()).toBe(sessionsNow?.getTime());
+  });
+
+  it("resolves the zone once, from the client's stored timezone", async () => {
+    publishClientTimeZone('Pacific/Kiritimati');
+    setConnected(true);
+
+    await runPrefetch();
+
+    expect(optionsPassedTo(sessions.prefetchSessionsAndExercises).timeZone).toBe(
+      'Pacific/Kiritimati',
+    );
+    expect(optionsPassedTo(history.prefetchHistory).timeZone).toBe('Pacific/Kiritimati');
+  });
+
+  it('hands history the date the sessions prefetch starts owning, rather than one it recomputes', async () => {
+    const now = new Date('2026-08-14T19:00:00Z');
+    setConnected(true);
+
+    await runPrefetch({ now, timeZone: 'Asia/Kolkata' });
+
+    expect(optionsPassedTo(history.prefetchHistory).upcomingOwnsFrom).toBe(
+      toLocalDate(now, 'Asia/Kolkata'),
+    );
   });
 });

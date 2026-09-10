@@ -17,13 +17,13 @@ import { prefetchExercises } from '../../../lib/prefetch/exercises.ts';
 import {
   readSessionPayload,
   readUpcomingContext,
-  resolveDeviceTimeZone,
   upcomingDayContext,
   upcomingRange,
   writeSessions,
   writeUpcomingContext,
   type LocalSessionPayload,
 } from '../../../lib/prefetch/sessions.ts';
+import { useClientTimeZone } from '../../../lib/time-zone/useClientTimeZone.ts';
 import { api } from '../../../lib/trpc.ts';
 
 // `phase-09-workout-logger/today-card/01` — the Today screen's whole data
@@ -42,18 +42,23 @@ import { api } from '../../../lib/trpc.ts';
 // (b) **The day boundary comes from `@coachos/utils`.** Never
 //     `toISOString().slice(0, 10)`, never a `Date` getter — `CLAUDE.md`
 //     §25.5's named pitfall, and `lib/prefetch/sessions.ts` rule (a). The
-//     zone is the client's own stored `users.timezone` from `me.get` once
-//     it resolves, and the device's until then; `now` is injectable so the
-//     boundary is testable at all.
+//     zone comes from `lib/time-zone`'s single resolver — the client's own
+//     stored `users.timezone` from `me.get` once it resolves, and the
+//     device's until then — which is the SAME resolver the prefetch that
+//     wrote these rows used (`docs/UNFORGET.md` S32). Reading `me.get`
+//     directly here was half of that bug: the reader and the writer were
+//     two sources for one fact. `now` is injectable so the boundary is
+//     testable at all.
 //
 // (c) **The payload is superjson, never `JSON.parse`.** `readSessionPayload`
 //     is the matching reader and the only one — plain JSON degrades
 //     `startedAt`/`completedAt` to strings, which is `offline-sync` §10's
 //     "everything timestamped at reconnect" wearing a different hat. It
 //     also narrows: `lib/prefetch/history.ts` writes a different payload
-//     into the same column, and `today-card/02` found the date split
-//     between the two prefetchers is not airtight across a midnight or a
-//     device/user zone difference.
+//     into the same column. `today-card/02` found the date split between
+//     the two prefetchers was not airtight across a midnight or a
+//     device/user zone difference; the writer side of that is fixed, and
+//     this stays as defence in depth against a row an older build wrote.
 //
 // (d) **The local read is deliberately not a TanStack Query.**
 //     `code-conventions` §5 routes SERVER data through TanStack Query;
@@ -159,9 +164,10 @@ export interface UseTodaySessionResult {
   header: TodayHeaderContext;
   /**
    * The zone every date and time on this screen is resolved in — the
-   * client's own stored `users.timezone` once `me.get` answers, the
-   * device's until then. Exposed because the card formats a wall-clock time
-   * ("Finished at 6:12 pm") and must not reach for `Intl` itself.
+   * client's own stored `users.timezone` once anything has resolved it,
+   * the device's until then, and always whatever `lib/time-zone`'s
+   * resolver is answering. Exposed because the card formats a wall-clock
+   * time ("Finished at 6:12 pm") and must not reach for `Intl` itself.
    */
   timeZone: string;
   /** Frame `G`'s action: re-runs the local read and the background refetch. */
@@ -315,10 +321,10 @@ type LocalReadState =
   | { status: 'error'; error: unknown };
 
 export function useTodaySession(options: UseTodaySessionOptions = {}): UseTodaySessionResult {
-  // All three fire in parallel at mount. `me.get` and `clientApp.coach` are
-  // shared TanStack Query cache entries the rest of the app already
-  // subscribes to, so neither is a new round trip in practice.
-  const me = api.me.get.useQuery();
+  // All three fire in parallel at mount. `useClientTimeZone`'s `me.get` and
+  // `clientApp.coach` are shared TanStack Query cache entries the rest of
+  // the app already subscribes to, so neither is a new round trip in
+  // practice.
   const coach = api.clientApp.coach.useQuery();
 
   const nowOption = options.now;
@@ -327,7 +333,9 @@ export function useTodaySession(options: UseTodaySessionOptions = {}): UseTodayS
   // to be: the screen re-reads on focus, and the prefetch that owns the
   // range runs nightly (`phase-08-offline-core/prefetch/03`).
   const now = useMemo(() => nowOption ?? new Date(), [nowOption]);
-  const timeZone = me.data?.timezone ?? resolveDeviceTimeZone();
+  // Rule (b): the one resolver, not a second read of `me.get`. This is the
+  // same value `lib/prefetch/scheduler.ts` wrote these rows against.
+  const timeZone = useClientTimeZone();
   const today = toLocalDate(now, timeZone);
   const range = useMemo(() => upcomingRange(now, timeZone), [now, timeZone]);
 

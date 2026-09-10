@@ -199,7 +199,15 @@ export function createSqliteFake() {
           statement,
         );
       if (conflict?.[1]) {
-        const targets = conflict[1].split(',').map((column) => stripQuotes(column));
+        // `columnOf`, not `stripQuotes`: Drizzle qualifies the target
+        // (`on conflict ("meta"."key")`) while raw `sql` does not
+        // (`ON CONFLICT(key)`). Unqualifying it here matters — a
+        // `"meta"."key"` target read literally matches no column, every
+        // candidate row compares `undefined === undefined`, and the upsert
+        // silently overwrites whichever row happens to be first. Invisible
+        // while `meta` held one row; found by the S32 fix, which gave it a
+        // second.
+        const targets = conflict[1].split(',').map((column) => columnOf(column));
         const existing = rows.find((candidate) =>
           targets.every((column) => candidate[column] === row[column]),
         );
