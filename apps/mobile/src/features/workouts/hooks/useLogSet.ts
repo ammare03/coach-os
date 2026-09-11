@@ -89,7 +89,10 @@ import { useRestTimerStore } from '../store/rest-timer-store.ts';
 //     It is deliberately in `logSet` rather than in the hook, so a caller
 //     that logs a set without a renderer cannot silently skip it, and it
 //     cannot fail the set: `startRest` is two synchronous store writes and
-//     a `setInterval`, with no failure mode to handle.
+//     a `setInterval`, with no failure mode to handle. `rest-timer/02` made
+//     the rest durable without changing that — the SQLite write hangs off a
+//     store subscription (`../lib/rest-timer-persistence.ts` decision (c)),
+//     never off this path.
 //
 //     `targetRestSeconds` is passed in, never read here. The caller already
 //     holds the live prescription (`hooks/useExerciseTarget.ts`), and
@@ -251,8 +254,12 @@ export async function logSet(deps: LogSetDeps): Promise<LoggedSet> {
   const entryMs = Date.now() - startedMs;
 
   // Rule (g). After `entryMs` is taken, so §19's budget measures the two
-  // writes and not this.
-  useRestTimerStore.getState().startRest(deps.targetRestSeconds ?? null);
+  // writes and not this. The session is named so the rest can be persisted
+  // and, on the next launch, re-validated against a workout that may since
+  // have ended (`rest-timer/02`, `../lib/rest-timer-persistence.ts`).
+  useRestTimerStore
+    .getState()
+    .startRest(deps.targetRestSeconds ?? null, { sessionLocalId: session.clientLocalId });
 
   // Rule (f). Fire-and-forget, after the writes, never awaited. Wrapped
   // because by this point the set IS logged: letting an analytics failure

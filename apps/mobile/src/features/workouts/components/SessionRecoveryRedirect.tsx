@@ -2,11 +2,13 @@ import { router, useRootNavigationState } from 'expo-router';
 import { useEffect, useRef } from 'react';
 
 import { useAuthStore } from '../../auth/store.ts';
+import { ensureRestTimerPersistence } from '../lib/rest-timer-persistence.ts';
 import {
   checkForInProgressSession,
   LOGGER_ROUTE,
   type SessionRecovery,
 } from '../lib/session-recovery.ts';
+import { ensureRestTimerForegroundSync } from '../store/rest-timer-store.ts';
 
 // `session-runtime/06`'s mount side. `PendingDeepLinkReplay` is the
 // precedent for the shape and the position: mounted at the root, after
@@ -17,7 +19,7 @@ import {
 // effect ordering against the other two root redirects, is visible at the
 // mount site instead of implied by a line number.
 //
-// Five rules, in the order they matter:
+// Six rules, in the order they matter:
 //
 // (a) **It runs once per app launch and never again.** The ref is set
 //     before the read resolves, so the check cannot re-enter. A second run
@@ -52,6 +54,18 @@ import {
 //     Continue (`useTodaySession`'s `pickTodaySession`). There is no screen
 //     worth showing for "we could not check", and one taken away from the
 //     first thing they see would be worse than the one tap it costs.
+//
+// (f) **The rest timer is recovered from this gate too, for the same
+//     reasons** (`rest-timer/02`). A rest is part of the state a client was
+//     mid-way through, it lives in the same mirror, and every condition rule
+//     (d) and the auth checks impose on the session read applies to it
+//     unchanged — schema check first, an authenticated onboarded client, once
+//     per launch. A second mount point would be five more chances for the two
+//     to disagree about when `coachos.db` is safe to read. It is deliberately
+//     NOT tied to the resume decision below: a rest whose session is stale
+//     still has to be read and discarded, and a client who lands on Today
+//     rather than the logger must not carry a phantom countdown into their
+//     next session.
 
 export interface SessionRecoveryRedirectProps {
   /**
@@ -61,12 +75,15 @@ export interface SessionRecoveryRedirectProps {
   isLocalDatabaseReady: boolean;
   /** Injected only by tests; the app always uses the real local read. */
   check?: () => Promise<SessionRecovery>;
+  /** Injected only by tests — rule (f). The app always uses the real one. */
+  restoreRestTimer?: () => Promise<unknown>;
 }
 
 /** Renders nothing. Re-enters a session the client was mid-way through when the app died. */
 export function SessionRecoveryRedirect({
   isLocalDatabaseReady,
   check,
+  restoreRestTimer,
 }: SessionRecoveryRedirectProps): null {
   const status = useAuthStore((state) => state.status);
   const role = useAuthStore((state) => state.role);
@@ -91,6 +108,13 @@ export function SessionRecoveryRedirect({
     // start a second one.
     hasChecked.current = true;
 
+    // Rule (f). Its own promise, never chained onto the read below — the
+    // navigation must not wait on a countdown, and a rest still has to be
+    // read and resolved when there is no session to navigate into. Both
+    // calls are idempotent and swallow their own failures.
+    ensureRestTimerForegroundSync();
+    void (restoreRestTimer ?? ensureRestTimerPersistence)();
+
     // No cancellation flag, deliberately. This is a one-shot navigation with
     // nothing to undo, and cancelling it on a dependency change would throw
     // away the only attempt this launch gets (rule (a)). After unmount the
@@ -111,7 +135,7 @@ export function SessionRecoveryRedirect({
         });
       },
     );
-  }, [check, isLocalDatabaseReady, status, role, isOnboarded, navigationKey]);
+  }, [check, restoreRestTimer, isLocalDatabaseReady, status, role, isOnboarded, navigationKey]);
 
   return null;
 }

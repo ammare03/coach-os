@@ -474,4 +474,14 @@ describe('the rest timer', () => {
 
     expect(useRestTimerStore.getState().isRunning).toBe(false);
   });
+
+  it('names the session, so a rest read back after a kill can be re-validated', async () => {
+    // `rest-timer/02`: the anchor is persisted, and an anchor naming no
+    // session could not be checked against a workout that has since ended.
+    await seedInProgress();
+
+    await logSet({ ...ONE_SET, now: () => TAP });
+
+    expect(useRestTimerStore.getState().sessionLocalId).toBe(LOCAL_KEY);
+  });
 });
