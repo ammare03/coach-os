@@ -63,6 +63,7 @@ const PAGE: ExercisePage = {
   supersetGroup: null,
   supersetPosition: null,
   supersetMemberCount: null,
+  substitutedFor: null,
   badge: '1',
   isRunStart: false,
   isRunEnd: false,

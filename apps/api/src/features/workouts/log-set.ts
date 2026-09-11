@@ -204,6 +204,12 @@ export async function logSet(
         estimated1rmKg: estimate === null ? null : estimate.toFixed(2),
         isWarmup: input.isWarmup,
         isFailure: input.isFailure,
+        // `session-modifications/02`'s substitution line, or whatever the
+        // client wrote. Always named, `null` included, for decision (f)'s
+        // mirror-image reason: device-wins means a re-send has to be able to
+        // CLEAR a note, which an omitted key cannot. Composed entirely on
+        // the device — this path words nothing and interprets nothing.
+        notes: input.notes ?? null,
         loggedAt: input.loggedAt,
       },
       target: [schema.setLogs.clientId, schema.setLogs.clientLocalId],

@@ -58,6 +58,7 @@ function page(position: number, overrides: Partial<ExercisePage> = {}): Exercise
     supersetGroup: null,
     supersetPosition: null,
     supersetMemberCount: null,
+    substitutedFor: null,
     badge: String(position),
     isRunStart: true,
     isRunEnd: true,

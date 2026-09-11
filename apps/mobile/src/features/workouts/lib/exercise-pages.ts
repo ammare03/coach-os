@@ -1,4 +1,5 @@
 import type { LocalSessionPayload } from '../../../lib/prefetch/sessions.ts';
+import type { ExerciseSubstitution } from '../store/substituted-exercises-store.ts';
 
 import { resolvePrescription } from './prescription.ts';
 
@@ -24,12 +25,29 @@ import { resolvePrescription } from './prescription.ts';
 export interface ExercisePage {
   /** `program_exercises.id` — stable across a re-render, unique within the session. */
   key: string;
+  /**
+   * What the client is actually doing — **the substitute's id once this slot
+   * has been swapped** (`session-modifications/02`), the coach's own
+   * otherwise. Every consumer that logs, reads history, or celebrates a
+   * record keys on this, which is the whole reason the swap is folded in
+   * here rather than at each of them.
+   */
   exerciseId: string;
   /**
    * The library name, or one neutral word when the exercise cache missed
    * that id. A miss must stay pageable: a client mid-gym cannot refetch.
    */
   name: string;
+  /**
+   * The coach-authored exercise this slot was swapped away from, or `null`
+   * for a slot showing what was programmed.
+   *
+   * The page's `targetSets` and `key` are deliberately untouched by a swap:
+   * `key` is `program_exercises.id`, so `hooks/useExerciseTarget.ts` resolves
+   * the coach's own block and the prescription carries over verbatim — task
+   * 02's "no translation between movement patterns".
+   */
+  substitutedFor: { exerciseId: string; name: string } | null;
   /** 1-based — the "2" in "Exercise 2 of 6". */
   position: number;
   /** Every page carries the total, so a page can name its own place alone. */
@@ -68,10 +86,20 @@ const UNKNOWN_EXERCISE_NAME = 'Exercise';
  *
  * `counts` maps `exercises.id` to working sets logged in this session.
  * Omit it and every page's `setsLogged` is `null` — see the field's note.
+ *
+ * `substitutions` maps `ExercisePage.key` to the swap in force for that slot
+ * (`session-modifications/02`). **This is the one place a swap is applied.**
+ * The alternative — leaving the page describing the coach's exercise and
+ * substituting inside the composer, the target line, the history read and
+ * the record celebration separately — is four places that can disagree about
+ * what the client is doing, on the screen where disagreeing puts the wrong
+ * weight on a bar. Here, the page IS the substitute and every consumer
+ * inherits it for free.
  */
 export function buildExercisePages(
   payload: LocalSessionPayload | null,
   counts?: ReadonlyMap<string, number>,
+  substitutions?: ReadonlyMap<string, ExerciseSubstitution>,
 ): ExercisePage[] {
   // `resolvePrescription`, not `payload.session.exercises` — task 09. A
   // session in progress pages through the copy frozen when it started, so
@@ -94,16 +122,41 @@ export function buildExercisePages(
     memberCounts.set(block.supersetGroup, (memberCounts.get(block.supersetGroup) ?? 0) + 1);
   }
 
+  /**
+   * Which exercise this slot is showing, after any swap.
+   *
+   * The stored substitute's name is preferred over the cache's: the client
+   * chose it by that name in the picker, and an exercise that has since
+   * fallen out of the cache must not silently become "Exercise" under them.
+   */
+  const subject = (
+    block: (typeof blocks)[number],
+  ): Pick<ExercisePage, 'exerciseId' | 'name' | 'substitutedFor'> => {
+    const swap = substitutions?.get(block.programExerciseId);
+    const programmedName = names.get(block.exerciseId) ?? UNKNOWN_EXERCISE_NAME;
+
+    if (swap === undefined) {
+      return { exerciseId: block.exerciseId, name: programmedName, substitutedFor: null };
+    }
+    return {
+      exerciseId: swap.substituteExerciseId,
+      name: names.get(swap.substituteExerciseId) ?? swap.substituteName,
+      substitutedFor: { exerciseId: block.exerciseId, name: swap.originalName },
+    };
+  };
+
   const seen = new Map<string, number>();
   return blocks.map((block, index) => {
     const position = index + 1;
     const group = block.supersetGroup;
+    // Counted against what the client is LOGGING, not what was programmed —
+    // a swapped slot's sets are filed under the substitute's id.
+    const shown = subject(block);
 
     if (group === null) {
       return {
         key: block.programExerciseId,
-        exerciseId: block.exerciseId,
-        name: names.get(block.exerciseId) ?? UNKNOWN_EXERCISE_NAME,
+        ...shown,
         position,
         total: blocks.length,
         supersetGroup: null,
@@ -113,7 +166,7 @@ export function buildExercisePages(
         isRunStart: true,
         isRunEnd: true,
         targetSets: block.targetSets,
-        setsLogged: counts ? (counts.get(block.exerciseId) ?? 0) : null,
+        setsLogged: counts ? (counts.get(shown.exerciseId) ?? 0) : null,
       };
     }
 
@@ -124,8 +177,7 @@ export function buildExercisePages(
 
     return {
       key: block.programExerciseId,
-      exerciseId: block.exerciseId,
-      name: names.get(block.exerciseId) ?? UNKNOWN_EXERCISE_NAME,
+      ...shown,
       position,
       total: blocks.length,
       supersetGroup: group,
@@ -135,7 +187,7 @@ export function buildExercisePages(
       isRunStart: blocks[index - 1]?.supersetGroup !== group,
       isRunEnd: blocks[index + 1]?.supersetGroup !== group,
       targetSets: block.targetSets,
-      setsLogged: counts ? (counts.get(block.exerciseId) ?? 0) : null,
+      setsLogged: counts ? (counts.get(shown.exerciseId) ?? 0) : null,
     };
   });
 }

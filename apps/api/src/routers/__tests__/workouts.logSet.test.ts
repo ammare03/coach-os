@@ -364,6 +364,30 @@ describe('workouts.logSet — idempotency and device-wins (DB§14.1, DB§14.3)',
     expect(await setsOf(client.profileId, input.clientLocalId)).toHaveLength(1);
   });
 
+  it("stores the device's note, and lets a re-send clear it", async () => {
+    // `session-modifications/02`. The substitution fact rides in
+    // `set_logs.notes` — an existing column, no schema addition — and the
+    // device composes the whole string. An omitted key would leave a stale
+    // note standing, which is why the payload always names it.
+    const coachProfileId = await insertCoach();
+    const client = await insertClient(coachProfileId);
+    const session = await insertSession(client, coachProfileId);
+    const exerciseId = await insertExercise();
+
+    const input = payload(session, exerciseId, {
+      notes: 'Substituted for Barbell back squat.',
+    });
+    await caller(client.ctx).workouts.logSet(input);
+
+    const [stored] = await setsOf(client.profileId, input.clientLocalId);
+    expect(stored?.notes).toBe('Substituted for Barbell back squat.');
+
+    await caller(client.ctx).workouts.logSet({ ...input, notes: null });
+
+    const [cleared] = await setsOf(client.profileId, input.clientLocalId);
+    expect(cleared?.notes).toBeNull();
+  });
+
   it('does not resurrect a set that was deleted after it was logged', async () => {
     const coachProfileId = await insertCoach();
     const client = await insertClient(coachProfileId);

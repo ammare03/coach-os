@@ -16,7 +16,7 @@ import {
   useReducedMotion,
   withAlpha,
 } from '@coachos/ui/theme';
-import { SkipForward } from 'lucide-react-native';
+import { ArrowLeftRight, SkipForward } from 'lucide-react-native';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -126,6 +126,21 @@ export const SKIP_PAGE_COPY = {
   undo: 'Undo skip',
 } as const;
 
+/**
+ * The swap affordance's words (`session-modifications/02`), sibling to
+ * `SKIP_PAGE_COPY` above and deliberately its twin: both live in the same
+ * page head, so they are worded to the same length and the same register.
+ */
+export const SWAP_PAGE_COPY = {
+  action: 'Swap',
+  actionSpoken: 'Swap this exercise',
+  /** Said once, under the name it replaced. A fact, never a deviation. */
+  swappedFor: (originalName: string) => `Instead of ${originalName}`,
+  /** The spoken form of the same line, and what the page-head pill adds when it is in force. */
+  swappedSpoken: (substituteName: string, originalName: string) =>
+    `${substituteName}, swapped in for ${originalName}`,
+} as const;
+
 export interface ExercisePagerProps {
   /** `lib/exercise-pages.ts`'s model, in `orderIndex` order. Empty renders nothing. */
   pages: readonly ExercisePage[];
@@ -160,6 +175,16 @@ export interface ExercisePagerProps {
   onSkipPress?: ((page: ExercisePage) => void) | undefined;
   /** Takes a skip back, from the skipped page itself. */
   onUndoSkip?: ((page: ExercisePage) => void) | undefined;
+  /**
+   * Opens the swap picker for one page (`session-modifications/02`).
+   * **Absent, no swap affordance is drawn at all** — the same contract
+   * `onSkipPress` carries, so a caller that predates this task renders
+   * exactly what it rendered before.
+   *
+   * Never offered on a skipped page: there is nothing to log there, so
+   * there is nothing to swap.
+   */
+  onSwapPress?: ((page: ExercisePage) => void) | undefined;
 }
 
 export function ExercisePager({
@@ -170,6 +195,7 @@ export function ExercisePager({
   skips,
   onSkipPress,
   onUndoSkip,
+  onSwapPress,
 }: ExercisePagerProps) {
   const [containerWidth, setContainerWidth] = useState(0);
   const reducedMotion = useReducedMotion();
@@ -326,6 +352,7 @@ export function ExercisePager({
                 skip={skips?.get(page.key) ?? null}
                 onSkipPress={onSkipPress}
                 onUndoSkip={onUndoSkip}
+                onSwapPress={onSwapPress}
                 content={
                   Math.abs(position - index) <= RENDER_WINDOW
                     ? renderPage?.(page, position === index)
@@ -348,6 +375,7 @@ interface PageProps {
   skip: SkippedExercise | null;
   onSkipPress: ((page: ExercisePage) => void) | undefined;
   onUndoSkip: ((page: ExercisePage) => void) | undefined;
+  onSwapPress: ((page: ExercisePage) => void) | undefined;
   content: ReactNode;
 }
 
@@ -365,6 +393,7 @@ const Page = memo(function Page({
   skip,
   onSkipPress,
   onUndoSkip,
+  onSwapPress,
   content,
 }: PageProps) {
   const themed = useThemedStyles();
@@ -376,6 +405,12 @@ const Page = memo(function Page({
   const handleUndo = useCallback(() => {
     onUndoSkip?.(page);
   }, [onUndoSkip, page]);
+
+  const handleSwapPress = useCallback(() => {
+    onSwapPress?.(page);
+  }, [onSwapPress, page]);
+
+  const substitutedFor = page.substitutedFor;
 
   return (
     // L1, the recessed well (`DESIGN.md` §2) — a flat fill, a soft border,
@@ -404,20 +439,56 @@ const Page = memo(function Page({
             {exercisePositionLine(page)}
           </Text>
           {/* No `numberOfLines`: at 200% text a long exercise name wraps
-              and the card grows rather than clipping (`accessibility` §3). */}
-          <Text size="h2" accessibilityRole="header">
+              and the card grows rather than clipping (`accessibility` §3).
+              On a swapped page this is the SUBSTITUTE's name — the page
+              model folds the swap in, so nothing here has to know
+              (`lib/exercise-pages.ts`). */}
+          <Text
+            size="h2"
+            accessibilityRole="header"
+            accessibilityLabel={
+              substitutedFor === null
+                ? undefined
+                : SWAP_PAGE_COPY.swappedSpoken(page.name, substitutedFor.name)
+            }
+          >
             {page.name}
           </Text>
+          {/* `session-modifications/02`. Said once, quietly, under the name
+              it replaced — and hidden from the reading order because the
+              header above already carries the same sentence in one piece. */}
+          {substitutedFor === null ? null : (
+            <View
+              style={styles.swappedFrom}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              testID="page-swapped-from"
+            >
+              <SwappedGlyph />
+              <Text size="body-sm" tone="warm" style={styles.swappedWords}>
+                {SWAP_PAGE_COPY.swappedFor(substitutedFor.name)}
+              </Text>
+            </View>
+          )}
         </View>
         {/* In the HEAD, never in the content — `SetEntryRow`'s 205px is a
             binding invariant and nothing may make it conditional. The head
             already grows with a wrapping exercise name, so this costs the
             composer no coordinate. Present from the first frame: a skip must
-            never require a logged set first (task 03's first criterion). */}
+            never require a logged set first (task 03's first criterion), and
+            neither must a swap — a client whose rack is taken has not
+            started.
+            Task 02's affordance joins this one rather than opening a second,
+            parallel surface. Both are absent on a skipped page: the composer
+            is replaced there, so there is nothing to log and nothing to
+            swap. */}
         {skip === null ? (
-          onSkipPress === undefined ? null : (
-            <SkipAction onPress={handleSkipPress} />
-          )
+          <View style={styles.actions}>
+            {onSwapPress === undefined ? null : (
+              <SwapAction onPress={handleSwapPress} isInEffect={substitutedFor !== null} />
+            )}
+            {onSkipPress === undefined ? null : <SkipAction onPress={handleSkipPress} />}
+          </View>
         ) : (
           <SkippedTag />
         )}
@@ -437,6 +508,47 @@ const Page = memo(function Page({
     </View>
   );
 });
+
+/** The substitution mark beside the "instead of" line. Decorative — the line says it. */
+function SwappedGlyph() {
+  const { colors } = useTheme();
+  return <ArrowLeftRight size={SKIP_ICON} color={colors.fg.warm} strokeWidth={2.4} />;
+}
+
+/**
+ * `session-modifications/02`'s affordance, built to `SkipAction`'s shape so
+ * the two read as one control group rather than two decisions.
+ *
+ * `isInEffect` takes the warm edge and the maroon tint — the same pairing
+ * the picker's chosen row uses, and a second channel beside the "instead of"
+ * line so the state does not rest on hue (`DESIGN.md` §8).
+ */
+function SwapAction({ onPress, isInEffect }: { onPress: () => void; isInEffect: boolean }) {
+  const themed = useThemedStyles();
+  const { colors } = useTheme();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={SWAP_PAGE_COPY.actionSpoken}
+      hitSlop={SKIP_HIT_SLOP}
+      style={[styles.skipAction, themed.skipAction, isInEffect && themed.swapActionOn]}
+      testID="swap-exercise-action"
+    >
+      <ArrowLeftRight
+        size={SKIP_ICON}
+        color={isInEffect ? colors.fg.warm : colors.fg.muted}
+        strokeWidth={2.4}
+      />
+      {/* An icon never travels alone (`DESIGN.md` §13), and no
+          `numberOfLines`: at 200% text the word wraps and the head deepens. */}
+      <Text size="label" tone={isInEffect ? 'warm' : 'muted'}>
+        {SWAP_PAGE_COPY.action}
+      </Text>
+    </Pressable>
+  );
+}
 
 function SkipAction({ onPress }: { onPress: () => void }) {
   const themed = useThemedStyles();
@@ -583,6 +695,24 @@ const styles = StyleSheet.create({
   upper: {
     textTransform: 'uppercase',
   },
+  swappedFrom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    // No margin: the `words` column's own gap already separates it.
+    gap: spacing(6),
+  },
+  swappedWords: {
+    flex: 1,
+    minWidth: 0,
+  },
+  // Both pills, `flexShrink: 0`, so the name column gives way and the head
+  // deepens at 200% text rather than either control being clipped.
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing(8),
+    flexShrink: 0,
+  },
   content: {
     flex: 1,
     minHeight: 0,
@@ -657,6 +787,13 @@ const useThemedStyles = createThemedStyles(({ colors, control, elevation }) => (
     // (`COPY.md` §CO3).
     backgroundColor: control.surface,
     borderColor: colors.border.DEFAULT,
+  },
+  swapActionOn: {
+    // The maroon tint under a dimmed brand edge — the picker's chosen row
+    // and the rail's superset bracket use the same pairing. NOT §8's solid
+    // record treatment, which stays reserved.
+    backgroundColor: withAlpha(colors.deep, '0.3'),
+    borderColor: colors.brand.shade,
   },
   skippedTag: {
     // The rail's skipped language, repeated on the page so the two surfaces

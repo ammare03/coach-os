@@ -358,6 +358,25 @@ export const logSetInput = strictObject({
   isWarmup: z.boolean().default(false),
   /** Taken to momentary failure. UI arrives in `set-entry/04`. */
   isFailure: z.boolean().default(false),
+  /**
+   * Free text about this one set — `set_logs.notes`, which DB§5.2 already
+   * carries. **No new column** (`CLAUDE.md` §0).
+   *
+   * Its first writer is `session-modifications/02`: a client who swaps an
+   * exercise for a coach-approved alternative gets "Substituted for {the
+   * coach's exercise}." on the first set logged against the substitute, so a
+   * coach reviewing the session sees why sets are filed against an exercise
+   * their program never named. The device composes the whole string,
+   * prepending the line to anything the client wrote themselves, and sends
+   * the result — the server stores what it is given and words nothing.
+   *
+   * `null` explicitly rather than omitted, for the reason `weightKg` states:
+   * `set_logs` is device-wins (DB§14.3) and `offlineUpsert` overwrites only
+   * the columns the payload names, so a re-send that dropped the key would
+   * leave a stale note standing. Optional so that a payload serialised into
+   * a device's outbox by a build predating this field still replays.
+   */
+  notes: z.string().max(500).nullish(),
 });
 export type LogSetInput = z.infer<typeof logSetInput>;
 
