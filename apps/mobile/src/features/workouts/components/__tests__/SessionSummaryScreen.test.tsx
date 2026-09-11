@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { eq } from 'drizzle-orm';
 
 import { getLocalDb, resetLocalDbForTests } from '../../../../db/client.ts';
 import {
@@ -28,6 +29,7 @@ import { SUMMARY_COPY } from '../../lib/session-summary.ts';
 import { resetSessionRecordsForTests } from '../../store/session-records-store.ts';
 import { useSkippedExercisesStore } from '../../store/skipped-exercises-store.ts';
 import { useSubstitutedExercisesStore } from '../../store/substituted-exercises-store.ts';
+import { FORM_CHECK_ROUTE } from '../PostSessionPrompt.tsx';
 import { SessionSummaryScreen } from '../SessionSummaryScreen.tsx';
 
 // `phase-09-workout-logger/session-summary/01`, its Verification section
@@ -46,6 +48,18 @@ jest.mock('expo-sqlite', () =>
   require('../../../../lib/outbox/__fixtures__/sqlite-fake.ts').createSqliteFake(),
 );
 
+// `session-summary/02`'s prompt links into `record-form-check`. The
+// imperative singleton, not `useRouter`, so nothing here needs a navigator.
+const mockPush = jest.fn();
+jest.mock('expo-router', () => ({
+  router: { push: (...args: unknown[]) => mockPush(...args) },
+}));
+
+jest.mock('expo-network', () => ({
+  addNetworkStateListener: jest.fn(),
+  getNetworkStateAsync: jest.fn(),
+}));
+
 jest.mock('../../../../hooks/useWeightUnit.ts', () => ({ useWeightUnit: () => 'kg' }));
 jest.mock('../../../../lib/time-zone/useClientTimeZone.ts', () => ({
   useClientTimeZone: () => 'Asia/Kolkata',
@@ -58,6 +72,8 @@ const SQUAT = '0198f2d6-0000-7000-8000-0000000000d1';
 const RDL = '0198f2d6-0000-7000-8000-0000000000d2';
 const SET_A = '0198f2d6-0000-7000-8000-0000000000b1';
 const SET_B = '0198f2d6-0000-7000-8000-0000000000b2';
+
+const CLIENT_NOTE = 'Right knee felt tight on the last two sets.';
 
 const STARTED_AT = Date.parse('2026-08-15T12:00:00.000Z');
 const COMPLETED_AT = Date.parse('2026-08-15T12:48:00.000Z');
@@ -77,6 +93,7 @@ const PAYLOAD = {
 } as unknown as LocalSessionPayload;
 
 beforeEach(() => {
+  mockPush.mockClear();
   sqlite.__reset();
   resetLocalDbForTests();
   resetOutboxFlushStateForTests();
@@ -328,6 +345,84 @@ describe('SessionSummaryScreen', () => {
     const onDone = renderScreen();
 
     await screen.findByTestId('summary-figures');
+    fireEvent.press(screen.getByTestId('summary-done'));
+
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+});
+
+// `session-summary/02`'s Verification section, on the real screen: "dismiss
+// both prompts and confirm normal navigation continues unimpeded. Tap 'Add a
+// note', confirm inline capture, and confirm it correctly reaches
+// `client_notes` per task 03. Tap 'Add a form check' and confirm it navigates
+// to the correct route."
+describe('SessionSummaryScreen — the post-session prompt', () => {
+  it('leaves the way out open when both prompts are dismissed', async () => {
+    await seedCompletedSession();
+    const onDone = renderScreen();
+    await screen.findByTestId('summary-figures');
+
+    fireEvent.press(screen.getByTestId('summary-prompt-form-check-dismiss'));
+    fireEvent.press(screen.getByTestId('summary-prompt-note-dismiss'));
+
+    expect(screen.queryByTestId('summary-prompt')).toBeNull();
+    // The figures are untouched and Done is exactly where it was.
+    expect(screen.getByTestId('summary-figures')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('summary-done'));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the note capture inline, and what is typed reaches client_notes', async () => {
+    await seedCompletedSession();
+    renderScreen();
+    await screen.findByTestId('summary-figures');
+
+    fireEvent.press(screen.getByTestId('summary-prompt-note'));
+    // The capture reads what the session already holds on mount. Settled
+    // here so the assertions below run against the screen the client sees.
+    await act(async () => undefined);
+
+    // Inline — the same screen, and nothing navigated.
+    expect(screen.getByTestId('session-summary')).toBeTruthy();
+    expect(mockPush).not.toHaveBeenCalled();
+
+    fireEvent.changeText(await screen.findByTestId('session-note-input'), CLIENT_NOTE);
+    fireEvent.press(screen.getByTestId('session-note-save'));
+
+    const db = await getLocalDb();
+    await waitFor(async () => {
+      const [row] = await db
+        .select()
+        .from(localWorkoutSessions)
+        .where(eq(localWorkoutSessions.clientLocalId, SESSION));
+      expect(row?.clientNotes).toBe(CLIENT_NOTE);
+    });
+  });
+
+  it('opens record-form-check with the session it is a check of', async () => {
+    await seedCompletedSession();
+    renderScreen();
+    await screen.findByTestId('summary-figures');
+
+    fireEvent.press(screen.getByTestId('summary-prompt-form-check'));
+
+    // Two exercises logged, so no exercise is named — `formCheckParams`.
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: FORM_CHECK_ROUTE,
+      params: { sessionId: SESSION },
+    });
+  });
+
+  it('does not block Done while the capture is open', async () => {
+    await seedCompletedSession();
+    const onDone = renderScreen();
+    await screen.findByTestId('summary-figures');
+
+    fireEvent.press(screen.getByTestId('summary-prompt-note'));
+    // Let the capture's own local read settle, so what is asserted is the
+    // screen the client is actually looking at.
+    await act(async () => undefined);
+
     fireEvent.press(screen.getByTestId('summary-done'));
 
     expect(onDone).toHaveBeenCalledTimes(1);
