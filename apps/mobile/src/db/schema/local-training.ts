@@ -22,6 +22,23 @@ export const localWorkoutSessions = sqliteTable('local_workout_sessions', {
   // session the server has never heard of. Null for a session nothing has
   // started yet, and for a row an older build wrote.
   startOutboxId: text('start_outbox_id'),
+  // The `outbox.id` of the mutation that COMPLETED this session, and of the
+  // most recent notes update — `start_outbox_id`'s two siblings, on the row
+  // for its reason. `session-summary/03`'s capture runs on the summary
+  // screen, one navigation after `useCompleteSession` returned the id in
+  // memory, so the id has to survive the hand-off; and a second save has to
+  // chain behind the first, or two updates flush as siblings and the older
+  // text can land last. Null for a session nothing has completed, for one a
+  // build predating this column finished, and for a session whose notes have
+  // never been saved.
+  completeOutboxId: text('complete_outbox_id'),
+  notesOutboxId: text('notes_outbox_id'),
+  // `workout_sessions.perceived_exertion` / `.client_notes` (DB§5.2), held
+  // here because the device is the author and the server may not have heard
+  // yet. 1–10; the range is enforced by `updateSessionNotesInput`, not by
+  // SQLite, which has no CHECK in this bootstrap DDL.
+  perceivedExertion: integer('perceived_exertion'),
+  clientNotes: text('client_notes'),
   syncState: text('sync_state', { enum: ['synced', 'pending', 'conflict'] })
     .notNull()
     .default('synced'),
@@ -99,6 +116,10 @@ export const LOCAL_TRAINING_SCHEMA_SQL: string[] = [
     completed_at INTEGER,
     payload_json TEXT NOT NULL,
     start_outbox_id TEXT,
+    complete_outbox_id TEXT,
+    notes_outbox_id TEXT,
+    perceived_exertion INTEGER,
+    client_notes TEXT,
     sync_state TEXT NOT NULL DEFAULT 'synced',
     updated_at INTEGER NOT NULL
   )`,

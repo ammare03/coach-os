@@ -1,4 +1,4 @@
-import { countWorkingSets, totalTargetSets } from '@coachos/utils';
+import { countWorkingSets, sessionDurationSeconds, totalTargetSets } from '@coachos/utils';
 import { eq } from 'drizzle-orm';
 import { useCallback } from 'react';
 
@@ -90,7 +90,9 @@ export interface CompletedSession {
    *
    * `null` only when the session was already complete and nothing was queued
    * (rule (f)). A caller must then enqueue unchained rather than invent a
-   * parent, exactly as `StartedSession.outboxId` says.
+   * parent, exactly as `StartedSession.outboxId` says — or, better, read
+   * `local_workout_sessions.complete_outbox_id`, which the first completion
+   * wrote and a repeat one leaves standing.
    */
   outboxId: string | null;
   /** `completed_at`. The stored one when the session was already finished — never moved. */
@@ -170,6 +172,13 @@ export async function completeSession(deps: CompleteSessionDeps): Promise<Comple
     .set({
       status: 'completed',
       completedAt: completedAt.getTime(),
+      // Rule (e)'s companion: the id goes on the ROW, not only into the
+      // return value. `session-summary/03`'s notes update chains to this
+      // entry and runs one navigation later — on a screen that never saw
+      // this call, and after a force-quit in a process that never saw it
+      // either. That is `start_outbox_id`'s own reason, restated one
+      // transition on.
+      completeOutboxId: outboxId,
       // The device authored this and the server has not confirmed it, so a
       // refresh must not overwrite it (`offline-sync` §5,
       // `lib/prefetch/sessions.ts` rule (c)).
@@ -192,7 +201,7 @@ export async function completeSession(deps: CompleteSessionDeps): Promise<Comple
       // (`ANALYTICS.md` AN§4).
       session_id: asUuid(row.clientLocalId),
       ...(await sessionCounts(db, row.clientLocalId, row.payloadJson)),
-      duration_s: durationSeconds(startedAt, completedAt),
+      duration_s: sessionDurationSeconds(startedAt, completedAt.getTime()),
       was_offline: deps.isConnected === false,
     });
   } catch {
@@ -200,16 +209,6 @@ export async function completeSession(deps: CompleteSessionDeps): Promise<Comple
   }
 
   return { localId: row.clientLocalId, outboxId, completedAt };
-}
-
-/**
- * Whole seconds between the two instants, floored at zero. A phone whose
- * clock moved backwards mid-session reports a finish before its own start,
- * and a negative duration is not one — the server clamps the stored column
- * the same way, so the event and the row agree.
- */
-function durationSeconds(startedAtMs: number, completedAt: Date): number {
-  return Math.max(0, Math.floor((completedAt.getTime() - startedAtMs) / 1_000));
 }
 
 /**

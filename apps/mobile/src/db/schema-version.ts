@@ -22,8 +22,18 @@ import { wipeLocalDatabase } from './wipe.ts';
  * is `CREATE TABLE IF NOT EXISTS`, so a device already holding a v2 table
  * would never gain the column and every read naming it would throw. The
  * drop-and-refetch below is the only thing that installs it.
+ *
+ * 4 — `local_workout_sessions` gains `complete_outbox_id`, `notes_outbox_id`,
+ * `perceived_exertion` and `client_notes` (`session-summary/03`). Four
+ * additive columns, which an `ALTER TABLE ADD COLUMN` could install without
+ * dropping anything — and that path is deliberately still not taken. DB§13
+ * and `offline-sync` §8 make this mirror disposable precisely so it never
+ * needs a migration sequence, and the one thing on the device that is NOT
+ * disposable — the outbox — is what `checkSchemaVersion` refuses to wipe
+ * without an explicit confirmation. So the cost of the bump is re-fetching
+ * cache, never losing unsynced work.
  */
-export const EXPECTED_SCHEMA_VERSION = 3;
+export const EXPECTED_SCHEMA_VERSION = 4;
 
 const SCHEMA_VERSION_META_KEY = 'schema_version';
 

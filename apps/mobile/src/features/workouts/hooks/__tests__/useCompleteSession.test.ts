@@ -176,6 +176,36 @@ describe('the local transition', () => {
     expect(sessions[0]?.updatedAt).toBe(TAP.getTime());
   });
 
+  it('persists the completion outbox id on the row, not only in the return value', async () => {
+    // `session-summary/03`'s notes update chains to this entry, and it runs
+    // one navigation later on a screen that never saw the return value —
+    // and, after a force-quit, in a process that never saw it either. Held
+    // in memory it is simply gone by the time it is needed, which is
+    // `start_outbox_id`'s own reason for existing.
+    await seedInProgress();
+
+    const completed = await completeSession({ sessionLocalId: LOCAL_KEY, now: () => TAP });
+
+    const { sessions, entries } = await readRows();
+    expect(completed.outboxId).not.toBeNull();
+    expect(sessions[0]?.completeOutboxId).toBe(completed.outboxId);
+    expect(entries.map((entry) => entry.id)).toContain(completed.outboxId);
+  });
+
+  it('leaves complete_outbox_id alone on a repeat completion', async () => {
+    // Rule (f): the second tap queues nothing, so there is no new id — and
+    // overwriting the stored one with null would strand a notes update that
+    // had nothing left to chain to.
+    await seedInProgress();
+    const first = await completeSession({ sessionLocalId: LOCAL_KEY, now: () => TAP });
+
+    const second = await completeSession({ sessionLocalId: LOCAL_KEY, now: () => TAP });
+
+    const { sessions } = await readRows();
+    expect(second.outboxId).toBeNull();
+    expect(sessions[0]?.completeOutboxId).toBe(first.outboxId);
+  });
+
   it('does not need the network — nothing is sent, only queued', async () => {
     await seedInProgress();
 

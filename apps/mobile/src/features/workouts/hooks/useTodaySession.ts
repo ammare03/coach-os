@@ -2,6 +2,7 @@ import {
   countWorkingSets,
   estimateSessionMinutes,
   formatLocalDate,
+  sessionDurationSeconds,
   sessionVolumeKg,
   toLocalDate,
   totalTargetSets,
@@ -299,10 +300,12 @@ export async function resolvePhase(db: LocalDb, row: LocalSessionRow): Promise<T
       completedAt: new Date(row.completedAt),
       setsLogged: countWorkingSets(sets),
       volumeKg: sessionVolumeKg(sets),
+      // One rule, shared with `useCompleteSession`'s analytics figure and
+      // the summary screen's (`@coachos/utils` `sessionDurationSeconds`).
+      // It floors where this used to round: the same session must not read
+      // as a minute longer here than it does in the event.
       durationSeconds:
-        row.startedAt === null
-          ? null
-          : Math.max(0, Math.round((row.completedAt - row.startedAt) / 1000)),
+        row.startedAt === null ? null : sessionDurationSeconds(row.startedAt, row.completedAt),
     };
   }
 
