@@ -1,6 +1,6 @@
 import { NotFoundState, hapticSessionComplete } from '@coachos/ui';
 import { createThemedStyles, density, spacing } from '@coachos/ui/theme';
-import { useCallback, useContext, useMemo } from 'react';
+import { useCallback, useContext, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
@@ -12,7 +12,14 @@ import { useLoggerSession, type LoggerSessionState } from '../hooks/useLoggerSes
 import { usePRCelebration } from '../hooks/usePRCelebration.ts';
 import { useSessionHeartbeat } from '../hooks/useSessionHeartbeat.ts';
 import { useSessionKeepAwake } from '../hooks/useSessionKeepAwake.ts';
+import { useSkipExercise } from '../hooks/useSkipExercise.ts';
 import { buildExercisePages, type ExercisePage } from '../lib/exercise-pages.ts';
+import {
+  selectSkips,
+  useSkippedExercisesStore,
+  type SkipReason,
+  type SkippedExercise,
+} from '../store/skipped-exercises-store.ts';
 
 import { ExercisePager } from './ExercisePager.tsx';
 import { LoggerHeader } from './LoggerHeader.tsx';
@@ -22,6 +29,7 @@ import { ProgramChangedNotice } from './ProgramChangedNotice.tsx';
 import { RestTimerBar } from './RestTimerBar.tsx';
 import { SessionFinish } from './SessionFinish.tsx';
 import { SetEntrySlot } from './SetEntrySlot.tsx';
+import { SkipExerciseSheet } from './SkipExerciseSheet.tsx';
 import { TargetLine } from './TargetLine.tsx';
 
 // `(client)/workout/[sessionId]` — Pattern C, focus mode (`UI-UX.md` §UX2),
@@ -159,6 +167,45 @@ export function SessionLoggerScreen({
   // leaving the session open.
   const { complete } = useCompleteSession();
 
+  // `session-modifications/03`. Subscribed here rather than inside the pager
+  // for the reason the PR celebration gives above it: the pager keeps three
+  // pages alive and swaps them on every turn, and three subscriptions to one
+  // session-scoped fact is three chances to disagree about it.
+  const skips = useSkippedExercisesStore(selectSkips);
+  const { skip, undo } = useSkipExercise({
+    sessionLocalId,
+    pageCount: pages.length,
+    onAdvance: position.setIndex,
+  });
+
+  // Which page the reason sheet is open for, or `null`. The page rather than
+  // its key: the sheet names the exercise, and the skip record copies the
+  // name the client actually saw.
+  const [skipTarget, setSkipTarget] = useState<ExercisePage | null>(null);
+
+  const handleSkipDismiss = useCallback(() => {
+    setSkipTarget(null);
+  }, []);
+
+  const handleSkipConfirm = useCallback(
+    (reason: SkipReason, note: string) => {
+      if (skipTarget === null) return;
+      // Closed first, so the sheet is already going as the pager moves —
+      // the page turn is the confirmation, and it must not wait on a
+      // dismissal animation (task 03's "advances immediately").
+      setSkipTarget(null);
+      skip({ page: skipTarget, reason, note });
+    },
+    [skip, skipTarget],
+  );
+
+  const handleUndoSkip = useCallback(
+    (page: ExercisePage) => {
+      undo(page.key);
+    },
+    [undo],
+  );
+
   const handleFinish = useCallback(async () => {
     const { localId } = await complete(sessionLocalId);
     // `ui-conventions` §5's one sanctioned `Success`, and the only place in
@@ -207,8 +254,25 @@ export function SessionLoggerScreen({
           payload,
           sessionLocalId,
           celebratesRecords: isLogging,
+          skips,
+          // Gated on the same `isLogging` as the heartbeat and the wake
+          // lock: a finished session opened for review is not a workout, and
+          // offering to skip an exercise in one would write a fact about a
+          // session that is over. The skipped STATES still render — that is
+          // what the review is for.
+          onSkipPress: isLogging ? setSkipTarget : undefined,
+          onUndoSkip: isLogging ? handleUndoSkip : undefined,
         })}
       </View>
+      {/* Outside the body: a sheet is not part of the pager's box, and the
+          page it was opened from is gone by the time it closes. Always
+          mounted so its open/close is a prop rather than a remount. */}
+      <SkipExerciseSheet
+        isOpen={skipTarget !== null}
+        exerciseName={skipTarget?.name ?? ''}
+        onDismiss={handleSkipDismiss}
+        onConfirm={handleSkipConfirm}
+      />
       {/* Task 07, and a sibling of the body rather than part of it: the
           control ends the SESSION, so it must outlive the pager. An ad-hoc
           session renders `LoggerNoPrescription` above and still needs a way
@@ -241,6 +305,11 @@ interface BodyHandlers {
    * no pill at all, and an off-screen page must not draw a second one.
    */
   celebratesRecords: boolean;
+  /** `session-modifications/03` — what the client skipped, by `ExercisePage.key`. */
+  skips: ReadonlyMap<string, SkippedExercise>;
+  /** Opens the reason sheet. `undefined` once the session is no longer in progress. */
+  onSkipPress: ((page: ExercisePage) => void) | undefined;
+  onUndoSkip: ((page: ExercisePage) => void) | undefined;
 }
 
 function renderBody(state: LoggerSessionState, handlers: BodyHandlers) {
@@ -290,6 +359,9 @@ function renderBody(state: LoggerSessionState, handlers: BodyHandlers) {
           pages={handlers.pages}
           currentIndex={handlers.currentIndex}
           onIndexChange={handlers.onIndexChange}
+          skips={handlers.skips}
+          onSkipPress={handlers.onSkipPress}
+          onUndoSkip={handlers.onUndoSkip}
           renderPage={(page, isCurrent) => (
             // The page's own composition: task 04's target line at its
             // natural height, then `set-entry`'s slot taking the rest.

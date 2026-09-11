@@ -1,7 +1,7 @@
 import { Metric, Pressable, useTheme } from '@coachos/ui';
 import { createThemedStyles, radius, spacing, tapTarget, withAlpha } from '@coachos/ui/theme';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Check } from 'lucide-react-native';
+import { Check, SkipForward } from 'lucide-react-native';
 import { memo, useCallback, useEffect, useRef } from 'react';
 import { ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 
@@ -41,14 +41,33 @@ const METER_HEIGHT = 3;
 const LETTER_WIDTH = 22;
 /** How much of the rail is kept visible to the left of the current stop when it scrolls. */
 const SCROLL_LEAD = 64;
+/**
+ * What a skipped stop adds to its spoken name. Lower case: it finishes
+ * `exerciseStopLabel`'s sentence rather than starting one, and it states the
+ * fact without wording it as something the client failed to do
+ * (`COPY.md` §CO3).
+ */
+const SKIPPED_SPOKEN = 'skipped';
 
 export interface ExerciseRailProps {
   pages: readonly ExercisePage[];
   currentIndex: number;
   onSelect: (index: number) => void;
+  /**
+   * `ExercisePage.key`s the client explicitly skipped
+   * (`session-modifications/03`). Absent — every caller before that task —
+   * and no stop draws a skipped state, which is correct: nothing had
+   * recorded one.
+   *
+   * A THIRD state, not a variant of the other two. "Skipped" and "never
+   * reached" both produce zero set logs and mean different things about the
+   * client's session, so the stop carries a shape for each: a check when
+   * done, this glyph when skipped, the dashed stub when untouched.
+   */
+  skippedKeys?: ReadonlySet<string> | undefined;
 }
 
-export function ExerciseRail({ pages, currentIndex, onSelect }: ExerciseRailProps) {
+export function ExerciseRail({ pages, currentIndex, onSelect, skippedKeys }: ExerciseRailProps) {
   const scroller = useRef<ScrollView>(null);
   // Stop offsets, filled by each stop's own `onLayout`. A ref rather than
   // state: they are read when the current index changes and never rendered,
@@ -98,6 +117,7 @@ export function ExerciseRail({ pages, currentIndex, onSelect }: ExerciseRailProp
               page={page}
               index={page.position - 1}
               isCurrent={page.position - 1 === currentIndex}
+              isSkipped={skippedKeys?.has(page.key) ?? false}
               onSelect={onSelect}
               onStopLayout={handleStopLayout}
             />
@@ -108,6 +128,7 @@ export function ExerciseRail({ pages, currentIndex, onSelect }: ExerciseRailProp
             group={run.group}
             pages={run.pages}
             currentIndex={currentIndex}
+            skippedKeys={skippedKeys}
             onSelect={onSelect}
             onStopLayout={handleStopLayout}
           />
@@ -151,11 +172,19 @@ interface SupersetRunProps {
   group: string;
   pages: ExercisePage[];
   currentIndex: number;
+  skippedKeys: ReadonlySet<string> | undefined;
   onSelect: (index: number) => void;
   onStopLayout: (index: number, event: LayoutChangeEvent) => void;
 }
 
-function SupersetRun({ group, pages, currentIndex, onSelect, onStopLayout }: SupersetRunProps) {
+function SupersetRun({
+  group,
+  pages,
+  currentIndex,
+  skippedKeys,
+  onSelect,
+  onStopLayout,
+}: SupersetRunProps) {
   const themed = useThemedStyles();
 
   return (
@@ -175,6 +204,7 @@ function SupersetRun({ group, pages, currentIndex, onSelect, onStopLayout }: Sup
           page={page}
           index={page.position - 1}
           isCurrent={page.position - 1 === currentIndex}
+          isSkipped={skippedKeys?.has(page.key) ?? false}
           onSelect={onSelect}
           onStopLayout={onStopLayout}
         />
@@ -187,6 +217,7 @@ interface StopProps {
   page: ExercisePage;
   index: number;
   isCurrent: boolean;
+  isSkipped: boolean;
   onSelect: (index: number) => void;
   onStopLayout: (index: number, event: LayoutChangeEvent) => void;
 }
@@ -199,7 +230,14 @@ interface StopProps {
  * take the index rather than being built per row, so the memo actually
  * holds.
  */
-const Stop = memo(function Stop({ page, index, isCurrent, onSelect, onStopLayout }: StopProps) {
+const Stop = memo(function Stop({
+  page,
+  index,
+  isCurrent,
+  isSkipped,
+  onSelect,
+  onStopLayout,
+}: StopProps) {
   const themed = useThemedStyles();
   const { colors, selectionPill } = useTheme();
 
@@ -229,15 +267,25 @@ const Stop = memo(function Stop({ page, index, isCurrent, onSelect, onStopLayout
         onPress={handlePress}
         accessibilityRole="tab"
         accessibilityState={{ selected: isCurrent }}
-        accessibilityLabel={exerciseStopLabel(page)}
+        accessibilityLabel={
+          // Appended rather than folded into `exerciseStopLabel`: that
+          // helper describes the PLAN and is shared with the page header,
+          // which has its own skipped treatment. The comma keeps it one
+          // sentence for a screen reader (`accessibility` §2).
+          isSkipped ? `${exerciseStopLabel(page)}, ${SKIPPED_SPOKEN}` : exerciseStopLabel(page)
+        }
         style={[
           styles.stop,
           themed.stop,
           // A finished stop carries a dimmed brand edge as well as its
           // check (`exercise-pager.html`, frames A and C). Not while it is
           // the current one — the pill owns that stop's edge.
-          isComplete(page) && !isCurrent && themed.stopDone,
-          isCurrent && themed.stopCurrent,
+          isComplete(page) && !isSkipped && !isCurrent && themed.stopDone,
+          // The dashed edge is the skipped state's shape channel, and it
+          // outranks the current pill's own border: a client paging back TO
+          // a skipped exercise must still see that it is skipped.
+          isSkipped && themed.stopSkipped,
+          isCurrent && !isSkipped && themed.stopCurrent,
         ]}
       >
         {isCurrent ? (
@@ -255,16 +303,30 @@ const Stop = memo(function Stop({ page, index, isCurrent, onSelect, onStopLayout
             />
           </>
         ) : null}
-        <Metric value={page.badge} size="numeral" tone={badgeTone(page, isCurrent)} />
-        <ProgressChannel page={page} tint={colors} />
+        <Metric value={page.badge} size="numeral" tone={badgeTone(page, isCurrent, isSkipped)} />
+        <ProgressChannel page={page} isSkipped={isSkipped} tint={colors} />
       </Pressable>
     </View>
   );
 });
 
-/** `bright` on the pill, `warm` once complete, `muted` otherwise — §1.1's ramp. */
-function badgeTone(page: ExercisePage, isCurrent: boolean): 'bright' | 'warm' | 'muted' {
+/**
+ * `bright` on the pill, `warm` once complete, `muted` otherwise — §1.1's ramp.
+ *
+ * A skipped stop reads `muted`, the same as an untouched one, and that is
+ * deliberate: `Metric`'s ramp stops there, and the two states are told apart
+ * by the dashed edge and the glyph rather than by the numeral. It also keeps
+ * the number itself above the contrast floor, which `fg.faint` would not.
+ * The current stop keeps `bright` even when skipped — it is still the stop
+ * the client is looking at, and its glyph says the rest.
+ */
+function badgeTone(
+  page: ExercisePage,
+  isCurrent: boolean,
+  isSkipped: boolean,
+): 'bright' | 'warm' | 'muted' {
   if (isCurrent) return 'bright';
+  if (isSkipped) return 'muted';
   return isComplete(page) ? 'warm' : 'muted';
 }
 
@@ -274,19 +336,34 @@ function isComplete(page: ExercisePage): boolean {
 
 interface ProgressChannelProps {
   page: ExercisePage;
+  isSkipped: boolean;
   tint: ReturnType<typeof useTheme>['colors'];
 }
 
 /**
- * The second, non-colour channel §8 requires — a check, a filled meter, or
- * a dashed stub.
+ * The second, non-colour channel §8 requires — a skip glyph, a check, a
+ * filled meter, or a dashed stub.
  *
  * **Nothing at all when `setsLogged` is `null`.** Until `set-entry` ships
  * there are no set logs to count, and a dashed "nothing logged" stub on
  * every stop would be a claim rather than an absence.
+ *
+ * **The skip glyph outranks all of it**, including the check: a client can
+ * log two of three sets and then skip the rest, and what the rail has to
+ * report is the client's own decision rather than the arithmetic.
  */
-function ProgressChannel({ page, tint }: ProgressChannelProps) {
+function ProgressChannel({ page, isSkipped, tint }: ProgressChannelProps) {
   const themed = useThemedStyles();
+
+  if (isSkipped) {
+    // Wrapper, not the icon: a Lucide glyph renders an Svg that does not
+    // forward `testID` to a host node (same note as `stop-complete`).
+    return (
+      <View testID="stop-skipped">
+        <SkipForward size={ICON} color={tint.fg.faint} strokeWidth={2.4} />
+      </View>
+    );
+  }
 
   if (page.setsLogged === null) return null;
 
@@ -393,6 +470,14 @@ const useThemedStyles = createThemedStyles(({ colors, control, dataviz, selectio
   },
   stopDone: {
     borderColor: colors.brand.shade,
+  },
+  stopSkipped: {
+    // The shape channel: the same dashed language the untouched stub uses,
+    // moved onto the stop's own edge so it reads at arm's length, and the
+    // fill dropped so a skipped stop recedes from the ones still to do.
+    borderStyle: 'dashed',
+    borderColor: colors.fg.faint,
+    backgroundColor: 'transparent',
   },
   stopCurrent: {
     // The mockup keeps an edge on the current stop rather than dropping it
