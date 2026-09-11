@@ -42,6 +42,7 @@ import {
   usePauseAssignment,
   type AssignableClient,
 } from '../api/assignments.ts';
+import { firstNameOf } from '../mid-session.ts';
 
 // The assign sheet. `assignment/01` built single-client mode (frames A/B/E);
 // `assignment/02` adds bulk mode (frames C/D) as a hard branch on `mode`,
@@ -97,9 +98,8 @@ interface ConflictPayload {
   durationWeeks: number;
 }
 
-function firstNameOf(name: string): string {
-  return name.trim().split(/\s+/)[0] ?? name;
-}
+// Moved to `../mid-session.ts` on its second consumer (`code-conventions`
+// §1) — the mid-session warning names clients the same way this sheet does.
 
 /** Today, in this device's own local calendar day — an explicit date the
  * coach is about to pick, not a stored day-boundary inference, so

@@ -62,6 +62,8 @@ function upcomingSession(): UpcomingSession {
     dayName: 'Push A',
     dayNotes: null,
     exercises: [],
+    // Not frozen: this session has not started yet (`session-runtime/09`).
+    programSnapshot: null,
   } as UpcomingSession;
 }
 

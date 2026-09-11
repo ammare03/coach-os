@@ -76,7 +76,15 @@ jest.mock('../../../lib/trpc.ts', () => ({
   api: {
     programs: {
       get: { invalidate: jest.fn() },
-      days: { get: { useQuery: () => ({ data: undefined }) } },
+      days: {
+        get: { useQuery: () => ({ data: undefined }) },
+        // `session-runtime/09`'s warning read. Stubbed here because every
+        // write in this file now refreshes it; what it answers is pinned by
+        // `./useProgramDayBuilder-mid-session.test.ts`, not by this file.
+        midSessionClients: {
+          useQuery: () => ({ data: undefined, refetch: jest.fn().mockResolvedValue({ data: [] }) }),
+        },
+      },
       exercises: {
         create: { useMutation: () => ({}) },
         update: { useMutation: () => ({}) },

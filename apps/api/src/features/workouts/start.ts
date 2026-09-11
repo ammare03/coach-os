@@ -5,6 +5,8 @@ import type { z } from 'zod';
 
 import { appError } from '../../lib/app-error.ts';
 
+import { buildProgramSnapshot } from './program-snapshot.ts';
+
 // `workouts.start` — the server half of
 // `phase-09-workout-logger/session-runtime/01`. A client taps Start on the
 // session their coach programmed; this is the row transition that lands
@@ -75,6 +77,23 @@ import { appError } from '../../lib/app-error.ts';
 //     replayed from the outbox has a client who stopped waiting for the
 //     answer long ago.
 //
+// (f) **The program snapshot is frozen by the same statement**
+//     (`./program-snapshot.ts`, DB§14.6, added by `session-runtime/09`).
+//     Start is the ONLY place it may be written: a session scheduled on
+//     Monday and started on Thursday has to pick up Tuesday's edit, so
+//     freezing at materialisation would make a coach's edits useless for
+//     every session generated in advance.
+//
+//     It needs the row's `program_day_id`, which the UPDATE does not have
+//     to hand, so there is one indexed read in front of it. That read is
+//     NOT the decision — the `WHERE status = 'scheduled'` predicate still
+//     is. If the row moved between the two, the predicate matches nothing,
+//     the snapshot is discarded with the rest of the SET, and the
+//     already-started row is returned unchanged; decision (b)'s idempotency
+//     covers this column for free, exactly as it does the claim's. The
+//     block read is skipped entirely on that path, so a replay costs one
+//     lookup rather than two.
+//
 
 /**
  * What the device is told about the row it started. Mapped field by field
@@ -114,6 +133,21 @@ export async function startSession(
     isNull(schema.workoutSessions.deletedAt),
   );
 
+  // Decision (f). Read before the write because the snapshot's content is
+  // addressed by a column the UPDATE cannot see; built only for a row that
+  // still looks startable, so a replay pays one lookup and no block scan.
+  const [before] = await db
+    .select({
+      status: schema.workoutSessions.status,
+      programDayId: schema.workoutSessions.programDayId,
+    })
+    .from(schema.workoutSessions)
+    .where(owned)
+    .limit(1);
+
+  const snapshot =
+    before?.status === 'scheduled' ? await buildProgramSnapshot(db, before.programDayId) : null;
+
   // Decisions (b) and (c), as a predicate rather than a `CASE` in the `SET`:
   // `status` and `started_at` move together or not at all, and the statement
   // that decides is the one that writes, so two concurrent replays serialise
@@ -123,6 +157,11 @@ export async function startSession(
     .set({
       status: 'in_progress',
       startedAt: input.startedAt,
+      // Decision (f). Omitted rather than written as null for an ad-hoc
+      // session or a day with no id — there is no prescription to protect,
+      // and a null written here would be indistinguishable from one this
+      // statement deliberately left alone.
+      ...(snapshot === null ? {} : { programSnapshot: snapshot }),
       // Decision (e). `claimed_at` is the last heartbeat (`./claim.ts` rule
       // (b)), and a start is the first one.
       //

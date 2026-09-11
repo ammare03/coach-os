@@ -14,6 +14,7 @@ import { duplicateProgram } from '../features/programs/duplicate-program.ts';
 import { getProgramDay } from '../features/programs/get-program-day.ts';
 import { getProgram } from '../features/programs/get-program.ts';
 import { listProgramTemplates } from '../features/programs/list-program-templates.ts';
+import { findMidSessionClients } from '../features/programs/mid-session-clients.ts';
 import { reorderProgramExercises } from '../features/programs/reorder-program-exercises.ts';
 import { setAlternatives } from '../features/programs/set-alternatives.ts';
 import { setSupersetGroup } from '../features/programs/set-superset-group.ts';
@@ -80,6 +81,21 @@ const programDaysRouter = router({
       if (!day) throw appError('NOT_YOUR_CLIENT', "We couldn't find that.", {});
       return day;
     }),
+
+  // `session-runtime/09`'s coach-side half. A read, guarded exactly like
+  // `get` above, that answers "is anyone inside this day right now" — the
+  // editor asks after every save, because a coach who believes they just
+  // fixed a client's working weight and did not will make a worse decision
+  // than one who knows. `ctx.user.coachProfileId` scopes it a second time
+  // inside the resolver; `ownsResource` proves the coach owns the DAY, not
+  // that a departed client's name is still theirs to see
+  // (`../features/programs/mid-session-clients.ts` decision (b)).
+  midSessionClients: coachProcedure
+    .input(programsSchemas.midSessionClientsInput)
+    .use(ownsResource('programDay', (i: { programDayId: string }) => i.programDayId))
+    .query(({ ctx, input }) =>
+      findMidSessionClients(ctx.db, ctx.user.coachProfileId, input.programDayId),
+    ),
 
   create: coachProcedure
     .input(programsSchemas.createProgramDayInput)

@@ -1,5 +1,7 @@
 import type { LocalSessionPayload } from '../../../lib/prefetch/sessions.ts';
 
+import { resolvePrescription } from './prescription.ts';
+
 // The page model behind `components/ExercisePager.tsx` — one page per
 // prescribed block, with the rail's badge, the page header's position line,
 // and the superset run edges all derived here.
@@ -71,9 +73,17 @@ export function buildExercisePages(
   payload: LocalSessionPayload | null,
   counts?: ReadonlyMap<string, number>,
 ): ExercisePage[] {
-  const blocks = [...(payload?.session.exercises ?? [])].sort(
-    (a, b) => a.orderIndex - b.orderIndex,
-  );
+  // `resolvePrescription`, not `payload.session.exercises` — task 09. A
+  // session in progress pages through the copy frozen when it started, so
+  // a coach removing an exercise at 18:04 cannot take a page out from
+  // under a client on it at 18:03. `hooks/useExerciseTarget.ts` asks the
+  // same function, which is what keeps a page and its target line
+  // describing the same exercise.
+  //
+  // Still synchronous, and still empty for a null payload: the snapshot
+  // arrives inside the payload this call already has, so it opens no new
+  // window in which the page count is 0 for a session that has pages.
+  const blocks = [...resolvePrescription(payload)].sort((a, b) => a.orderIndex - b.orderIndex);
   if (blocks.length === 0) return [];
 
   const names = new Map((payload?.exercises ?? []).map((exercise) => [exercise.id, exercise.name]));

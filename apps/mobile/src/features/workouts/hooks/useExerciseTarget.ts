@@ -5,6 +5,7 @@ import { getLocalDb } from '../../../db/client.ts';
 import type { LocalSessionPayload } from '../../../lib/prefetch/sessions.ts';
 import type { ExercisePage } from '../lib/exercise-pages.ts';
 import { readLastPerformance, type LastPerformance } from '../lib/last-performance.ts';
+import { resolvePrescription } from '../lib/prescription.ts';
 
 // `session-runtime/04` — what one exercise page's target line is made of.
 //
@@ -31,24 +32,24 @@ import { readLastPerformance, type LastPerformance } from '../lib/last-performan
 // every foreground prefetch rewrites — so a coach's edit reaches the client
 // on the next pass, which is before a not-yet-started session is opened.
 //
-// ======================= WHERE TASK 09 PLUGS IN ========================
+// ===================== WHERE TASK 09 PLUGGED IN ========================
 //
-// `09-program-snapshot.md` freezes an IN-PROGRESS session against
-// `workout_sessions.program_snapshot` (DB§14.6) so a coach's mid-session
-// edit lands on the NEXT session. That is not a contradiction of the rule
-// above — live is the model, the snapshot is the exception a *started*
-// session buys — and it is a one-line change HERE and nowhere else:
+// **Done, and it is one line.** `09-program-snapshot.md` freezes an
+// IN-PROGRESS session against `workout_sessions.program_snapshot` (DB§14.6)
+// so a coach's mid-session edit lands on the NEXT session. That is not a
+// contradiction of the rule above — live is the model, and the snapshot is
+// the exception a *started* session buys.
 //
-//   `resolveTarget(page, payload)` is the seam. Task 09 gives the hook the
-//   session's status and, when it is `in_progress`, resolves the block out
-//   of the snapshot instead of `payload.session.exercises`. `TargetLine`,
-//   the copy module, and the last-performance reader do not move, because
-//   none of them knows where an `ExerciseTarget` came from.
+//   `resolveTarget` was the seam and `../lib/prescription.ts` is now what
+//   it asks. `TargetLine`, the copy module, and the last-performance reader
+//   did not move, because none of them knows where an `ExerciseTarget` came
+//   from.
 //
-// Do NOT instead let task 09 write the snapshot into `payload_json` and
-// leave this file alone: the same column then means two different things
-// depending on the session's status, and `lib/exercise-pages.ts` reads it
-// too.
+// The snapshot is NOT written into `payload_json`'s `session.exercises` on
+// the way in: that field would then mean two different things depending on
+// the session's status, and `lib/exercise-pages.ts` reads it too. It rides
+// beside it as `session.programSnapshot`, and `resolvePrescription` is the
+// single place either is chosen between.
 //
 // =======================================================================
 //
@@ -101,7 +102,14 @@ export function resolveTarget(
   page: ExercisePage,
   payload: LocalSessionPayload | null,
 ): ExerciseTarget | null {
-  const block = payload?.session.exercises.find(
+  // `resolvePrescription`, never `payload.session.exercises` directly —
+  // task 09's seam, and the only line in this file it changed. It hands
+  // back the LIVE program day for a session that has not started and the
+  // copy FROZEN at `started_at` for one that has (DB§14.6), so a coach's
+  // mid-session edit cannot move a target under a client who is lifting.
+  // `lib/exercise-pages.ts` calls the same function, which is what keeps
+  // the page and its target line describing the same exercise.
+  const block = resolvePrescription(payload).find(
     (candidate) => candidate.programExerciseId === page.key,
   );
   return block ?? null;

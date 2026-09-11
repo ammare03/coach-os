@@ -1,14 +1,11 @@
-import {
-  schema,
-  type DbClient,
-  type Exercise,
-  type ProgramExercise,
-  type WorkoutSession,
-} from '@coachos/db';
+import { schema, type DbClient, type Exercise, type WorkoutSession } from '@coachos/db';
 import { addCalendarDays, diffCalendarDays, parseNumeric, type CalendarDate } from '@coachos/utils';
 import { and, asc, between, eq, inArray, isNull } from 'drizzle-orm';
 
 import { programDayForCalendarDate } from '../../lib/materialise-sessions.ts';
+
+import { listProgramBlocks, type UpcomingSessionExercise } from './program-blocks.ts';
+import { readProgramSnapshot } from './program-snapshot.ts';
 
 // `workouts.upcoming` — the one read `phase-08-offline-core/prefetch/01`
 // consumes. Built here, ahead of `phase-09-workout-logger`, because P08
@@ -24,11 +21,20 @@ import { programDayForCalendarDate } from '../../lib/materialise-sessions.ts';
 //     there is no caller-supplied id that could name someone else's row
 //     (`api-conventions` §3, the same shape as `clientApp.coach`).
 //
-// (b) The prescription resolves LIVE through `program_day_id`, never from
-//     `workout_sessions.program_snapshot` (`../programs/versioning.md`). A
-//     materialised session is a shell (`../../lib/materialise-sessions.ts`
-//     decision (c)); everything the logger renders comes from the program
-//     day it points at.
+// (b) The prescription resolves LIVE through `program_day_id`
+//     (`../programs/versioning.md`). A materialised session is a shell
+//     (`../../lib/materialise-sessions.ts` decision (c)); everything the
+//     logger renders comes from the program day it points at.
+//
+//     **`session-runtime/09` adds `programSnapshot` BESIDE it, never in
+//     place of it.** The two fields mean two different things and both
+//     cross the wire: `exercises` is always the live day, and
+//     `programSnapshot` is the copy frozen at `started_at` for a session
+//     that has one (DB§14.6). The device — not this read — decides which to
+//     render, on `status`, in one function
+//     (`apps/mobile/src/features/workouts/lib/prescription.ts`). Serving
+//     the snapshot AS `exercises` would make one field mean two things
+//     depending on a second field, and every consumer would have to know.
 //
 // (c) Sessions and their exercises come back in ONE response, not two. The
 //     `exercises` router is coach-only, so a client has no procedure to
@@ -51,26 +57,10 @@ const DEMO_URL_TTL_SECONDS = 604_800;
 /** Resolves an R2 object key to a URL the device can play. Injected in tests. */
 export type DemoUrlResolver = (storageKey: string) => Promise<string | null>;
 
-export interface UpcomingSessionExercise extends Pick<
-  ProgramExercise,
-  | 'orderIndex'
-  | 'targetSets'
-  | 'targetRepsMin'
-  | 'targetRepsMax'
-  | 'targetRir'
-  | 'targetRestSeconds'
-  | 'tempo'
-  | 'supersetGroup'
-  | 'alternatives'
-  | 'coachNotes'
-> {
-  programExerciseId: string;
-  exerciseId: string;
-  /** `numeric` columns parsed once, here, and never re-parsed downstream (`code-conventions` §3). */
-  targetRpe: number | null;
-  targetWeightKg: number | null;
-  targetPercent1rm: number | null;
-}
+// Defined in `./program-blocks.ts` so the live read and the frozen copy
+// cannot drift, and re-exported here because this is where every consumer
+// already imports it from.
+export type { UpcomingSessionExercise };
 
 export interface UpcomingSession extends Pick<
   WorkoutSession,
@@ -88,7 +78,17 @@ export interface UpcomingSession extends Pick<
   /** The program day's own label and notes — "Push A", which the session's own `name` is not. */
   dayName: string | null;
   dayNotes: string | null;
+  /** The LIVE prescription — always this day's current blocks. Decision (b). */
   exercises: UpcomingSessionExercise[];
+  /**
+   * The prescription this session was STARTED with, frozen at `started_at`
+   * (DB§14.6, `./program-snapshot.ts`), or `null` for a session that has
+   * not started, has completed, or never had a program day.
+   *
+   * An empty array is a real answer and distinct from `null` — see
+   * `readProgramSnapshot`.
+   */
+  programSnapshot: UpcomingSessionExercise[] | null;
 }
 
 export interface UpcomingExercise extends Pick<
@@ -330,6 +330,7 @@ export async function listUpcomingWorkouts(
       startedAt: schema.workoutSessions.startedAt,
       completedAt: schema.workoutSessions.completedAt,
       updatedAt: schema.workoutSessions.updatedAt,
+      programSnapshot: schema.workoutSessions.programSnapshot,
       dayName: schema.programDays.name,
       dayNotes: schema.programDays.notes,
     })
@@ -349,58 +350,7 @@ export async function listUpcomingWorkouts(
   }
 
   const programDayIds = unique(sessionRows.map((row) => row.programDayId));
-  const blockRows =
-    programDayIds.length === 0
-      ? []
-      : await db
-          .select({
-            id: schema.programExercises.id,
-            programDayId: schema.programExercises.programDayId,
-            exerciseId: schema.programExercises.exerciseId,
-            orderIndex: schema.programExercises.orderIndex,
-            targetSets: schema.programExercises.targetSets,
-            targetRepsMin: schema.programExercises.targetRepsMin,
-            targetRepsMax: schema.programExercises.targetRepsMax,
-            targetRpe: schema.programExercises.targetRpe,
-            targetRir: schema.programExercises.targetRir,
-            targetWeightKg: schema.programExercises.targetWeightKg,
-            targetPercent1rm: schema.programExercises.targetPercent1rm,
-            targetRestSeconds: schema.programExercises.targetRestSeconds,
-            tempo: schema.programExercises.tempo,
-            supersetGroup: schema.programExercises.supersetGroup,
-            alternatives: schema.programExercises.alternatives,
-            coachNotes: schema.programExercises.coachNotes,
-          })
-          .from(schema.programExercises)
-          .where(inArray(schema.programExercises.programDayId, programDayIds))
-          .orderBy(
-            asc(schema.programExercises.programDayId),
-            asc(schema.programExercises.orderIndex),
-          );
-
-  const blocksByDay = new Map<string, UpcomingSessionExercise[]>();
-  for (const row of blockRows) {
-    const blocks = blocksByDay.get(row.programDayId) ?? [];
-    blocks.push({
-      programExerciseId: row.id,
-      exerciseId: row.exerciseId,
-      orderIndex: row.orderIndex,
-      targetSets: row.targetSets,
-      targetRepsMin: row.targetRepsMin,
-      targetRepsMax: row.targetRepsMax,
-      targetRpe: row.targetRpe === null ? null : parseNumeric(row.targetRpe, 1),
-      targetRir: row.targetRir,
-      targetWeightKg: row.targetWeightKg === null ? null : parseNumeric(row.targetWeightKg, 2),
-      targetPercent1rm:
-        row.targetPercent1rm === null ? null : parseNumeric(row.targetPercent1rm, 1),
-      targetRestSeconds: row.targetRestSeconds,
-      tempo: row.tempo,
-      supersetGroup: row.supersetGroup,
-      alternatives: row.alternatives,
-      coachNotes: row.coachNotes,
-    });
-    blocksByDay.set(row.programDayId, blocks);
-  }
+  const blocksByDay = await listProgramBlocks(db, programDayIds);
 
   const sessions: UpcomingSession[] = sessionRows.map((row) => ({
     id: row.id,
@@ -416,13 +366,25 @@ export async function listUpcomingWorkouts(
     dayName: row.dayName,
     dayNotes: row.dayNotes,
     exercises: row.programDayId ? (blocksByDay.get(row.programDayId) ?? []) : [],
+    programSnapshot: readProgramSnapshot(row.programSnapshot),
   }));
 
   // Decision (c): the prescribed exercise AND every coach-approved swap it
   // offers, deduplicated across every session in the range.
+  //
+  // **The snapshot's ids are in this set too, and that is load-bearing.** A
+  // coach who removes an exercise mid-session leaves the frozen copy
+  // pointing at a library row the live day no longer mentions — and the
+  // client is still on that page. Collecting only the live ids would hand
+  // the device a block whose exercise it cannot name, and
+  // `lib/exercise-pages.ts` would render "Exercise" where a name belongs,
+  // mid-set, for the one client this whole feature exists to protect.
   const exerciseIds = unique(
     sessions.flatMap((session) =>
-      session.exercises.flatMap((block) => [block.exerciseId, ...block.alternatives]),
+      [...session.exercises, ...(session.programSnapshot ?? [])].flatMap((block) => [
+        block.exerciseId,
+        ...block.alternatives,
+      ]),
     ),
   );
   if (exerciseIds.length === 0) {

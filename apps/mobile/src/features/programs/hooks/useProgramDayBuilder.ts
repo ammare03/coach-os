@@ -1,7 +1,7 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 
 import { api } from '../../../lib/trpc.ts';
-import { useProgramDay } from '../api/programs.ts';
+import { useMidSessionClients, useProgramDay } from '../api/programs.ts';
 import { applyOrder } from '../drag-reorder.ts';
 
 // Query + mutation orchestration for the program day screen
@@ -13,18 +13,54 @@ export function useProgramDayBuilder(programDayId: string) {
   const day = useProgramDay(programDayId);
   const programId = day.data?.programId;
 
+  // `session-runtime/09` step 5. Asked after every write that rewrites a
+  // prescription, because that is the instant the answer changes what the
+  // coach believes just happened — a coach who thinks they fixed a client's
+  // working weight and did not will make a worse decision than one who
+  // knows. Disabled by default and refetched here, so a day screen left
+  // open does not poll it.
+  //
+  // ⚠️ Millisecond-wide race, recorded rather than hidden: a client who
+  // STARTS between the save committing and this refetch is named by a
+  // warning that is not true of them. The dangerous direction cannot
+  // happen — a client mid-session when the write landed is still
+  // mid-session a moment later. Closing it entirely means reading inside
+  // each write's transaction, which would couple seven procedure contracts
+  // to one advisory (`apps/api/src/features/programs/mid-session-clients.ts`
+  // decision (a)).
+  const midSession = useMidSessionClients(programDayId);
+  const [dismissedWarning, setDismissedWarning] = useState(false);
+  const { refetch: refetchMidSession } = midSession;
+
+  /**
+   * Called by EVERY write that rewrites a prescription — the three plain
+   * mutations through `invalidate`, and the three optimistic ones from
+   * their own `onSettled`, which deliberately do not invalidate
+   * `programs.get`. A reorder or a regrouping changes what a client would
+   * be shown next just as much as a target edit does, so skipping them
+   * would leave the warning correct for some saves and silently absent for
+   * others — the worst of the three possible behaviours.
+   */
+  const refreshMidSession = useCallback(async () => {
+    // Un-dismissed first: this reports a live fact, not an event, so a save
+    // that is still true earns the warning back.
+    setDismissedWarning(false);
+    await refetchMidSession();
+  }, [refetchMidSession]);
+
   // Two keys, both genuinely stale, and neither of them the whole cache
   // (`code-conventions` §5): adding or removing an exercise changes this
   // day's blocks AND the "5 exercises" meta line the builder screen behind
   // it renders from `programs.get`'s own count. Invalidating only the day
   // would leave the screen a coach backs out to disagreeing with the one
-  // they just left.
+  // they just left. The third is task 09's warning, above.
   const invalidate = useCallback(async () => {
     await Promise.all([
       utils.programs.days.get.invalidate({ programDayId }),
       programId === undefined ? Promise.resolve() : utils.programs.get.invalidate({ programId }),
+      refreshMidSession(),
     ]);
-  }, [utils, programDayId, programId]);
+  }, [utils, programDayId, programId, refreshMidSession]);
 
   const addExercise = api.programs.exercises.create.useMutation({ onSuccess: invalidate });
   const updateExercise = api.programs.exercises.update.useMutation({ onSuccess: invalidate });
@@ -72,7 +108,10 @@ export function useProgramDayBuilder(programDayId: string) {
       }
     },
     onSettled: async () => {
-      await utils.programs.days.get.invalidate({ programDayId });
+      await Promise.all([
+        utils.programs.days.get.invalidate({ programDayId }),
+        refreshMidSession(),
+      ]);
     },
   });
 
@@ -124,7 +163,10 @@ export function useProgramDayBuilder(programDayId: string) {
       }
     },
     onSettled: async () => {
-      await utils.programs.days.get.invalidate({ programDayId });
+      await Promise.all([
+        utils.programs.days.get.invalidate({ programDayId }),
+        refreshMidSession(),
+      ]);
     },
   });
 
@@ -159,7 +201,10 @@ export function useProgramDayBuilder(programDayId: string) {
       );
     },
     onSettled: async () => {
-      await utils.programs.days.get.invalidate({ programDayId });
+      await Promise.all([
+        utils.programs.days.get.invalidate({ programDayId }),
+        refreshMidSession(),
+      ]);
     },
   });
 
@@ -171,5 +216,21 @@ export function useProgramDayBuilder(programDayId: string) {
     reorderExercises,
     setSupersetGroup,
     setAlternatives,
+    /**
+     * `session-runtime/09` step 5 — the names the mid-session warning
+     * renders, or `[]` for nobody.
+     *
+     * `[]` while the query has never run and `[]` on a failed read, and
+     * both are deliberate: a warning that cannot be resolved must not
+     * become a second failure on a screen whose save already succeeded.
+     * Nothing here is allowed to block, refuse, or undo the coach's edit
+     * (`session-runtime/09` Approach step 6).
+     */
+    midSessionClientNames: dismissedWarning
+      ? []
+      : (midSession.data ?? []).map((client) => client.name),
+    dismissMidSessionWarning: () => {
+      setDismissedWarning(true);
+    },
   };
 }

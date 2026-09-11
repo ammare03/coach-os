@@ -26,8 +26,10 @@ import {
 } from '../../workouts/components/library/ExercisePickerSheet.tsx';
 import { ALTERNATIVE_BOUNDS } from '../alternatives.ts';
 import type { ProgramDayExercise } from '../api/programs.ts';
+import { ACTION_BAR_BOTTOM } from '../components/BuilderActionBar.tsx';
 import { DraggableExerciseList } from '../components/DraggableExerciseList.tsx';
 import { ExerciseTargetForm } from '../components/ExerciseTargetForm.tsx';
+import { MidSessionWarning } from '../components/MidSessionWarning.tsx';
 import { ReorderHintBar } from '../components/ReorderHintBar.tsx';
 import { SupersetActionBar } from '../components/SupersetActionBar.tsx';
 import { newTargetDraft, TARGET_BOUNDS, targetDraftFrom } from '../exercise-targets.ts';
@@ -81,6 +83,8 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
     reorderExercises,
     setSupersetGroup,
     setAlternatives,
+    midSessionClientNames,
+    dismissMidSessionWarning,
   } = useProgramDayBuilder(programDayId);
 
   const [isPickerOpen, setPickerOpen] = useState(false);
@@ -438,6 +442,21 @@ export function ProgramDayScreen({ programDayId, onBack, onOpenDay }: ProgramDay
         )}
       </ScrollView>
 
+      {/* `session-runtime/09` step 5. Docked above the bars rather than
+          placed at the top of the scroll: a coach who has just saved is
+          looking at the block they edited, which may be anywhere in a long
+          day, and a notice they scroll past is a notice they never read.
+          It lifts when a bar is up so the two never overlap. */}
+      <View
+        style={[
+          styles.midSessionDock,
+          { bottom: isReordering || isSelecting ? MID_SESSION_LIFTED : ACTION_BAR_BOTTOM },
+        ]}
+        pointerEvents="box-none"
+      >
+        <MidSessionWarning names={midSessionClientNames} onDismiss={dismissMidSessionWarning} />
+      </View>
+
       {isReordering ? <ReorderHintBar testID="reorder-hint" /> : null}
 
       {isSelecting ? (
@@ -646,7 +665,22 @@ function alternativesErrorMessage(error: unknown): string {
 /** One frozen empty set, so "not selecting" never allocates a new one per render. */
 const EMPTY_SELECTION: ReadonlySet<string> = new Set();
 
+/**
+ * Where the mid-session warning sits when a bar is already docked: clear of
+ * `ReorderHintBar`/`SupersetActionBar`'s 46pt minimum plus a gap. Derived
+ * from `ACTION_BAR_BOTTOM` rather than written as a literal, so the two
+ * move together if the dock ever does.
+ */
+const MID_SESSION_LIFTED = ACTION_BAR_BOTTOM + 56;
+
 const styles = StyleSheet.create({
+  // `box-none`, so the gap beside a short warning still scrolls the day
+  // underneath it and the card itself stays tappable.
+  midSessionDock: {
+    position: 'absolute',
+    left: spacing(12),
+    right: spacing(12),
+  },
   flex: { flex: 1 },
   grow: { flex: 1, minWidth: 0 },
   gutter: { paddingHorizontal: GUTTER },

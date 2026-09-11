@@ -48,6 +48,8 @@ export function buildSession(overrides: Partial<UpcomingSession> = {}): Upcoming
     updatedAt: new Date('2026-08-14T09:00:00.000Z'),
     dayName: 'Push A',
     dayNotes: 'Leave one in reserve',
+    // Not frozen: this fixture's default session has not started.
+    programSnapshot: null,
     exercises: [buildBlock()],
     ...overrides,
   };

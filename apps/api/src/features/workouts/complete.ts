@@ -90,6 +90,21 @@ import { appError } from '../../lib/app-error.ts';
 //     idempotent — it reads the rows rather than accumulating — so the one
 //     moment the server gets to look again, it does.
 //
+// (g) **The program snapshot is discarded here, in the same statement**
+//     (`./program-snapshot.ts`, DB§14.6, `session-runtime/09` step 7). Once
+//     the session is `completed` the frozen prescription has served its
+//     purpose and the `set_logs` are the record. Left behind, the column
+//     becomes a second copy of program history that will eventually
+//     disagree with `program_exercises` — and nothing would ever read it
+//     again to notice.
+//
+//     It rides the SET rather than a follow-up UPDATE for the reason (f)
+//     shares a transaction: a completion that cleared nothing, or a clear
+//     that completed nothing, are both states no later code is written to
+//     expect. An ABANDONED session keeps its snapshot until the 24-hour
+//     abandonment sweep — it may still be resumed, and resuming it must
+//     find the same prescription it started with.
+//
 //     ⚠️ This narrows the window; it does not close it. A set log that
 //     lands after a completion nothing ever replays leaves the stored total
 //     behind the rows. The systematic fix is `set-entry`'s: an insert into
@@ -177,6 +192,9 @@ export async function completeSession(
       .set({
         status: 'completed',
         completedAt: input.completedAt,
+        // Decision (g). Cleared by the statement that completes the
+        // session, not by a sweep afterwards.
+        programSnapshot: null,
         durationSeconds: sql`GREATEST(0, EXTRACT(EPOCH FROM (${completedAtSql} - ${schema.workoutSessions.startedAt}))::integer)`,
       })
       .where(

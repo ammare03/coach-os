@@ -151,6 +151,9 @@ export async function startAdHocSession(deps: StartAdHocSessionDeps): Promise<St
     // assignment and no program day.
     assignmentId: null,
     programDayId: null,
+    // ...and therefore nothing to freeze either (`session-runtime/09`).
+    // The logger falls back to the live copy, which is also empty.
+    programSnapshot: null,
     name: null,
     scheduledDate,
     status: 'in_progress',
