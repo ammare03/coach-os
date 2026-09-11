@@ -5,7 +5,16 @@
 // disappears, and P08 precedes P09 in build order.
 import { z } from 'zod';
 
-import { calendarDate, clientLocalId, id, strictObject } from './primitives.ts';
+import { calendarDate, clientLocalId, id, strictObject, weightKg } from './primitives.ts';
+
+/**
+ * The ceiling of a Postgres `smallint`, which is what `set_logs.set_number`
+ * and `set_logs.reps` are. Neither column carries a `CHECK`, so this is the
+ * only real bound either has — stated once rather than inlined twice, and
+ * deliberately not a product-flavoured number this file has no authority to
+ * choose (`./primitives.ts`'s own bounds-mirroring rule).
+ */
+const SMALLINT_MAX = 32_767;
 
 /**
  * The widest span `workouts.upcoming` will answer. Prefetch asks for two
@@ -254,3 +263,155 @@ export const heartbeatSessionInput = strictObject({
   workoutSessionId: id,
 });
 export type HeartbeatSessionInput = z.infer<typeof heartbeatSessionInput>;
+
+/**
+ * `workouts.logSet` — one logged set
+ * (`phase-09-workout-logger/set-entry/01`). The most frequently replayed
+ * mutation in the product, and the one DB§14.1's `ON CONFLICT (client_id,
+ * client_local_id)` upsert was written for: `set_logs.client_local_id` is
+ * NOT NULL behind a PLAIN unique index, so this is a true upsert and not
+ * the UPDATE that `startSessionInput` and `completeSessionInput` both have
+ * to be.
+ *
+ * Four decisions worth reading:
+ *
+ * - **The session is named by its `client_local_id`, not its server id** —
+ *   {@link completeSessionInput}'s decision, verbatim and for exactly its
+ *   reason. An ad-hoc session is created on the device
+ *   ({@link startAdHocSessionInput}), its row is born in the outbox, and
+ *   the flush loop writes no server id back, so a client who starts an
+ *   empty session in a gym basement has no `workout_sessions.id` to attach
+ *   a set to. The device's own `local_set_logs.session_local_id` already
+ *   references the parent's `client_local_id` for the same reason, so this
+ *   is also the only key the device actually holds at log time. The server
+ *   resolves it with a SELECT pinned to `ctx.user.clientProfileId`, which
+ *   cannot reach another client's row.
+ * - **No `clientId`.** The client is `ctx.user.clientProfileId` and never
+ *   the wire (`api-conventions` §3), the same shape as every other
+ *   procedure in this router.
+ * - **`weightKg` is optional and `reps` is not.** `set_has_measurement`
+ *   requires one of reps/duration/distance, and this task logs rep-based
+ *   sets only — a required `reps` satisfies the CHECK by construction
+ *   rather than by a `.refine()` guarding a case this input cannot
+ *   express. A missing weight is a bodyweight set, which is ordinary;
+ *   `estimated_1rm_kg` is then null rather than zero.
+ * - **`isWarmup` / `isFailure` are here before their UI is**
+ *   (`set-entry/04` builds the flags). Both columns already exist on
+ *   `set_logs`, both default `false`, and adding them later would mean a
+ *   second change to a payload shape that by then is sitting serialised in
+ *   real devices' outbox tables.
+ */
+export const logSetInput = strictObject({
+  /**
+   * `workout_sessions.client_local_id` — the parent session's own key, which
+   * is also `local_workout_sessions.client_local_id` and
+   * `local_set_logs.session_local_id` on the device. **Not** the mutation's
+   * key below: two different values with two different jobs, named apart so
+   * the flush loop's merge cannot collapse them into one.
+   */
+  sessionClientLocalId: clientLocalId,
+  /**
+   * A `training.exercises` row. A global catalogue reference, not a
+   * client-scoped resource — registered as such in
+   * `apps/api/src/trpc/authz/resource-fields.ts`.
+   */
+  exerciseId: id,
+  /** The mutation's own idempotency key, and the upsert's conflict target. */
+  clientLocalId,
+  /**
+   * 1-based position within the exercise. Upper bound is `smallint`'s own
+   * ceiling: DB§5.2 declares no `CHECK` here, and this file does not invent
+   * a bound the database chose not to have (see this module's siblings).
+   */
+  setNumber: z.number().int().min(1).max(SMALLINT_MAX),
+  /**
+   * Zero is permitted and meaningful — a failed attempt, which
+   * `set-entry/04`'s `isFailure` flag annotates. It contributes no volume
+   * and yields no 1RM estimate.
+   */
+  reps: z.number().int().min(0).max(SMALLINT_MAX),
+  /**
+   * Kilograms, always (`CLAUDE.md` §0). `null` is a bodyweight set — sent
+   * explicitly rather than omitted, because `set_logs` is a device-wins
+   * table (DB§14.3) and `offlineUpsert` only overwrites the columns the
+   * payload actually names. A re-send that dropped the key would leave the
+   * stored weight standing, which is the field-level merge DB§14.3 rules
+   * out and the exact way `set-entry/05` would fail to clear one.
+   */
+  weightKg: weightKg.nullable(),
+  /**
+   * The instant the client tapped confirm, captured on device and replayed
+   * verbatim by the outbox — never `new Date()` at flush time, which is
+   * `offline-sync` §10's "everything timestamped at reconnect". This one
+   * matters more than its siblings': `set_logs_client_exercise` is indexed
+   * `(client_id, exercise_id, logged_at DESC)` and is what answers "last
+   * time you did this exercise", so a session logged offline at 19:00 and
+   * synced at 21:00 would otherwise re-date every set in it and put the
+   * sets in the wrong local training day (`CLAUDE.md` §25.5).
+   *
+   * `workouts.claim` and `workouts.heartbeat` take no instant, and that is
+   * not the same case: both are live calls whose entire question is "now",
+   * and neither is ever queued. This one is queued by definition.
+   */
+  loggedAt: z.date(),
+  /** Ramp-up work. Excluded from volume and from the session's set count. */
+  isWarmup: z.boolean().default(false),
+  /** Taken to momentary failure. UI arrives in `set-entry/04`. */
+  isFailure: z.boolean().default(false),
+});
+export type LogSetInput = z.infer<typeof logSetInput>;
+
+/**
+ * `workouts.deleteSet` — withdrawing a set the client logged by mistake
+ * (`phase-09-workout-logger/set-entry/06`).
+ *
+ * The device defers this behind a five-second undo window and only enqueues
+ * it once that window closes untouched, so by the time this input exists the
+ * user has already seen the row go and has already declined to bring it
+ * back. That shapes every decision below: the server's job is to agree, not
+ * to re-adjudicate.
+ *
+ * Three decisions worth reading:
+ *
+ * - **The session is named by its `client_local_id`** — {@link logSetInput}'s
+ *   first decision, verbatim and for exactly its reason. An ad-hoc session
+ *   started offline has no `workout_sessions.id` for the device to send, and
+ *   the delete of one of its sets must work in the same basement the set was
+ *   logged in.
+ * - **`clientLocalId` is the SET's key, not a fresh one.** The device
+ *   re-sends the withdrawn set's own key
+ *   (`useDeleteSet.ts`'s `reuseClientLocalId`), which is what chains the
+ *   delete behind the log or edit it withdraws instead of racing it. It is
+ *   therefore the row selector here, unlike every sibling in this file where
+ *   it is only an idempotency key.
+ * - **No `setId`.** The server id is exactly the value a device that logged
+ *   offline does not have, and `(client_id, client_local_id)` is already
+ *   unique on `set_logs` — so the key the device holds identifies the row
+ *   precisely, within the caller's own scope and nowhere else.
+ */
+export const deleteSetInput = strictObject({
+  /**
+   * `workout_sessions.client_local_id` — the parent session's own key, and
+   * also `local_set_logs.session_local_id` on the device, which is where the
+   * device reads it from. **Not** the set's key below: two different values
+   * with two different jobs, named apart so the flush loop's merge cannot
+   * collapse them into one.
+   */
+  sessionClientLocalId: clientLocalId,
+  /**
+   * `set_logs.client_local_id` — the set being withdrawn, merged into the
+   * payload by the flush loop from the outbox row itself. See this schema's
+   * second decision: here it selects the row rather than merely
+   * de-duplicating the call.
+   */
+  clientLocalId,
+  /**
+   * The instant the undo window closed, captured on device and replayed
+   * verbatim by the outbox — never `new Date()` at flush time, which is
+   * `offline-sync` §10's "everything timestamped at reconnect". A set
+   * withdrawn at 19:00 in a basement and synced at 21:00 was withdrawn at
+   * 19:00, and `set_logs.deleted_at` is what a later audit or export reads.
+   */
+  deletedAt: z.date(),
+});
+export type DeleteSetInput = z.infer<typeof deleteSetInput>;

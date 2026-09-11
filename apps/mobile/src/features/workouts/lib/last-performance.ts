@@ -42,9 +42,44 @@ export interface LastPerformance {
   loggedAt: Date;
 }
 
+/** The same set, carrying the number it was logged under. `set-entry/03`. */
+export interface PreviousSet extends LastPerformance {
+  setNumber: number;
+}
+
+/**
+ * The previous session's performance of one exercise — `set-entry/03`.
+ *
+ * `null` from a picker means the client has never logged this exercise.
+ * A present object with no entry for set 4 means the previous session
+ * existed and simply had no set 4. Those are different sentences on screen
+ * ("" versus "no set 4 last time"), so they are different values here.
+ */
+export interface PreviousSession {
+  /** The newest working set of that session — what the exercise-level target line prints. */
+  last: LastPerformance;
+  /**
+   * Every working set of that session, keyed by its own `set_number`.
+   *
+   * **Keyed, never indexed.** A previous session with a deleted set 2, or
+   * one whose rows arrive out of order, aligns correctly here and would
+   * align wrong under positional matching — which is the failure
+   * `set-entry/03`'s Risks section names.
+   */
+  bySetNumber: ReadonlyMap<number, PreviousSet>;
+}
+
 /** A set from either source, normalised before the pick. */
 export interface LastPerformanceCandidate {
   exerciseId: string;
+  /**
+   * `local_workout_sessions.client_local_id` of the session this set belongs
+   * to. One namespace across both sources — `local_set_logs.session_local_id`
+   * references that column — which is what lets a set present in both be
+   * recognised as one set rather than two.
+   */
+  sessionKey: string;
+  setNumber: number;
   weightKg: number | null;
   reps: number | null;
   isWarmup: boolean;
@@ -60,7 +95,7 @@ export interface LastPerformanceCandidate {
 export const LAST_PERFORMANCE_SCAN_LIMIT = 40;
 
 /**
- * The most recent working set of `exerciseId`, or `null`.
+ * Whether a candidate is a working set of `exerciseId` at all.
  *
  * Three filters, each of which changes what a client reads:
  *
@@ -69,26 +104,80 @@ export const LAST_PERFORMANCE_SCAN_LIMIT = 40;
  * - **A set with neither a weight nor a rep count is excluded.** A timed
  *   carry or a distance row is a real `set_logs` row, and "last time: ×"
  *   is not a sentence.
- * - **Newest by `logged_at`, not by set number or session date.** Two
- *   sessions can share a day, and an offline session syncs late.
+ * - The exercise has to match; a day may carry two different lifts.
  */
-export function pickLastPerformance(
+function isWorkingSetOf(candidate: LastPerformanceCandidate, exerciseId: string): boolean {
+  if (candidate.exerciseId !== exerciseId) return false;
+  if (candidate.isWarmup) return false;
+  if (candidate.weightKg === null && candidate.reps === null) return false;
+  return true;
+}
+
+/**
+ * The previous session of `exerciseId`, resolved per set number, or `null`.
+ *
+ * **Which session.** The one holding the newest working set by `logged_at`
+ * — not by set number and not by session date, because two sessions can
+ * share a day and an offline session syncs late. That is the same set
+ * `pickLastPerformance` has always returned, so the exercise-level line and
+ * the per-set lines can never describe two different days.
+ *
+ * **Why only that session.** Taking each set number's own newest occurrence
+ * independently would assemble a session the client never trained — set 1
+ * from Monday, set 3 from a fortnight ago. "Last time" is one workout.
+ */
+export function pickPreviousSession(
   candidates: readonly LastPerformanceCandidate[],
   exerciseId: string,
-): LastPerformance | null {
+): PreviousSession | null {
   let best: LastPerformanceCandidate | null = null;
 
   for (const candidate of candidates) {
-    if (candidate.exerciseId !== exerciseId) continue;
-    if (candidate.isWarmup) continue;
-    if (candidate.weightKg === null && candidate.reps === null) continue;
+    if (!isWorkingSetOf(candidate, exerciseId)) continue;
     if (best === null || candidate.loggedAt.getTime() > best.loggedAt.getTime()) {
       best = candidate;
     }
   }
 
   if (best === null) return null;
-  return { weightKg: best.weightKg, reps: best.reps, loggedAt: best.loggedAt };
+  const session = best.sessionKey;
+
+  const bySetNumber = new Map<number, PreviousSet>();
+  for (const candidate of candidates) {
+    if (!isWorkingSetOf(candidate, exerciseId)) continue;
+    if (candidate.sessionKey !== session) continue;
+
+    // One set can surface from both sources at once — the device's own row
+    // and the synced copy that came back through history. Newest
+    // `logged_at` wins, and on a tie the earlier candidate keeps the slot:
+    // the unsynced reader runs first, so the device's own value stands,
+    // which is `offline-sync` §5's device-wins rule for `set_logs`.
+    const existing = bySetNumber.get(candidate.setNumber);
+    if (existing && existing.loggedAt.getTime() >= candidate.loggedAt.getTime()) continue;
+
+    bySetNumber.set(candidate.setNumber, {
+      setNumber: candidate.setNumber,
+      weightKg: candidate.weightKg,
+      reps: candidate.reps,
+      loggedAt: candidate.loggedAt,
+    });
+  }
+
+  return {
+    last: { weightKg: best.weightKg, reps: best.reps, loggedAt: best.loggedAt },
+    bySetNumber,
+  };
+}
+
+/**
+ * The most recent working set of `exerciseId`, or `null` — the
+ * exercise-level half of `session-runtime/04`'s target line.
+ */
+export function pickLastPerformance(
+  candidates: readonly LastPerformanceCandidate[],
+  exerciseId: string,
+): LastPerformance | null {
+  return pickPreviousSession(candidates, exerciseId)?.last ?? null;
 }
 
 export interface ReadLastPerformanceOptions {
@@ -107,16 +196,29 @@ export interface ReadLastPerformanceOptions {
  * DB§22's query, against the device. Throws only if SQLite itself fails —
  * a single unreadable payload is skipped, never propagated, because one
  * corrupt cache row must not cost a client their target line mid-set.
+ *
+ * One pass serves both the exercise-level line and every set row's own
+ * line: the per-set map is grouped out of the candidates already in memory,
+ * never by going back to SQLite a second time per row
+ * (`screen-composition`'s waterfall rule).
  */
-export async function readLastPerformance(
+export async function readPreviousSession(
   db: LocalDb,
   options: ReadLastPerformanceOptions,
-): Promise<LastPerformance | null> {
+): Promise<PreviousSession | null> {
   const candidates = [
     ...(await readUnsyncedCandidates(db, options)),
     ...(await readHistoryCandidates(db, options)),
   ];
-  return pickLastPerformance(candidates, options.exerciseId);
+  return pickPreviousSession(candidates, options.exerciseId);
+}
+
+/** The exercise-level half alone, for a caller that needs nothing else. */
+export async function readLastPerformance(
+  db: LocalDb,
+  options: ReadLastPerformanceOptions,
+): Promise<LastPerformance | null> {
+  return (await readPreviousSession(db, options))?.last ?? null;
 }
 
 /** Source (b): sets this device logged in some OTHER local session. */
@@ -127,6 +229,8 @@ async function readUnsyncedCandidates(
   const rows = await db
     .select({
       exerciseId: localSetLogs.exerciseId,
+      sessionLocalId: localSetLogs.sessionLocalId,
+      setNumber: localSetLogs.setNumber,
       weightKg: localSetLogs.weightKg,
       reps: localSetLogs.reps,
       isWarmup: localSetLogs.isWarmup,
@@ -142,6 +246,11 @@ async function readUnsyncedCandidates(
 
   return rows.map((row) => ({
     exerciseId: row.exerciseId,
+    // Already `local_workout_sessions.client_local_id` — the column is a
+    // foreign key onto it, so no translation is needed to share a namespace
+    // with source (a).
+    sessionKey: row.sessionLocalId,
+    setNumber: row.setNumber,
     weightKg: row.weightKg,
     reps: row.reps,
     isWarmup: row.isWarmup,
@@ -176,6 +285,7 @@ async function readHistoryCandidates(
 ): Promise<LastPerformanceCandidate[]> {
   const rows = await db
     .select({
+      clientLocalId: localWorkoutSessions.clientLocalId,
       scheduledDate: localWorkoutSessions.scheduledDate,
       payloadJson: localWorkoutSessions.payloadJson,
     })
@@ -191,7 +301,10 @@ async function readHistoryCandidates(
 
     for (const set of setLogsIn(row.payloadJson)) {
       if (set.exerciseId !== options.exerciseId) continue;
-      found.push(set);
+      // The row's own key, not the payload's `workoutSessionId`: that is a
+      // server id, and `local_set_logs.session_local_id` is a local one.
+      // Grouping across the two sources only works in one namespace.
+      found.push({ ...set, sessionKey: row.clientLocalId });
     }
   }
 
@@ -207,7 +320,7 @@ async function readHistoryCandidates(
  * payload degrades the same way, which matches `logger-position.ts`'s
  * treatment of a corrupted `meta` value.
  */
-function setLogsIn(payloadJson: string): LastPerformanceCandidate[] {
+function setLogsIn(payloadJson: string): PayloadSet[] {
   let parsed: unknown;
   try {
     parsed = parseHistorySessionPayload(payloadJson);
@@ -222,11 +335,15 @@ function setLogsIn(payloadJson: string): LastPerformanceCandidate[] {
   return setLogs.filter(isCandidateSet);
 }
 
-function isCandidateSet(value: unknown): value is LastPerformanceCandidate {
+/** A candidate minus the one field a payload cannot supply — its caller adds it. */
+type PayloadSet = Omit<LastPerformanceCandidate, 'sessionKey'>;
+
+function isCandidateSet(value: unknown): value is PayloadSet {
   if (typeof value !== 'object' || value === null) return false;
   const set = value as Record<string, unknown>;
   return (
     typeof set.exerciseId === 'string' &&
+    typeof set.setNumber === 'number' &&
     typeof set.isWarmup === 'boolean' &&
     set.loggedAt instanceof Date &&
     (set.weightKg === null || typeof set.weightKg === 'number') &&

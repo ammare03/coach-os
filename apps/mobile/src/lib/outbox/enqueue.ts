@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { parse as superjsonParse, stringify as superjsonStringify } from 'superjson';
 import { uuidv7 } from 'uuidv7';
 
-import { getLocalDb } from '../../db/client.ts';
+import { getLocalDb, type LocalDb } from '../../db/client.ts';
 import { outbox } from '../../db/schema/sync.ts';
 
 // DB§14.1's rule, made structural: every offline-capable mutation carries a
@@ -17,6 +17,28 @@ import { outbox } from '../../db/schema/sync.ts';
 // The `outbox/no-direct-outbox-write` lint rule
 // (packages/config/eslint-rules) backs this up, failing any outbox write —
 // table import or hand-written SQL — outside this folder.
+//
+// `reuseClientLocalId` is the one, narrow exception, added by
+// `phase-09-workout-logger/set-entry/05` for correcting an already-logged
+// row. It does not weaken the rule above, because the rule is about
+// *regeneration*: the failure it prevents is a fresh key where an existing
+// one belonged, which turns one set into one per attempt. Naming an existing
+// key is the opposite operation — it is what makes the server's
+// `ON CONFLICT (client_id, client_local_id)` an UPDATE rather than a second
+// row (task 05 Risks), and there is no other way to express an edit. Three
+// things keep the exception honest:
+//
+//   • It is **not** called `clientLocalId`. A stray `clientLocalId` property
+//     is still ignored, and there is still no parameter a retry path could
+//     fill with a fresh uuid by reflex. Opting in means typing a name that
+//     says what it does.
+//   • It is **validated**. A key that is not a uuid would fail
+//     `logSetInput.clientLocalId` on every attempt until the row hit the
+//     ceiling and surfaced as "couldn't sync"; throwing here names the real
+//     bug at the call site instead.
+//   • The re-send is **ordered behind** whatever already carries that key —
+//     see `findLatestOutboxIdFor` below. Without that it would be a sibling,
+//     and siblings flush concurrently (rule 4).
 //
 // Known future extension, deliberately NOT built here: DB§14.5 mechanism 1
 // derives a *deterministic* `client_local_id` (uuidv5) for a scheduled
@@ -75,6 +97,21 @@ export interface EnqueueMutationArgs<TPayload> {
   payload: TPayload;
   /** The `outbox.id` of a row that must sync first — a session before its sets (DB§14.2). */
   dependsOn?: string;
+  /**
+   * Re-send under an idempotency key that already exists, turning the
+   * server's upsert into an UPDATE of that row rather than a second one.
+   *
+   * Only for correcting or withdrawing something already logged — pass the
+   * key the original write returned (`set-entry/05`, `set-entry/06`). Never
+   * pass a freshly generated value: that is the exact failure the absence of
+   * a `clientLocalId` parameter exists to prevent (`offline-sync` §3).
+   *
+   * When a row carrying this key is still in the outbox, the new row is
+   * chained behind it and any `dependsOn` given here is superseded — the
+   * older row already sits behind the caller's intended parent, so ordering
+   * is preserved transitively.
+   */
+  reuseClientLocalId?: string;
 }
 
 export interface EnqueuedMutation {
@@ -105,6 +142,31 @@ export function deserializeOutboxPayload(payloadJson: string): unknown {
   return superjsonParse(payloadJson);
 }
 
+/** Any uuid version: DB§14.5 mechanism 1 derives some keys as uuidv5, not v7. */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * The newest outbox row already carrying `clientLocalId`, or null.
+ *
+ * Newest by `outbox.id`, not by `created_at`: every id here is a uuidv7
+ * generated three lines below, so lexicographic order IS creation order —
+ * and unlike `created_at`, two rows queued in the same millisecond still
+ * compare. Resolved in JS rather than with `ORDER BY … LIMIT 1` so the
+ * answer does not depend on SQLite's row order for the ties.
+ */
+function findLatestOutboxIdFor(db: LocalDb, clientLocalId: string): string | null {
+  const rows = db
+    .select({ id: outbox.id })
+    .from(outbox)
+    .where(eq(outbox.clientLocalId, clientLocalId))
+    .all();
+
+  return rows.reduce<string | null>(
+    (latest, row) => (latest === null || row.id > latest ? row.id : latest),
+    null,
+  );
+}
+
 /**
  * Queues one offline mutation and returns the two ids it created.
  *
@@ -122,11 +184,26 @@ export async function enqueueMutation<TPayload>({
   procedure,
   payload,
   dependsOn,
+  reuseClientLocalId,
 }: EnqueueMutationArgs<TPayload>): Promise<EnqueuedMutation> {
-  const clientLocalId = uuidv7();
+  if (reuseClientLocalId !== undefined && !UUID_PATTERN.test(reuseClientLocalId)) {
+    throw new Error(`enqueueMutation: reuseClientLocalId "${reuseClientLocalId}" is not a uuid`);
+  }
+
+  const clientLocalId = reuseClientLocalId ?? uuidv7();
   const outboxId = uuidv7();
   const now = Date.now();
   const db = await getLocalDb();
+
+  // A re-send is never a sibling of the row it corrects. Two rows keyed the
+  // same flushing concurrently means the original can land LAST and upsert
+  // the pre-edit values back over the correction — a number the client never
+  // entered, silently, on the coach's screen. Chaining is the mechanism
+  // `depends_on` already exists for (DB§14.2), so use it rather than
+  // inventing a second ordering rule.
+  const supersedes =
+    reuseClientLocalId === undefined ? null : findLatestOutboxIdFor(db, reuseClientLocalId);
+  const parentId = supersedes ?? dependsOn;
 
   // The `depends_on` foreign key is declared in `db/schema/sync.ts` but SQLite
   // does not enforce one unless `PRAGMA foreign_keys = ON`, which this
@@ -137,10 +214,10 @@ export async function enqueueMutation<TPayload>({
   // the worst outcome this subsystem has (`offline-sync` §4). Failing at the
   // call site instead turns it into an obvious bug in the feature that
   // mis-wired the chain.
-  if (dependsOn !== undefined) {
-    const parent = db.select({ id: outbox.id }).from(outbox).where(eq(outbox.id, dependsOn)).get();
+  if (parentId !== undefined && parentId !== null) {
+    const parent = db.select({ id: outbox.id }).from(outbox).where(eq(outbox.id, parentId)).get();
     if (!parent) {
-      throw new Error(`enqueueMutation: dependsOn ${dependsOn} is not an outbox id`);
+      throw new Error(`enqueueMutation: dependsOn ${parentId} is not an outbox id`);
     }
   }
 
@@ -160,7 +237,7 @@ export async function enqueueMutation<TPayload>({
       procedure,
       payloadJson: serializeOutboxPayload(payload),
       clientLocalId,
-      dependsOn: dependsOn ?? null,
+      dependsOn: parentId ?? null,
       createdAt: now,
       attempts: 0,
       nextAttemptAt: now,

@@ -1,4 +1,4 @@
-import { ThemeProvider, useTheme } from '@coachos/ui';
+import { ThemeProvider, ToastProvider, useTheme } from '@coachos/ui';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
@@ -205,40 +205,45 @@ export default function RootLayout() {
                 the root: it starts the bootstrap, and it holds the splash
                 until the bootstrap has answered. */}
             <ThemeProvider>
-              <BottomSheetModalProvider>
-                {/* `style="light"` — light content (icons/text) for CoachOS's
+              {/* Inside Theme because the toast host reads tokens; outside the
+                  sheet provider so a toast is never clipped by a sheet.
+                  `set-entry/06` is its first real consumer — `useUndoToast`
+                  throws without it. */}
+              <ToastProvider>
+                <BottomSheetModalProvider>
+                  {/* `style="light"` — light content (icons/text) for CoachOS's
                     dark chrome, explicit rather than `"auto"` so it never
                     follows the device's own light/dark setting. */}
-                <StatusBar style="light" />
-                {schemaVersionGate.phase === 'confirm-required' ? (
-                  // `local-database/04`. The one state that replaces
-                  // `<Stack>` outright rather than sitting over it: an
-                  // incompatible local schema means no route is safe to
-                  // mount, so nothing below this branch renders. The plain
-                  // background matches `<ThemeProvider>`'s own default —
-                  // no flash between the native splash (already hidden,
-                  // since `isReady` no longer waits on `'confirm-required'`)
-                  // and this dialog appearing.
-                  <View
-                    style={{ flex: 1, backgroundColor: theme.colors.bg.DEFAULT }}
-                    testID="schema-version-reset-backdrop"
-                  >
-                    <SchemaVersionResetDialog
-                      isOpen
-                      counts={schemaVersionGate.counts}
-                      isClearing={schemaVersionGate.isClearing}
-                      onConfirm={schemaVersionGate.confirm}
-                    />
-                  </View>
-                ) : (
-                  <>
-                    {/* No screen in this app uses the native header yet —
+                  <StatusBar style="light" />
+                  {schemaVersionGate.phase === 'confirm-required' ? (
+                    // `local-database/04`. The one state that replaces
+                    // `<Stack>` outright rather than sitting over it: an
+                    // incompatible local schema means no route is safe to
+                    // mount, so nothing below this branch renders. The plain
+                    // background matches `<ThemeProvider>`'s own default —
+                    // no flash between the native splash (already hidden,
+                    // since `isReady` no longer waits on `'confirm-required'`)
+                    // and this dialog appearing.
+                    <View
+                      style={{ flex: 1, backgroundColor: theme.colors.bg.DEFAULT }}
+                      testID="schema-version-reset-backdrop"
+                    >
+                      <SchemaVersionResetDialog
+                        isOpen
+                        counts={schemaVersionGate.counts}
+                        isClearing={schemaVersionGate.isClearing}
+                        onConfirm={schemaVersionGate.confirm}
+                      />
+                    </View>
+                  ) : (
+                    <>
+                      {/* No screen in this app uses the native header yet —
                         every route builds its own chrome (the (auth)
                         group's glass nav bar, this placeholder's plain
                         body). `phase-05-app-shell/router-skeleton/`
                         revisits this once a screen actually needs one. */}
-                    <Stack screenOptions={{ headerShown: false }} />
-                    {/* `session-runtime/06`. Renders nothing; it re-enters a
+                      <Stack screenOptions={{ headerShown: false }} />
+                      {/* `session-runtime/06`. Renders nothing; it re-enters a
                         session the client was mid-way through when the OS
                         killed the app. Deliberately BEFORE the replay below:
                         sibling effects flush in tree order, so an explicit
@@ -251,25 +256,26 @@ export default function RootLayout() {
                         recovery read that beat `local-database/04`'s check
                         could resume into a row it is about to drop. The
                         prop is the gate. */}
-                    <SessionRecoveryRedirect
-                      isLocalDatabaseReady={schemaVersionGate.phase === 'ready'}
-                    />
-                    {/* `deep-linking/04`. Renders nothing; it replays a deep
+                      <SessionRecoveryRedirect
+                        isLocalDatabaseReady={schemaVersionGate.phase === 'ready'}
+                      />
+                      {/* `deep-linking/04`. Renders nothing; it replays a deep
                         link parked at cold start, once the gate has resolved.
                         Deliberately AFTER `<Stack>` — sibling effects flush in
                         tree order, and the gate's redirect lives inside that
                         subtree, so the replay has to run last or be overwritten
                         by it. */}
-                    <PendingDeepLinkReplay />
-                    {/* `guardian-consent/06`. Also renders nothing: it installs
+                      <PendingDeepLinkReplay />
+                      {/* `guardian-consent/06`. Also renders nothing: it installs
                         the app-wide `GUARDIAN_CONSENT_PENDING` redirect, which
                         `lib/query/client.ts` cannot install itself because it is
                         constructed before any navigator exists. Same position as
                         the replay above, and for the same reason. */}
-                    <GuardianConsentRedirect />
-                  </>
-                )}
-              </BottomSheetModalProvider>
+                      <GuardianConsentRedirect />
+                    </>
+                  )}
+                </BottomSheetModalProvider>
+              </ToastProvider>
             </ThemeProvider>
           </TRPCProvider>
         </QueryClientProvider>

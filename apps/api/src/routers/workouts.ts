@@ -2,6 +2,8 @@ import { workouts as workoutsSchemas } from '@coachos/schemas';
 
 import { claimSession, heartbeatSession } from '../features/workouts/claim.ts';
 import { completeSession } from '../features/workouts/complete.ts';
+import { deleteSet } from '../features/workouts/delete-set.ts';
+import { logSet } from '../features/workouts/log-set.ts';
 import { startAdHocSession } from '../features/workouts/start-ad-hoc.ts';
 import { startSession } from '../features/workouts/start.ts';
 import { listUpcomingWorkouts } from '../features/workouts/upcoming.ts';
@@ -78,6 +80,52 @@ export const workoutsRouter = router({
       }
       return completeSession(ctx.db, ctx.user.clientProfileId, input);
     }),
+
+  // One logged set (`set-entry/01`). The most frequently replayed mutation
+  // in the product, and the only one in this router that is a real
+  // `ON CONFLICT` upsert rather than a status transition — `set_logs.
+  // client_local_id` is NOT NULL behind a plain unique index, so there is no
+  // null-keyed row for the conflict target to miss
+  // (`../features/workouts/log-set.ts` decision (a)).
+  //
+  // No `ownsResource`, and it is `complete` above's reasoning verbatim: the
+  // session is named by its `client_local_id` because an ad-hoc session
+  // started offline has no server id to name, the client is
+  // `ctx.user.clientProfileId` rather than the wire, and the SELECT and the
+  // INSERT are both pinned to it, so no caller-supplied id resolves to a row
+  // another client could own. `sessionClientLocalId` and `exerciseId` are
+  // both registered in `NON_RESOURCE_ID_FIELDS` with their reasons, so the
+  // enumeration test asserts this choice rather than missing it.
+  logSet: clientProcedure.input(workoutsSchemas.logSetInput).mutation(({ ctx, input }) => {
+    if (ctx.user.clientProfileId === null) {
+      throw new Error('workouts.logSet: authenticated client has no clientProfileId');
+    }
+    return logSet(ctx.db, ctx.user.clientProfileId, input);
+  }),
+
+  // Withdrawing a logged set (`set-entry/06`). A SOFT delete —
+  // `set_logs.deleted_at`, which `set_logs_client_exercise` is already
+  // partial on — never a row removal
+  // (`../features/workouts/delete-set.ts` decision (a)).
+  //
+  // No `ownsResource`, and it is `logSet` above's reasoning verbatim: the
+  // only ids in the input are the client's own keys — the session's
+  // `client_local_id` and the set's — and the SELECT and the UPDATE are
+  // both pinned to `ctx.user.clientProfileId`, so neither resolves to a row
+  // another client could own. Both fields are registered in
+  // `NON_RESOURCE_ID_FIELDS`, so the enumeration test asserts this choice.
+  //
+  // The one place this diverges from its siblings: a set that is not there
+  // answers `{ outcome: 'not_found' }` rather than throwing. The device has
+  // already committed the withdrawal locally, and a 404 that retries ten
+  // times would tell the client "couldn't sync" about work the server
+  // already agrees is gone (decision (d)).
+  deleteSet: clientProcedure.input(workoutsSchemas.deleteSetInput).mutation(({ ctx, input }) => {
+    if (ctx.user.clientProfileId === null) {
+      throw new Error('workouts.deleteSet: authenticated client has no clientProfileId');
+    }
+    return deleteSet(ctx.db, ctx.user.clientProfileId, input);
+  }),
 
   // DB§14.5 mechanism 3 (`session-runtime/08`). Called live, at the moment
   // the client taps Start and BEFORE the logger opens — never queued in the

@@ -17,8 +17,13 @@ import { wipeLocalDatabase } from './wipe.ts';
  * added/removed/retyped, an index changed, a new table. This constant is
  * the ONE thing a future schema change must remember to update; everything
  * else in this file reacts to it automatically.
+ *
+ * 3 — `local_set_logs.is_failure` added (`set-entry/04`). The bootstrap DDL
+ * is `CREATE TABLE IF NOT EXISTS`, so a device already holding a v2 table
+ * would never gain the column and every read naming it would throw. The
+ * drop-and-refetch below is the only thing that installs it.
  */
-export const EXPECTED_SCHEMA_VERSION = 2;
+export const EXPECTED_SCHEMA_VERSION = 3;
 
 const SCHEMA_VERSION_META_KEY = 'schema_version';
 
