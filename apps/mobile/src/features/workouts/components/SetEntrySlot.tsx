@@ -14,6 +14,7 @@ import { useExerciseTarget } from '../hooks/useExerciseTarget.ts';
 import { useLogSet } from '../hooks/useLogSet.ts';
 import type { ExercisePage } from '../lib/exercise-pages.ts';
 
+import { NearestWeightLine, PlateStack } from './PlateStack.tsx';
 import { SET_ENTRY_COPY, SetEntryRow, speakLoad, toDisplayWeight } from './SetEntryRow.tsx';
 import { SetList } from './SetList.tsx';
 import type { LoggedSetView } from './SetRow.tsx';
@@ -143,11 +144,20 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
 
   const setNumber = highestSetNumber(logged) + inFlight + 1;
 
+  // `set-entry/02`. Both fields ride in on the payload the pager already
+  // holds — `workouts.upcoming` returns the exercise cache beside the
+  // prescription — so the plate block costs no second read
+  // (`screen-composition`'s waterfall rule). A page whose library row
+  // missed (a cold cache mid-gym) degrades to the column defaults rather
+  // than refusing to render.
+  const exercise = payload?.exercises.find((candidate) => candidate.id === exerciseId);
+  const equipment = exercise?.equipment ?? null;
+
   // The increment is native to the unit — 2.5kg converted to lb is an
-  // unusable 5.5lb step. `resolveWeightStepKg` is `set-entry/02`'s seam:
-  // once `exercises.default_increment_kg` reaches this page, it replaces the
-  // `null`, and nothing else here changes.
-  const weightStep = unit === 'kg' ? resolveWeightStepKg(null) : weightStepFor(unit);
+  // unusable 5.5lb step. `resolveWeightStepKg` owns the 2.5 default and the
+  // zero/negative cases, so nothing here re-checks them (DB§5.2).
+  const weightStep =
+    unit === 'kg' ? resolveWeightStepKg(exercise?.defaultIncrementKg) : weightStepFor(unit);
 
   const last = history.kind === 'ready' ? history.last : null;
   const lastInSession = logged.length === 0 ? null : logged[logged.length - 1];
@@ -191,6 +201,19 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
       setDraft({ key: draftKey, weight, reps: next });
     },
     [draftKey, weight],
+  );
+
+  // The plate block reads kilograms and the stepper holds the client's
+  // display unit, so the edge is crossed here and in `handleConfirm` and
+  // nowhere else (`CLAUDE.md` §0). A stepper reading 0 resolves to a bare
+  // bar the ask cannot reach, which `resolvePlateStack` suppresses.
+  const weightKg = parseWeight(weight, unit);
+
+  const handleSelectNearest = useCallback(
+    (nextKg: number) => {
+      setDraft({ key: draftKey, weight: toDisplayWeight(nextKg, unit) ?? 0, reps });
+    },
+    [draftKey, unit, reps],
   );
 
   const handleConfirm = useCallback(() => {
@@ -301,6 +324,21 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
           onWeightChange={handleWeightChange}
           onRepsChange={handleRepsChange}
           onConfirm={handleConfirm}
+          // Left of the band; `PreviousSetLine` takes the right in task 03.
+          // `PlateStack` draws an empty view rather than nothing when it
+          // does not apply, so that slot keeps its place under
+          // `space-between`.
+          contextLeading={<PlateStack equipment={equipment} weightKg={weightKg} />}
+          // Mounted unconditionally — it returns null unless the weight is
+          // off the plate grid, and that is the one case the card is
+          // allowed to grow for (205 → 229, resolved in one tap).
+          contextBelow={
+            <NearestWeightLine
+              equipment={equipment}
+              weightKg={weightKg}
+              onSelectNearest={handleSelectNearest}
+            />
+          }
           testID="set-entry-row"
         />
       </View>

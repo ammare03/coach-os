@@ -113,6 +113,17 @@ export interface SetEntryRowProps {
    * band, including its "no set 4 last time" absent case.
    */
   contextTrailing?: ReactNode;
+  /**
+   * **Seam — `set-entry/02`'s `NearestWeightLine`.** A sibling BELOW the
+   * band, not a third occupant of it: the band is `space-between`, so a
+   * child there would sit beside the plates rather than under them.
+   *
+   * The one place in this file's header that is allowed to be conditional —
+   * an occupant here takes the card to 229 and resolves in one tap. The
+   * +24px is the line's own `marginTop` and `minHeight`; this slot declares
+   * no size, so an empty seam leaves the card at exactly 205.
+   */
+  contextBelow?: ReactNode;
   testID?: string;
 }
 
@@ -129,6 +140,7 @@ export function SetEntryRow({
   headTrailing,
   contextLeading,
   contextTrailing,
+  contextBelow,
   testID,
 }: SetEntryRowProps) {
   const theme = useTheme();
@@ -155,7 +167,7 @@ export function SetEntryRow({
           {headTrailing}
         </View>
 
-        <View style={styles.weight}>
+        <View style={styles.weight} testID="set-entry-weight-band">
           <NumberStepper
             value={weight}
             onChange={onWeightChange}
@@ -182,7 +194,11 @@ export function SetEntryRow({
           <View style={styles.contextSlotEnd}>{contextTrailing}</View>
         </View>
 
-        <View style={styles.action}>
+        {/* Unstyled on purpose — see `contextBelow`. Present even when empty
+            so the seam is one node whether or not it is occupied. */}
+        <View testID="set-entry-below">{contextBelow}</View>
+
+        <View style={styles.action} testID="set-entry-action">
           <View style={styles.reps}>
             <NumberStepper
               value={reps}
