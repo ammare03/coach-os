@@ -1,9 +1,15 @@
-import { recomputeSessionVolume, schema, type DbClient } from '@coachos/db';
+import {
+  recomputePersonalRecords,
+  recomputeSessionVolume,
+  schema,
+  type DbClient,
+} from '@coachos/db';
 import type { workouts as workoutsSchemas } from '@coachos/schemas';
 import { and, eq } from 'drizzle-orm';
 import type { z } from 'zod';
 
 import { appError } from '../../lib/app-error.ts';
+import type { RecomputePersonalRecords } from '../../lib/pr-detection.ts';
 
 import type { RecomputeVolume } from './log-set.ts';
 
@@ -83,12 +89,20 @@ import type { RecomputeVolume } from './log-set.ts';
 //     Without this, withdrawing a set from a finished session leaves
 //     `total_volume_kg` overstating work the client says they did not do.
 //
-//     Nothing else on `set_logs` is derived today. `personal_records` is
-//     still `recomputePersonalRecords`'s deliberate placeholder — it writes
-//     nothing, `./log-set.ts` does not call it, and re-deriving PRs after a
-//     withdrawal belongs to `personal-records/01` along with detecting them
-//     in the first place. `estimated_1rm_kg` is per-row and needs no
-//     recompute; the row it sits on is simply no longer counted.
+//     **`personal_records` is re-derived here too**, closing the gap this
+//     decision used to record as deferred. A record credited to a set the
+//     client says they never did outlives the FK's `ON DELETE SET NULL`,
+//     because a withdrawal is a soft delete and the FK never fires — the
+//     row would keep pointing at it, and the client would keep being shown
+//     a number they had just taken back. `recomputePersonalRecords` already
+//     excludes `deleted_at IS NOT NULL` (its own decision (b)), so the
+//     withdrawal and the re-derivation agree by construction, exactly as
+//     the volume does. Unconditional, unlike the volume: a record is not
+//     scoped to one session, so whether THIS session is complete says
+//     nothing about whether the withdrawn set held one.
+//
+//     `estimated_1rm_kg` is per-row and needs no recompute; the row it sits
+//     on is simply no longer counted.
 
 export type DeleteSetInput = z.infer<typeof workoutsSchemas.deleteSetInput>;
 
@@ -109,6 +123,7 @@ export async function deleteSet(
   clientProfileId: string,
   input: DeleteSetInput,
   recompute: RecomputeVolume = recomputeSessionVolume,
+  recomputeRecords: RecomputePersonalRecords = recomputePersonalRecords,
 ): Promise<DeleteSetResult> {
   return db.transaction(async (tx) => {
     // Decision (b). `client_id` is from `ctx.user`, never the wire.
@@ -162,6 +177,10 @@ export async function deleteSet(
       .returning({
         id: schema.setLogs.id,
         workoutSessionId: schema.setLogs.workoutSessionId,
+        // Read back rather than taken from the input: `deleteSetInput`
+        // carries no `exerciseId`, and the stored row is the only thing
+        // that knows which exercise's records this withdrawal disturbs.
+        exerciseId: schema.setLogs.exerciseId,
         deletedAt: schema.setLogs.deletedAt,
       });
 
@@ -174,6 +193,9 @@ export async function deleteSet(
     if (session.status === 'completed') {
       await recompute(tx, session.id);
     }
+
+    // Decision (e)'s second half, same transaction, same reason.
+    await recomputeRecords(tx, clientProfileId, row.exerciseId);
 
     return {
       outcome: 'deleted',

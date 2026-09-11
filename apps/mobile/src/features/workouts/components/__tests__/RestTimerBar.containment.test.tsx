@@ -44,6 +44,13 @@ jest.mock('expo-sqlite', () =>
   require('../../../../lib/outbox/__fixtures__/sqlite-fake.ts').createSqliteFake(),
 );
 
+// The screen reads the display unit for `usePRCelebration`
+// (`personal-records/03`) and hands it down, rather than every surface that
+// prints a weight reading it again. That is one TanStack Query subscription
+// to `me.get` — stable once loaded, so it cannot tick — but it needs a tRPC
+// provider, and this file deliberately mounts the screen without one.
+jest.mock('../../../../hooks/useWeightUnit.ts', () => ({ useWeightUnit: () => 'kg' }));
+
 jest.mock('../../hooks/useSessionHeartbeat.ts', () => ({ useSessionHeartbeat: () => undefined }));
 jest.mock('../../hooks/useSessionKeepAwake.ts', () => ({ useSessionKeepAwake: () => undefined }));
 jest.mock('../../hooks/useCompleteSession.ts', () => ({

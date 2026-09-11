@@ -150,8 +150,14 @@ function speakLastPerformance(last: LastPerformance, unit: WeightUnit): string {
   return `${String(reps)} ${reps === 1 ? 'rep' : 'reps'}`;
 }
 
-/** `60 kilograms` · `135 pounds`. The numeral rounds exactly as the printed one does. */
-function speakWeight(kg: number, unit: WeightUnit): string {
+/**
+ * `60 kilograms` · `135 pounds`. The numeral rounds exactly as the printed one does.
+ *
+ * Exported for `pr-celebration.ts`, which says the same thing about a
+ * record's value — one spoken form for a weight in this feature, never two
+ * that round or pluralise differently.
+ */
+export function speakWeight(kg: number, unit: WeightUnit): string {
   const value = Number(formatWeight(kg, unit));
   const noun = unit === 'kg' ? 'kilogram' : 'pound';
   return `${String(value)} ${value === 1 ? noun : `${noun}s`}`;

@@ -10,7 +10,7 @@ import {
   withAlpha,
 } from '@coachos/ui/theme';
 import type { WeightUnit } from '@coachos/utils';
-import { Check } from 'lucide-react-native';
+import { Check, Triangle } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { memo, useCallback, useEffect, useMemo } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
@@ -25,6 +25,7 @@ import Animated, {
   type LayoutAnimationFunction,
 } from 'react-native-reanimated';
 
+import { PR_COPY } from '../lib/pr-celebration.ts';
 import { labelLastPerformance } from '../lib/target-line-copy.ts';
 
 // This feature's copy and its spoken forms live in `SetEntryRow.tsx`, the
@@ -71,6 +72,18 @@ export const SET_ROW_MIN_HEIGHT = 40;
 const ROW_HIT_SLOP = Math.ceil((tapTarget.MIN - SET_ROW_MIN_HEIGHT) / 2);
 
 const TICK_SIZE = 15;
+
+/**
+ * **The mark the celebration leaves behind** (`personal-records/03`, design
+ * frame C). The pill is gone in 2.6 seconds and a client re-racking a bar
+ * will miss it; the row that earned the record keeps this for the rest of
+ * the session, so finding out does not depend on having been looking.
+ *
+ * A triangle, not a colour: it differs by SHAPE before it differs by hue, so
+ * it survives greyscale — the same rule the adherence palette is held to
+ * (`accessibility` §4). 13px, against the tick's 15.
+ */
+const RECORD_MARK_SIZE = 13;
 
 // ── `set-entry/06`, the swipe (design spec, "Anatomy — the compact logged
 // row") ───────────────────────────────────────────────────────────────────
@@ -195,6 +208,15 @@ export interface SetRowProps {
    */
   isEntering?: boolean;
   /**
+   * **This set took a personal record** (`personal-records/03`). Server-
+   * confirmed, never guessed: the device cannot know it, and the mark
+   * appears when the set syncs rather than when it is logged.
+   *
+   * Draws the triangle and adds "Personal record." to the row's one spoken
+   * label. Nothing else about the row changes — it is still a receipt.
+   */
+  isRecord?: boolean;
+  /**
    * **`set-entry/05` — tap this row to correct it.** Supplied, the row is a
    * button and carries the `Double tap to edit` hint; omitted, it is the
    * plain receipt it has always been.
@@ -238,6 +260,7 @@ export const SetRow = memo(function SetRow({
   trailing,
   trailingLabel,
   isEntering = false,
+  isRecord = false,
   onEdit,
   onDelete,
   testID,
@@ -277,7 +300,7 @@ export const SetRow = memo(function SetRow({
 
   const load = labelLoad(set, unit);
   const ink = setRowInk(set);
-  const label = speakSet(set, unit, trailingLabel);
+  const label = speakSet(set, unit, trailingLabel, isRecord);
 
   const handlePress = useCallback(() => {
     onEdit?.(set);
@@ -428,6 +451,23 @@ export const SetRow = memo(function SetRow({
 
       {trailing}
 
+      {/* Between the trailing slot and the tick, so the receipt still ends
+          where every other row's does. Silent — the row is one accessible
+          element and `label` already says it. */}
+      {isRecord ? (
+        // The `View` is what carries the `testID`: a Lucide icon spreads its
+        // props onto `react-native-svg`, which does not forward one.
+        <View testID="set-row-record-mark">
+          <Triangle
+            size={RECORD_MARK_SIZE}
+            color={theme.colors.brand.DEFAULT}
+            fill={withAlpha(theme.colors.brand.DEFAULT, '0.25')}
+            strokeWidth={2}
+            strokeLinejoin="round"
+          />
+        </View>
+      ) : null}
+
       <Animated.View style={tickStyle}>
         <Check
           size={TICK_SIZE}
@@ -528,11 +568,20 @@ function labelLoad(set: LoggedSetView, unit: WeightUnit): string {
  * the `W` in the number cell: reading "Set 3" for a row the client can see
  * is unnumbered would put the screen reader and the screen at odds.
  */
-function speakSet(set: LoggedSetView, unit: WeightUnit, trailingLabel?: string): string {
+function speakSet(
+  set: LoggedSetView,
+  unit: WeightUnit,
+  trailingLabel?: string,
+  isRecord = false,
+): string {
   const load = speakLoad(toDisplayWeight(set.weightKg, unit), set.reps, unit);
   const name = set.isWarmup ? SET_FLAG_COPY.warmupSetLabel : `Set ${String(set.setNumber)}`;
   const sentence = `${name}, ${load}, logged.`;
-  return trailingLabel === undefined ? sentence : `${sentence} ${trailingLabel}`;
+  const withTrailing = trailingLabel === undefined ? sentence : `${sentence} ${trailingLabel}`;
+  // Last, so the fact a screen reader hears most recently is the one the
+  // triangle is showing — and so a row with no record reads exactly as it
+  // always has.
+  return isRecord ? `${withTrailing} ${PR_COPY.title}.` : withTrailing;
 }
 
 const RISE = Easing.bezier(easing.rise[0], easing.rise[1], easing.rise[2], easing.rise[3]);

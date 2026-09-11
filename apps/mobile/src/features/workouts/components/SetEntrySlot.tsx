@@ -15,9 +15,11 @@ import { useExerciseTarget } from '../hooks/useExerciseTarget.ts';
 import { useLogSet } from '../hooks/useLogSet.ts';
 import { useUpdateSet } from '../hooks/useUpdateSet.ts';
 import type { ExercisePage } from '../lib/exercise-pages.ts';
+import { selectRecordSetIds, usePRCelebrationStore } from '../store/pr-celebration-store.ts';
 
 import { EditingBar } from './EditingBar.tsx';
 import { NearestWeightLine, PlateStack } from './PlateStack.tsx';
+import { PRCelebration } from './PRCelebration.tsx';
 import { PreviousSetLine, speakPreviousSetLine } from './PreviousSetLine.tsx';
 import {
   SET_ENTRY_COPY,
@@ -158,9 +160,30 @@ export interface SetEntrySlotProps {
   payload: LocalSessionPayload | null;
   /** `local_workout_sessions.client_local_id` — the id the logger route carries. */
   sessionLocalId: string;
+  /**
+   * **`personal-records/03` — whether THIS slot draws the record pill.**
+   *
+   * The pager keeps three slots alive at a time and only one of them is on
+   * screen, so exactly one may carry the pill. It is the composer card's own
+   * absolutely positioned child (`PRCelebration.tsx` explains why it can be
+   * nowhere else), which makes the choice a render one rather than a
+   * position one — and the caller is the only thing that knows which page
+   * is current AND whether the session is still in progress.
+   *
+   * Note it is the PAGE that decides, never the record: a confirmation can
+   * land while the client is two exercises further on, and it shows on
+   * whatever composer they are looking at. That is why the sub-line always
+   * names the exercise.
+   */
+  celebratesRecords?: boolean;
 }
 
-export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProps) {
+export function SetEntrySlot({
+  page,
+  payload,
+  sessionLocalId,
+  celebratesRecords = false,
+}: SetEntrySlotProps) {
   const theme = useTheme();
   const unit = useWeightUnit();
   const { logSet } = useLogSet();
@@ -168,6 +191,10 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
   const { deleteSet, hiddenSetIds } = useDeleteSet();
   const { dismissToast } = useToast();
   const { target, history } = useExerciseTarget({ page, payload, sessionLocalId });
+  // `personal-records/03`'s mark that stays. Read on every page, not only
+  // the one carrying the pill: a record confirmed on exercise 1 must still
+  // be marked when the client pages back to it.
+  const recordLocalIds = usePRCelebrationStore(selectRecordSetIds);
 
   // The rest timer's duration (`rest-timer/01`), read off the prescription
   // this slot has already resolved rather than looked up again — the target
@@ -856,6 +883,7 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
         // The rows with an open undo window, and the ones whose window has
         // closed. `logged` still holds them — see the header.
         hiddenLocalIds={hiddenSetIds}
+        recordLocalIds={recordLocalIds}
         onDeleteSet={handleDeleteSet}
         testID="set-list"
       />
@@ -885,6 +913,14 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
       ) : null}
 
       <View style={styles.composer}>
+        {/* Hangs off this card's TOP edge and contributes zero layout
+            height, so the 205px card and its confirm control cannot move
+            (`set-entry/03`'s invariant). It must be a child of THIS view —
+            that is what makes `bottom: '100%'` track the card's height
+            rather than hard-code it, which is the whole placement argument
+            and the thing that survives 200% text. */}
+        {celebratesRecords ? <PRCelebration /> : null}
+
         {editDraft !== null ? (
           // **The composer collapses rather than sitting beside the
           // editor.** Two cards would leave the client no list at all, and

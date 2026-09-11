@@ -1,6 +1,6 @@
 import { ToastProvider } from '@coachos/ui';
 import { density } from '@coachos/ui/theme';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import type { UpcomingExercise } from 'api/src/features/workouts/upcoming.ts';
 import { AccessibilityInfo } from 'react-native';
 
@@ -14,6 +14,10 @@ import {
 import type { LocalSessionPayload } from '../../../../lib/prefetch/sessions.ts';
 import type { LoggedSet } from '../../hooks/useLogSet.ts';
 import type { ExercisePage } from '../../lib/exercise-pages.ts';
+import {
+  resetPRCelebrationForTests,
+  usePRCelebrationStore,
+} from '../../store/pr-celebration-store.ts';
 import { PLATE_PIP_TEST_ID } from '../PlateStack.tsx';
 import { SetEntrySlot } from '../SetEntrySlot.tsx';
 
@@ -76,6 +80,7 @@ beforeEach(() => {
   // reset they would leak into every test after them.
   sqlite.__reset();
   resetLocalDbForTests();
+  resetPRCelebrationForTests();
 
   mockTarget = {
     target: {
@@ -97,10 +102,18 @@ beforeEach(() => {
 // The slot reaches `useUndoToast` through `set-entry/06`'s `useDeleteSet`,
 // which needs a host. In the app that host is the root layout's; here it is
 // this wrapper.
-function renderSlot(payload: LocalSessionPayload | null = null) {
+function renderSlot(
+  payload: LocalSessionPayload | null = null,
+  options: { celebratesRecords?: boolean } = {},
+) {
   render(
     <ToastProvider>
-      <SetEntrySlot page={PAGE} payload={payload} sessionLocalId="session-local-1" />
+      <SetEntrySlot
+        page={PAGE}
+        payload={payload}
+        sessionLocalId="session-local-1"
+        celebratesRecords={options.celebratesRecords ?? false}
+      />
     </ToastProvider>,
   );
 }
@@ -382,6 +395,59 @@ describe('SetEntrySlot · the composer never changes height', () => {
     await waitFor(() => screen.getByTestId('set-entry-confirm'));
 
     expect(composerHeightPx()).toBe(205);
+  });
+
+  it('is still 205px with a personal record on screen', async () => {
+    // `personal-records/03`. The pill is an absolutely positioned child of
+    // the composer at the card's top edge, so it contributes no height at
+    // all — which is the literal, measurable form of §8.4's "non-blocking".
+    // Without this the confirm control would move on the one tap in forty
+    // that sets a record, which is the worst possible time for it to move.
+    renderSlot(payloadFor(), { celebratesRecords: true });
+    await waitFor(() => screen.getByTestId('set-entry-confirm'));
+
+    act(() => {
+      usePRCelebrationStore.setState({
+        current: {
+          token: 1,
+          setLocalId: 'seed-work',
+          exerciseId: 'exercise-1',
+          title: 'Personal record',
+          detailLead: 'Bench press — heaviest ever,',
+          detailValue: '92.5kg',
+          moreCount: 0,
+          label: 'Personal record. Bench press, heaviest ever, 92.5 kilograms.',
+          types: ['max_weight'],
+        },
+      });
+    });
+
+    expect(screen.getByTestId('pr-celebration')).toBeTruthy();
+    expect(composerHeightPx()).toBe(205);
+  });
+
+  it('draws no pill on a page the client is not looking at', async () => {
+    // The pager keeps three slots alive; exactly one may carry the pill.
+    renderSlot(payloadFor());
+    await waitFor(() => screen.getByTestId('set-entry-confirm'));
+
+    act(() => {
+      usePRCelebrationStore.setState({
+        current: {
+          token: 1,
+          setLocalId: 'seed-work',
+          exerciseId: 'exercise-1',
+          title: 'Personal record',
+          detailLead: 'Bench press — heaviest ever,',
+          detailValue: '92.5kg',
+          moreCount: 0,
+          label: 'Personal record. Bench press, heaviest ever, 92.5 kilograms.',
+          types: ['max_weight'],
+        },
+      });
+    });
+
+    expect(screen.queryByTestId('pr-celebration')).toBeNull();
   });
 
   it('is 229px, and only 229px, when the weight is not makeable', async () => {

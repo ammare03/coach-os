@@ -13,6 +13,7 @@ import { getErrorCode } from '../error-code.ts';
 
 import { computeBackoff } from './backoff.ts';
 import { deserializeOutboxPayload } from './enqueue.ts';
+import { publishOutboxResult } from './results.ts';
 
 // The engine of the outbox (DB§14.1, DB§14.2): read the rows that are ready,
 // send each to its tRPC procedure, mark it done — with the two properties
@@ -368,8 +369,20 @@ async function sendEntry(
 ): Promise<boolean> {
   try {
     const input = buildProcedureInput(entry);
-    await send(entry.procedure, input);
+    const result = await send(entry.procedure, input);
     markDone(db, entry.id);
+    // After the row is `done`, and isolated from it (`./results.ts` rule
+    // (b)): a delivered mutation must never become a retry because a
+    // listener threw. The response is otherwise discarded — the mirror is
+    // device-wins (`offline-sync` §5), so almost nothing a server returns
+    // is news. `workouts.logSet.newPersonalRecords` is the exception, and
+    // this is the only way off the flush loop it has.
+    publishOutboxResult({
+      procedure: entry.procedure,
+      clientLocalId: entry.clientLocalId,
+      input,
+      result,
+    });
     return true;
   } catch (error) {
     if (error instanceof OutboxDispatchError) {

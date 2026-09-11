@@ -8,6 +8,7 @@ export * from './invite-code.ts';
 export * from './mask-email.ts';
 export * from './nutrition/macros.ts';
 export * from './numeric.ts';
+export * from './one-rep-max.ts';
 export * from './plate-math.ts';
 export * from './seat-limit.ts';
 export * from './training/session-estimate.ts';

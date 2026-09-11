@@ -1,16 +1,24 @@
-import { recomputeSessionVolume, schema, type DbClient, type SetLog } from '@coachos/db';
+import {
+  recomputeSessionVolume,
+  schema,
+  type DbClient,
+  type PersonalRecordType,
+  type SetLog,
+} from '@coachos/db';
 import type { workouts as workoutsSchemas } from '@coachos/schemas';
+import { estimateOneRepMax } from '@coachos/utils';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { z } from 'zod';
 
 import { appError } from '../../lib/app-error.ts';
 import { offlineUpsert } from '../../lib/offline-upsert.ts';
+import { detectPersonalRecords, type DetectPersonalRecords } from '../../lib/pr-detection.ts';
 
 // `workouts.logSet` — the server half of
 // `phase-09-workout-logger/set-entry/01`, and the most frequently replayed
 // mutation in the product.
 //
-// Six decisions, in the order they matter:
+// Seven decisions, in the order they matter:
 //
 // (a) **This IS an upsert**, unlike `./start.ts` and `./complete.ts`, which
 //     are both UPDATEs and say at length why. The difference is one column's
@@ -64,9 +72,12 @@ import { offlineUpsert } from '../../lib/offline-upsert.ts';
 //
 // (d) **`estimated_1rm_kg` is computed here, on write** (DB§5.2's own column
 //     comment says application code owns it, not the database), so
-//     `personal-records/01` reads a number rather than recomputing one over
-//     history. Epley, `CLAUDE.md` §26. See {@link epleyOneRepMaxKg} for why
-//     it is local to this file and where it should end up.
+//     `personal-records/02` reads a number rather than recomputing one over
+//     history. Epley, `CLAUDE.md` §26. The formula itself is
+//     `estimateOneRepMax` in `packages/utils` — this write path and the
+//     device's own PR display are its two consumers, so it cannot live in
+//     either (`code-conventions` §1). The `.toFixed(2)` below is the only
+//     rounding; the function returns full precision on purpose.
 //
 // (e) **A set landing on an already-completed session recomputes the
 //     volume, in the same transaction.** `./complete.ts` decision (g) names
@@ -79,49 +90,24 @@ import { offlineUpsert } from '../../lib/offline-upsert.ts';
 //     it from the rows anyway, so doing it per set would be a sum over the
 //     whole session on every single tap.
 //
+// (g) **Personal records are re-derived in the same transaction, for every
+//     set, not only a heavier one.** `personal-records/02`'s risk is the
+//     same as decision (e)'s: a PR recorded for a set log that then fails to
+//     commit. The detection itself holds no rules — `../../lib/pr-detection
+//     .ts` decision (a) explains why they all live in `packages/db`'s
+//     `recomputePersonalRecords` instead, and decision (b) why a warm-up
+//     gets no early return here even though it can never set one.
+//
+//     Unconditional, unlike (e): the set that changes a record is not
+//     knowable without asking, and an EDIT that lowers a number has to be
+//     able to take a record away.
+//
 // (f) **`deleted_at` is not in the payload.** Omitting it means
 //     `offlineUpsert`'s inferred `set` never touches it, so a replay of the
 //     original log cannot resurrect a set the client later deleted
 //     (`set-entry/06`). Every other column the device sends is overwritten
 //     unconditionally, which is DB§14.3's device-wins rule and the reason
 //     an edit needs no separate procedure.
-
-/** What `numeric(6, 2)` can hold — six significant digits, two after the point. */
-const NUMERIC_6_2_MAX = 9_999.99;
-
-/**
- * Epley: `w × (1 + r/30)` (`CLAUDE.md` §26), in kilograms.
- *
- * **A single returns the weight itself, not `w × (1 + 1/30)`.** Epley is an
- * extrapolation from a submaximal set, and at one rep there is nothing to
- * extrapolate — the client lifted that weight for one, so that weight IS the
- * one-rep max. Applying the formula anyway inflates every true single by
- * 3.3%, which would hand `personal-records/01` a PR the client never hit.
- * The `testing` skill §3 states this case as the unit test for the rule.
- *
- * `null` — never a number — when there is nothing to estimate from: a
- * bodyweight set carries no external load, and a zero-rep set is a failed
- * attempt rather than a single. `null` is also the answer when the result
- * would not fit `numeric(6,2)`; a value Postgres would reject with a 22003
- * is not an estimate worth failing the client's set over.
- *
- * ⚠️ **This belongs in `packages/utils`**, beside `sessionVolumeKg` — it is
- * a formula with two consumers (this write path and, later, the client's
- * own PR display), which is `code-conventions` §1's promotion rule exactly.
- * It is local here only to avoid a file collision with another agent
- * working in this worktree; promote it on the next touch, and delete this
- * copy in the same change rather than leaving two.
- */
-export function epleyOneRepMaxKg(weightKg: number | null, reps: number): number | null {
-  if (weightKg === null || weightKg <= 0) return null;
-  if (reps < 1 || !Number.isFinite(reps)) return null;
-  if (reps === 1) return weightKg > NUMERIC_6_2_MAX ? null : weightKg;
-
-  const estimate = weightKg * (1 + reps / 30);
-  if (!Number.isFinite(estimate) || estimate > NUMERIC_6_2_MAX) return null;
-
-  return estimate;
-}
 
 /**
  * What the device is told about the set it logged. Mapped field by field and
@@ -149,6 +135,13 @@ export interface LoggedSetSummary extends Pick<
   weightKg: number | null;
   /** Epley, decision (d). `null` for a bodyweight or zero-rep set. */
   estimated1rmKg: number | null;
+  /**
+   * Record types this set newly took, decision (g) — empty for almost every
+   * set, and always empty for a warm-up. `personal-records/03` celebrates
+   * off this, deduping on `clientLocalId` for the replay it can still see
+   * when the device retries a response it never received.
+   */
+  newPersonalRecords: PersonalRecordType[];
 }
 
 export type LogSetInput = z.infer<typeof workoutsSchemas.logSetInput>;
@@ -164,6 +157,7 @@ export async function logSet(
   clientProfileId: string,
   input: LogSetInput,
   recompute: RecomputeVolume = recomputeSessionVolume,
+  detect: DetectPersonalRecords = detectPersonalRecords,
 ): Promise<LoggedSetSummary> {
   return db.transaction(async (tx) => {
     // Decision (b). `client_id` is from `ctx.user`, never the wire, and it
@@ -191,7 +185,7 @@ export async function logSet(
     }
 
     const weightKg = input.weightKg ?? null;
-    const estimate = epleyOneRepMaxKg(weightKg, input.reps);
+    const estimate = estimateOneRepMax(weightKg, input.reps);
 
     const row = await offlineUpsert(tx, {
       table: schema.setLogs,
@@ -224,11 +218,14 @@ export async function logSet(
       await recompute(tx, session.id);
     }
 
-    return summarise(row);
+    // Decision (g). Still inside the transaction, for (e)'s reason.
+    const newPersonalRecords = await detect(tx, row);
+
+    return summarise(row, newPersonalRecords);
   });
 }
 
-function summarise(row: SetLog): LoggedSetSummary {
+function summarise(row: SetLog, newPersonalRecords: PersonalRecordType[]): LoggedSetSummary {
   return {
     id: row.id,
     clientLocalId: row.clientLocalId,
@@ -241,5 +238,6 @@ function summarise(row: SetLog): LoggedSetSummary {
     isWarmup: row.isWarmup,
     isFailure: row.isFailure,
     loggedAt: row.loggedAt,
+    newPersonalRecords,
   };
 }

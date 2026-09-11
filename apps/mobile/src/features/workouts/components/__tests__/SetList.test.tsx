@@ -173,4 +173,47 @@ describe('SetList — hiding a set being deleted (`set-entry/06`)', () => {
 
     expect(screen.getByLabelText(LABEL).props.accessibilityActions).toBeUndefined();
   });
+  // `personal-records/03` — the mark the celebration leaves behind. The pill
+  // is gone in 2.6 seconds; this is what a client who was re-racking a bar
+  // finds when they look back.
+  describe('the record mark', () => {
+    it('marks the row that took a record, and only that row', () => {
+      render(
+        <SetList
+          sets={[set({ localId: 'set-1', setNumber: 1 }), set({ localId: 'set-2', setNumber: 2 })]}
+          unit="kg"
+          recordLocalIds={new Set(['set-2'])}
+        />,
+      );
+
+      expect(
+        screen.getAllByTestId('set-row-record-mark', { includeHiddenElements: true }),
+      ).toHaveLength(1);
+    });
+
+    it("says so, in the row's one spoken label", () => {
+      render(<SetList sets={[set()]} unit="kg" recordLocalIds={new Set(['set-1'])} />);
+
+      expect(
+        screen.getByLabelText('Set 1, 82.5 kilograms for 8 reps, logged. Personal record.'),
+      ).toBeTruthy();
+    });
+
+    it('leaves every other row exactly as it was', () => {
+      render(<SetList sets={[set()]} unit="kg" recordLocalIds={new Set(['someone-else'])} />);
+
+      expect(screen.getByLabelText(LABEL)).toBeTruthy();
+      expect(
+        screen.queryByTestId('set-row-record-mark', { includeHiddenElements: true }),
+      ).toBeNull();
+    });
+
+    it('draws a shape, not only a hue — it has to survive greyscale', () => {
+      render(<SetList sets={[set()]} unit="kg" recordLocalIds={new Set(['set-1'])} />);
+
+      expect(
+        screen.getByTestId('set-row-record-mark', { includeHiddenElements: true }),
+      ).toBeTruthy();
+    });
+  });
 });

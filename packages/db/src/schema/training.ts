@@ -467,6 +467,24 @@ export const setLogs = trainingSchema.table(
   }),
 );
 
+/**
+ * The four record types DB§5.2 enumerates, as a value the application can
+ * iterate and narrow against. The `CHECK` below is still written out
+ * longhand rather than generated from this: `drizzle-kit` diffs the
+ * constraint's rendered SQL text, so building it from an array would risk a
+ * whitespace-only migration for no gain. They are asserted to agree by
+ * `../aggregates/recompute-personal-records.test.ts`, which writes one row
+ * of every type through the real constraint.
+ */
+export const PERSONAL_RECORD_TYPES = [
+  '1rm_estimated',
+  'max_weight',
+  'max_reps',
+  'max_volume',
+] as const;
+
+export type PersonalRecordType = (typeof PERSONAL_RECORD_TYPES)[number];
+
 export const personalRecords = trainingSchema.table(
   'personal_records',
   {
