@@ -92,6 +92,10 @@ const EXPECTED_ROUTE_FILES = [
   '(client)/log-food.tsx',
   '(client)/record-form-check.tsx',
   '(client)/scan.tsx',
+  // Not in §9.1 — `phase-09-workout-logger/settings-shell/01` gives each
+  // settings route group a Stack so every sub-screen a later phase adds
+  // under `settings/` inherits a header, a title, and a back action.
+  '(client)/settings/_layout.tsx',
   '(client)/settings/index.tsx',
   '(client)/workout/[sessionId].tsx',
   '(client)/workout/[sessionId]/summary.tsx',
@@ -125,6 +129,7 @@ const EXPECTED_ROUTE_FILES = [
   '(coach)/program/[id]/day/[dayId].tsx',
   '(coach)/program/[id]/index.tsx',
   '(coach)/session/[id].tsx',
+  '(coach)/settings/_layout.tsx',
   '(coach)/settings/index.tsx',
   '(coach)/video/[id].tsx',
   '+native-intent.ts',
@@ -182,7 +187,6 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   // SUBSTITUTED for the same reason `(auth)/welcome` did.
   ['(coach)/invite-client', '/(coach)/invite-client'],
   ['(coach)/live/[sessionId]', '/(coach)/live/l1'],
-  ['(coach)/settings/index', '/(coach)/settings'],
 
   // `(client)/(tabs)/index` was a placeholder here until
   // `phase-09-workout-logger/today-card/01` composed the real Today
@@ -201,7 +205,6 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   ['(client)/record-form-check', '/(client)/record-form-check'],
   ['(client)/checkin/[id]', '/(client)/checkin/k2'],
   ['(client)/live/[sessionId]', '/(client)/live/l2'],
-  ['(client)/settings/index', '/(client)/settings'],
 
   // `(coach-onboarding)/index` and `(client-onboarding)/index` were both
   // here until `coach-onboarding/01` and `client-onboarding/02` composed
@@ -291,6 +294,14 @@ const SUBSTITUTED = new Set([
   // it renders is covered by
   // `src/features/workouts/components/__tests__/SessionSummaryScreen.test.tsx`.
   '(client)/workout/[sessionId]/summary',
+  // Real as of `phase-09-workout-logger/settings-shell/01`, and the same
+  // reason again: one `SettingsScreen` for both roles, whose account header
+  // reads `me.get` through TanStack Query. What it renders — the row set
+  // per role, where each row navigates, and the degraded header — is
+  // covered by
+  // `src/features/settings/screens/__tests__/SettingsScreen.test.tsx`.
+  '(coach)/settings/index',
+  '(client)/settings/index',
 ]);
 
 /**
