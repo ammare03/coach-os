@@ -147,3 +147,11 @@ docs/.unforget-session.json
 
 # ── Misc ──────────────────────────────────────────────────────
 example
+
+# ── graphify knowledge graph (regenerated; see CLAUDE.md) ─────
+graphify-out/
+
+# graphify local hooks — machine-specific interpreter paths, never commit
+.husky/post-commit
+.husky/post-checkout
+.gitattributes

@@ -1,0 +1,53 @@
+# graphify corpus scope — see CLAUDE.md "graphify" section.
+# The build runs with gitignore disabled (graphify-out/.graphify_build.json)
+# so the plan tree, the spec docs, and the skills are in the graph. That means
+# every exclusion the repo relied on .gitignore for must be restated here.
+
+# ── Secrets — CLAUDE.md §21. Never let these reach the graph. ──
+.env
+.env.*
+*.env
+.npmrc
+*.pem
+*.key
+*.p8
+*.p12
+*.jks
+*.keystore
+*.cer
+*.certSigningRequest
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist
+service-account*.json
+credentials.json
+secrets.json
+.claude/settings.local.json
+
+# ── Generated / regenerated — no reasoning to extract ──
+graphify-out/
+.turbo/
+.next/
+dist/
+build/
+out/
+coverage/
+.expo/
+.expo-shared/
+android/
+ios/
+*.tsbuildinfo
+expo-env.d.ts
+next-env.d.ts
+.husky/_/
+*.stackdump
+*.log
+.claude/scratch/
+
+# Drizzle snapshot JSON: 32 files, ~6MB of machine-written schema dumps.
+# The migrations' .sql and DATABASE.md carry the same information readably.
+packages/db/migrations/meta/
+
+# Binary assets and font licences — vision/extraction cost, no signal.
+apps/mobile/assets/images/
+apps/mobile/assets/fonts/
