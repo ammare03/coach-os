@@ -264,6 +264,39 @@ export function createSqliteFake() {
       return makeResult([], null, changes);
     }
 
+    // `DELETE FROM <table> [WHERE …]`. Added by
+    // `phase-09-workout-logger/set-entry/06`, whose deferred commit is the
+    // first statement in this folder's reach that removes a row rather than
+    // marking one — `local_set_logs` carries no `deleted_at` by design, so a
+    // withdrawn set genuinely leaves the device cache. Nothing here emitted
+    // a DELETE before, which is why the branch was absent rather than
+    // wrong; every existing suite is unaffected.
+    const deleteFrom = /^delete\s+from\s+"?(\w+)"?/i.exec(statement);
+    if (deleteFrom?.[1]) {
+      if (failNextWrite !== null) {
+        const message = failNextWrite;
+        failNextWrite = null;
+        throw new Error(message);
+      }
+      const afterFrom = statement.slice(deleteFrom[0].length);
+      const whereAt = keywordIndex(afterFrom, /\swhere\s/i);
+      // Compiled once, before the sweep — `take()` consumes placeholders in
+      // statement order, exactly as the UPDATE branch above does.
+      const matches =
+        whereAt === -1
+          ? () => true
+          : compileWhere(afterFrom.slice(whereAt + ' where '.length), take);
+      const rows = tableRows(deleteFrom[1]);
+      let changes = 0;
+      for (let i = rows.length - 1; i >= 0; i -= 1) {
+        const row = rows[i];
+        if (row === undefined || !matches(row)) continue;
+        rows.splice(i, 1);
+        changes += 1;
+      }
+      return makeResult([], null, changes);
+    }
+
     const select = /^select\s+([\s\S]*?)\s+from\s+"?(\w+)"?/i.exec(statement);
     if (select?.[1] && select[2]) {
       const columnList = select[1].trim();

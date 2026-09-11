@@ -1,4 +1,4 @@
-import { NOT_FOUND_COPY } from '@coachos/ui';
+import { NOT_FOUND_COPY, ToastProvider } from '@coachos/ui';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import * as Haptics from 'expo-haptics';
 
@@ -189,13 +189,17 @@ beforeEach(() => {
 function renderScreen() {
   const onExit = jest.fn();
   const onCompleted = jest.fn();
+  // The set-entry slot inside reaches `useUndoToast` (`set-entry/06`), which
+  // needs the host the root layout provides in the app.
   render(
-    <SessionLoggerScreen
-      sessionLocalId="local-1"
-      onExit={onExit}
-      onCompleted={onCompleted}
-      now={STARTED_AT}
-    />,
+    <ToastProvider>
+      <SessionLoggerScreen
+        sessionLocalId="local-1"
+        onExit={onExit}
+        onCompleted={onCompleted}
+        now={STARTED_AT}
+      />
+    </ToastProvider>,
   );
   return { onExit, onCompleted };
 }

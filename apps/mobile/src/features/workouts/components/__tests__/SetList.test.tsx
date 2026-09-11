@@ -100,3 +100,77 @@ describe('SetList', () => {
     expect(screen.queryByText('—')).toBeNull();
   });
 });
+
+describe('SetList — hiding a set being deleted (`set-entry/06`)', () => {
+  const SET_2 = 'Set 2, 82.5 kilograms for 8 reps, logged.';
+
+  it('takes a hidden row off screen while the caller still holds it', () => {
+    // The distinction the whole task turns on: `sets` is unchanged — the
+    // set has not been deleted, only hidden — so putting it back is this
+    // prop changing and nothing else.
+    const sets = [set({ localId: 'set-1', setNumber: 1 }), set({ localId: 'set-2', setNumber: 2 })];
+    const { rerender } = render(
+      <SetList sets={sets} unit="kg" hiddenLocalIds={new Set(['set-2'])} />,
+    );
+
+    expect(screen.getByLabelText(LABEL)).toBeTruthy();
+    expect(screen.queryByLabelText(SET_2)).toBeNull();
+
+    rerender(<SetList sets={sets} unit="kg" hiddenLocalIds={new Set()} />);
+    expect(screen.getByLabelText(SET_2)).toBeTruthy();
+  });
+
+  it('leaves the surviving rows with the numbers they were given', () => {
+    // Hiding set 2 of 3 leaves 1 and 3. A list that renumbered here would
+    // re-point next week's "last time" at a different set.
+    render(
+      <SetList
+        sets={[
+          set({ localId: 'set-1', setNumber: 1 }),
+          set({ localId: 'set-2', setNumber: 2 }),
+          set({ localId: 'set-3', setNumber: 3 }),
+        ]}
+        unit="kg"
+        hiddenLocalIds={new Set(['set-2'])}
+      />,
+    );
+
+    expect(screen.getByLabelText(LABEL)).toBeTruthy();
+    expect(screen.getByLabelText('Set 3, 82.5 kilograms for 8 reps, logged.')).toBeTruthy();
+    expect(screen.queryByLabelText(SET_2)).toBeNull();
+  });
+
+  it('offers the delete action only once a caller can handle it', () => {
+    const onDeleteSet = jest.fn();
+    const { rerender } = render(<SetList sets={[set()]} unit="kg" />);
+
+    // Nothing can withdraw it, so nothing claims it can.
+    expect(screen.getByLabelText(LABEL).props.accessibilityActions).toBeUndefined();
+
+    rerender(<SetList sets={[set()]} unit="kg" onDeleteSet={onDeleteSet} />);
+    const row = screen.getByLabelText(LABEL);
+    // `accessibility` §7 — the equivalent the swipe owes, on the row itself.
+    expect(row.props.accessibilityActions).toEqual([{ name: 'delete', label: 'Delete set' }]);
+
+    fireEvent(row, 'accessibilityAction', { nativeEvent: { actionName: 'delete' } });
+    expect(onDeleteSet).toHaveBeenCalledWith(expect.objectContaining({ localId: 'set-1' }));
+  });
+
+  it('drops the delete action from every other row while one is being edited', () => {
+    // Same rule as the edit hint (design frame F): the open editor carries
+    // its own `Delete set`, so a stray swipe cannot withdraw a different set
+    // than the one on screen.
+    render(
+      <SetList
+        sets={[set({ localId: 'set-1', setNumber: 1 }), set({ localId: 'set-2', setNumber: 2 })]}
+        unit="kg"
+        editingLocalId="set-2"
+        renderEditor={() => <Text>editor</Text>}
+        onEditSet={jest.fn()}
+        onDeleteSet={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(LABEL).props.accessibilityActions).toBeUndefined();
+  });
+});

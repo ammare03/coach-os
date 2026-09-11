@@ -1,3 +1,4 @@
+import { ToastProvider } from '@coachos/ui';
 import { density } from '@coachos/ui/theme';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import type { UpcomingExercise } from 'api/src/features/workouts/upcoming.ts';
@@ -93,8 +94,15 @@ beforeEach(() => {
   mockLogSet.mockResolvedValue(logged());
 });
 
+// The slot reaches `useUndoToast` through `set-entry/06`'s `useDeleteSet`,
+// which needs a host. In the app that host is the root layout's; here it is
+// this wrapper.
 function renderSlot(payload: LocalSessionPayload | null = null) {
-  render(<SetEntrySlot page={PAGE} payload={payload} sessionLocalId="session-local-1" />);
+  render(
+    <ToastProvider>
+      <SetEntrySlot page={PAGE} payload={payload} sessionLocalId="session-local-1" />
+    </ToastProvider>,
+  );
 }
 
 /**

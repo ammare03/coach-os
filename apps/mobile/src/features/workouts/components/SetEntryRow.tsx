@@ -100,6 +100,25 @@ export const SET_ENTRY_COPY = {
    * same voice — but it says "save that change", because nothing was logged.
    */
   editFailed: 'Couldn’t save that change. Try again.',
+
+  // ── `set-entry/06`, deleting ──────────────────────────────────────────
+  /** The editor's destructive action (design frame F), beside Cancel. */
+  deleteSet: 'Delete set',
+  /** Spoken: which set goes, since two rows could be open to a screen reader. */
+  deleteSetLabel: (setNumber: number) => `Delete set ${String(setNumber)}`,
+  deleteWarmupLabel: 'Delete warm-up set',
+  /**
+   * The swipe's reveal panel, and the logged row's custom action. One word
+   * behind the row because it is a target the thumb is already over; the
+   * custom action spells the set out through `deleteSetActionLabel`.
+   */
+  swipeDelete: 'Delete',
+  /**
+   * `commitDeleteSet` rejects on the same local-mirror fault the other two
+   * do. It is reachable only after the undo window closed, and by then the
+   * row is visible again — so the copy has to explain a row that came back.
+   */
+  deleteFailed: 'Couldn’t delete that set. Try again.',
 } as const;
 
 export type SetEntryMode = 'create' | 'edit';
@@ -117,6 +136,15 @@ export function cancelEditingLabel(setNumber: number, isWarmup: boolean): string
   return isWarmup
     ? SET_ENTRY_COPY.cancelEditWarmupLabel
     : SET_ENTRY_COPY.cancelEditLabel(setNumber);
+}
+
+/**
+ * `Delete set 2` · `Delete warm-up set` — spoken by both non-gesture entry
+ * points (`set-entry/06`): the editor's button and the logged row's custom
+ * action. Resolved here so the two cannot word the same deletion differently.
+ */
+export function deleteSetActionLabel(setNumber: number, isWarmup: boolean): string {
+  return isWarmup ? SET_ENTRY_COPY.deleteWarmupLabel : SET_ENTRY_COPY.deleteSetLabel(setNumber);
 }
 
 const CONFIRM_ICON_SIZE = 20;

@@ -1,7 +1,7 @@
 import { spacing, useReducedMotion } from '@coachos/ui/theme';
 import type { WeightUnit } from '@coachos/utils';
 import type { ReactNode } from 'react';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 
 import { SetRow, type LoggedSetView } from './SetRow.tsx';
@@ -68,8 +68,28 @@ export interface SetListProps {
    * would defeat it for twelve rows, mid-set.
    */
   onEditSet?: (set: LoggedSetView) => void;
+  /**
+   * **Seam — `set-entry/06`.** The sets whose undo window is open, or whose
+   * delete has already committed (`useDeleteSet().hiddenSetIds`). They are
+   * filtered out of the render **here and nowhere else**, which is the
+   * distinction the whole task turns on: nothing has been deleted, only
+   * hidden, so Undo is a set membership change and not a second mutation.
+   *
+   * The caller keeps them in `sets`, deliberately — `highestWorkingSetNumber`
+   * counts them, so deleting set 4 of 4 still makes the next set 5. Filtering
+   * upstream would hand the next set a number a restored row already holds.
+   */
+  hiddenLocalIds?: ReadonlySet<string>;
+  /**
+   * Swiping a logged row left, or taking its `Delete set` custom action.
+   * One stable callback for the list, for `onEditSet`'s reason.
+   */
+  onDeleteSet?: (set: LoggedSetView) => void;
   testID?: string;
 }
+
+/** No deletes pending — a stable identity, so the memo below does not rebuild. */
+const NO_HIDDEN: ReadonlySet<string> = new Set<string>();
 
 export function SetList({
   sets,
@@ -80,6 +100,8 @@ export function SetList({
   editingLocalId = null,
   renderEditor,
   onEditSet,
+  hiddenLocalIds = NO_HIDDEN,
+  onDeleteSet,
   testID,
 }: SetListProps) {
   const reducedMotion = useReducedMotion();
@@ -87,15 +109,25 @@ export function SetList({
   /** The editor we have already scrolled to — so a stepper tap cannot re-scroll. */
   const scrolledTo = useRef<string | null>(null);
 
+  // The rows that are actually on screen. A hidden row is unmounted, which
+  // is what plays `SetRow`'s exit and lets the rows below it close the gap
+  // (`Layout`, design spec) — and what makes an undo a plain remount, with
+  // nothing to re-read and nothing to re-create.
+  const visible = useMemo(
+    () =>
+      hiddenLocalIds.size === 0 ? sets : sets.filter((set) => !hiddenLocalIds.has(set.localId)),
+    [sets, hiddenLocalIds],
+  );
+
   useEffect(() => {
-    if (sets.length === 0) return;
+    if (visible.length === 0) return;
     // Never while an editor is open: the client is looking at a card in the
     // middle of the list, and yanking to the end would lose it.
     if (editingLocalId !== null) return;
     // `animated: false` under reduced motion (`accessibility` §6) — the
     // position still changes, only the travel is dropped.
     scroll.current?.scrollToEnd({ animated: !reducedMotion });
-  }, [sets.length, reducedMotion, editingLocalId]);
+  }, [visible.length, reducedMotion, editingLocalId]);
 
   useEffect(() => {
     // Armed for the next editor the moment this one closes. In an effect,
@@ -116,8 +148,11 @@ export function SetList({
   );
 
   // `undefined` while an editor is open drops the `button` role and the
-  // "Double tap to edit" hint from every other row (design frame F).
+  // "Double tap to edit" hint from every other row (design frame F) — and,
+  // for `SetRow.onDelete`'s reason, the swipe and the custom action with it.
+  // The open editor carries its own `Delete set`.
   const rowOnEdit = editingLocalId === null ? onEditSet : undefined;
+  const rowOnDelete = editingLocalId === null ? onDeleteSet : undefined;
 
   return (
     <ScrollView
@@ -130,7 +165,7 @@ export function SetList({
       keyboardShouldPersistTaps="handled"
       testID={testID}
     >
-      {sets.map((set) =>
+      {visible.map((set) =>
         set.localId === editingLocalId && renderEditor !== undefined ? (
           // In place, over the row it corrects — the client can still see
           // which set they are changing, which is the whole reason the
@@ -152,6 +187,7 @@ export function SetList({
             trailing={renderTrailing?.(set)}
             trailingLabel={renderTrailingLabel?.(set)}
             onEdit={rowOnEdit}
+            onDelete={rowOnDelete}
             testID={`set-row-${set.localId}`}
           />
         ),

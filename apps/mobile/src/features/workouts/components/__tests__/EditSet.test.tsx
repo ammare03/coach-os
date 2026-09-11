@@ -1,3 +1,4 @@
+import { ToastProvider } from '@coachos/ui';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import type * as Haptics from 'expo-haptics';
 
@@ -347,8 +348,13 @@ describe('offline and online', () => {
 
 // ── helpers ───────────────────────────────────────────────────────────────
 
+/** `set-entry/06`'s `useDeleteSet` needs a toast host; the app root is one. */
 function renderSlot() {
-  render(<SetEntrySlot page={PAGE} payload={null} sessionLocalId={SESSION} />);
+  render(
+    <ToastProvider>
+      <SetEntrySlot page={PAGE} payload={null} sessionLocalId={SESSION} />
+    </ToastProvider>,
+  );
 }
 
 /** Waits for the logged row, then taps it. The row is a button; this is what it does. */

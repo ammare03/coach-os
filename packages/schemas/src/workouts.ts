@@ -360,3 +360,58 @@ export const logSetInput = strictObject({
   isFailure: z.boolean().default(false),
 });
 export type LogSetInput = z.infer<typeof logSetInput>;
+
+/**
+ * `workouts.deleteSet` — withdrawing a set the client logged by mistake
+ * (`phase-09-workout-logger/set-entry/06`).
+ *
+ * The device defers this behind a five-second undo window and only enqueues
+ * it once that window closes untouched, so by the time this input exists the
+ * user has already seen the row go and has already declined to bring it
+ * back. That shapes every decision below: the server's job is to agree, not
+ * to re-adjudicate.
+ *
+ * Three decisions worth reading:
+ *
+ * - **The session is named by its `client_local_id`** — {@link logSetInput}'s
+ *   first decision, verbatim and for exactly its reason. An ad-hoc session
+ *   started offline has no `workout_sessions.id` for the device to send, and
+ *   the delete of one of its sets must work in the same basement the set was
+ *   logged in.
+ * - **`clientLocalId` is the SET's key, not a fresh one.** The device
+ *   re-sends the withdrawn set's own key
+ *   (`useDeleteSet.ts`'s `reuseClientLocalId`), which is what chains the
+ *   delete behind the log or edit it withdraws instead of racing it. It is
+ *   therefore the row selector here, unlike every sibling in this file where
+ *   it is only an idempotency key.
+ * - **No `setId`.** The server id is exactly the value a device that logged
+ *   offline does not have, and `(client_id, client_local_id)` is already
+ *   unique on `set_logs` — so the key the device holds identifies the row
+ *   precisely, within the caller's own scope and nowhere else.
+ */
+export const deleteSetInput = strictObject({
+  /**
+   * `workout_sessions.client_local_id` — the parent session's own key, and
+   * also `local_set_logs.session_local_id` on the device, which is where the
+   * device reads it from. **Not** the set's key below: two different values
+   * with two different jobs, named apart so the flush loop's merge cannot
+   * collapse them into one.
+   */
+  sessionClientLocalId: clientLocalId,
+  /**
+   * `set_logs.client_local_id` — the set being withdrawn, merged into the
+   * payload by the flush loop from the outbox row itself. See this schema's
+   * second decision: here it selects the row rather than merely
+   * de-duplicating the call.
+   */
+  clientLocalId,
+  /**
+   * The instant the undo window closed, captured on device and replayed
+   * verbatim by the outbox — never `new Date()` at flush time, which is
+   * `offline-sync` §10's "everything timestamped at reconnect". A set
+   * withdrawn at 19:00 in a basement and synced at 21:00 was withdrawn at
+   * 19:00, and `set_logs.deleted_at` is what a later audit or export reads.
+   */
+  deletedAt: z.date(),
+});
+export type DeleteSetInput = z.infer<typeof deleteSetInput>;

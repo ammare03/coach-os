@@ -1,4 +1,4 @@
-import { Metric, Pressable } from '@coachos/ui';
+import { Metric, Pressable, Text } from '@coachos/ui';
 import {
   createThemedStyles,
   duration as durationTokens,
@@ -7,17 +7,22 @@ import {
   tapTarget,
   useReducedMotion,
   useTheme,
+  withAlpha,
 } from '@coachos/ui/theme';
 import type { WeightUnit } from '@coachos/utils';
 import { Check } from 'lucide-react-native';
 import type { ReactNode } from 'react';
-import { memo, useCallback, useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { memo, useCallback, useEffect, useMemo } from 'react';
+import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  type EntryExitAnimationFunction,
+  type LayoutAnimationFunction,
 } from 'react-native-reanimated';
 
 import { labelLastPerformance } from '../lib/target-line-copy.ts';
@@ -66,6 +71,44 @@ export const SET_ROW_MIN_HEIGHT = 40;
 const ROW_HIT_SLOP = Math.ceil((tapTarget.MIN - SET_ROW_MIN_HEIGHT) / 2);
 
 const TICK_SIZE = 15;
+
+// ── `set-entry/06`, the swipe (design spec, "Anatomy — the compact logged
+// row") ───────────────────────────────────────────────────────────────────
+//
+// Every number here is the design's, and each one is load-bearing for a
+// different failure: the row must not steal the pager's horizontal swipe
+// (`activeOffsetX`), must not fight the list's vertical scroll
+// (`failOffsetY`), must commit on a flick as well as on distance, and must
+// resist rather than stop dead at the end of its travel.
+
+/** Horizontal slop before the pan claims the gesture, so a tap still edits. */
+const SWIPE_ACTIVATE_X = 12;
+/** Vertical slop that hands the gesture back to the list's scroll. */
+const SWIPE_FAIL_Y = 18;
+/** Past this fraction of the row's width, releasing deletes. */
+const SWIPE_COMMIT_FRACTION = 0.4;
+/** …or a flick faster than this, in px/s — 0.11px/ms, the design's number. */
+const SWIPE_COMMIT_VELOCITY = 110;
+/** Where the reveal panel is fully open. Past it the row rubber-bands. */
+const SWIPE_REVEAL = 96;
+/** `apple-design` §9 — resistance past the boundary, never a hard stop. */
+const SWIPE_RESIST = 0.2;
+
+/**
+ * The further leftward travel the exit adds, on top of wherever the row
+ * already is. A swipe leaves from where the finger let go rather than
+ * snapping back to 0 first (`apple-design` §3 — animate from the
+ * presentation value, never the target).
+ */
+const DELETE_EXIT_X = 24;
+
+/**
+ * **The non-gesture equivalent of the swipe, and it is required** — a swipe
+ * is unreachable for many users (`accessibility` §7). VoiceOver and TalkBack
+ * surface this in the rotor on the row itself; the editor's `Delete set`
+ * button is the third entry point, and all three call one handler.
+ */
+const DELETE_ACTIONS = [{ name: 'delete', label: SET_ENTRY_COPY.deleteSet }] as const;
 
 /**
  * The three channels a warm-up is de-emphasised on, **none of them hue**.
@@ -167,6 +210,20 @@ export interface SetRowProps {
    * mid-set (`frontend-performance` §3).
    */
   onEdit?: ((set: LoggedSetView) => void) | undefined;
+  /**
+   * **`set-entry/06` — withdraw this set.** Supplied, the row can be swiped
+   * left and carries the `Delete set` custom action; omitted, neither
+   * exists.
+   *
+   * Omitted is what the caller passes **while another row is being edited**,
+   * for `onEdit`'s reason and one more: that row's own editor carries a
+   * `Delete set` button, so a second way in from the list would let a stray
+   * swipe withdraw a different set than the one on screen.
+   *
+   * Takes the set rather than closing over it, so one stable callback serves
+   * every row (`frontend-performance` §3).
+   */
+  onDelete?: ((set: LoggedSetView) => void) | undefined;
   testID?: string;
 }
 
@@ -182,6 +239,7 @@ export const SetRow = memo(function SetRow({
   trailingLabel,
   isEntering = false,
   onEdit,
+  onDelete,
   testID,
 }: SetRowProps) {
   const theme = useTheme();
@@ -225,6 +283,137 @@ export const SetRow = memo(function SetRow({
     onEdit?.(set);
   }, [onEdit, set]);
 
+  // ── the swipe, and the two ways in that are not a gesture ─────────────
+  //
+  // `swipe` is the row's own offset, and it is the ONLY owner of
+  // `translateX`. The exit animation below reads it rather than declaring
+  // its own start, so a row released at −92px keeps going left instead of
+  // snapping back to 0 for one frame first.
+  const swipe = useSharedValue(0);
+  const rowWidth = useSharedValue(0);
+  const canDelete = onDelete !== undefined;
+
+  const handleDelete = useCallback(() => {
+    onDelete?.(set);
+  }, [onDelete, set]);
+
+  const handleMeasure = useCallback(
+    (event: LayoutChangeEvent) => {
+      // The commit threshold is a fraction of the row, so it has to be the
+      // rendered width — at 200% text the row is the same width and taller,
+      // but a tablet or a split view is neither.
+      rowWidth.value = event.nativeEvent.layout.width;
+    },
+    [rowWidth],
+  );
+
+  const pan = useMemo(
+    () =>
+      Gesture.Pan()
+        // Off entirely rather than active-and-ignored: an enabled detector
+        // still claims the gesture from the pager behind it.
+        .enabled(canDelete)
+        .activeOffsetX([-SWIPE_ACTIVATE_X, SWIPE_ACTIVATE_X])
+        .failOffsetY([-SWIPE_FAIL_Y, SWIPE_FAIL_Y])
+        .onUpdate((event) => {
+          'worklet';
+          // Leftward only. There is nothing under the right edge, and a row
+          // that follows the finger toward an empty panel is a lie.
+          const travel = Math.min(0, event.translationX);
+          swipe.value =
+            travel < -SWIPE_REVEAL
+              ? -SWIPE_REVEAL + (travel + SWIPE_REVEAL) * SWIPE_RESIST
+              : travel;
+        })
+        .onEnd((event) => {
+          'worklet';
+          const committed =
+            -swipe.value >= rowWidth.value * SWIPE_COMMIT_FRACTION ||
+            event.velocityX <= -SWIPE_COMMIT_VELOCITY;
+          // Committed: leave the row where the finger left it and let the
+          // exit carry it out. Not committed: back home, and the row is
+          // exactly as it was.
+          if (committed) {
+            runOnJS(handleDelete)();
+            return;
+          }
+          swipe.value = withTiming(0, {
+            duration: reducedMotion ? 0 : durationTokens.state,
+            easing: FILL,
+          });
+        }),
+    [canDelete, handleDelete, reducedMotion, swipe, rowWidth],
+  );
+
+  const swipeStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: swipe.value }],
+  }));
+
+  const revealStyle = useAnimatedStyle(() => ({
+    // The panel is only there while the row is off it. Fully hidden at rest
+    // so a stationary list carries no maroon band behind every row.
+    opacity: swipe.value === 0 ? 0 : 1,
+  }));
+
+  /**
+   * Design spec: `opacity 1→0` plus `translateX 0→−24`, `duration.press`
+   * 120, `easing.out`. Reduced motion keeps the fade and drops the travel
+   * (`accessibility` §6).
+   *
+   * A function rather than a builder so it can read `swipe` — see its
+   * declaration. `easing.celebrate` is the PR moment's and appears nowhere
+   * in this feature.
+   */
+  const exiting = useCallback<EntryExitAnimationFunction>(() => {
+    'worklet';
+    const from = swipe.value;
+    const config = { duration: durationTokens.press, easing: OUT };
+    return {
+      initialValues: { opacity: 1, transform: [{ translateX: from }] },
+      animations: {
+        opacity: withTiming(0, config),
+        transform: [
+          { translateX: withTiming(reducedMotion ? from : from - DELETE_EXIT_X, config) },
+        ],
+      },
+    };
+  }, [swipe, reducedMotion]);
+
+  /**
+   * Design spec: the rows below close the gap over `duration.state` 200 at
+   * `easing.fill`; reduced motion snaps at 0ms. Written out rather than
+   * `LinearTransition.duration(…)` because this is the same four values that
+   * builder produces, in the one form the repo's Reanimated test double can
+   * also carry.
+   */
+  const layout = useCallback<LayoutAnimationFunction>(
+    (values) => {
+      'worklet';
+      const config = { duration: reducedMotion ? 0 : durationTokens.state, easing: FILL };
+      return {
+        initialValues: {
+          originX: values.currentOriginX,
+          originY: values.currentOriginY,
+          width: values.currentWidth,
+          height: values.currentHeight,
+        },
+        animations: {
+          originX: withTiming(values.targetOriginX, config),
+          originY: withTiming(values.targetOriginY, config),
+          width: withTiming(values.targetWidth, config),
+          height: withTiming(values.targetHeight, config),
+        },
+      };
+    },
+    [reducedMotion],
+  );
+
+  const handleAccessibilityAction = useCallback(() => {
+    // One custom action, so there is nothing to switch on — and `name` is
+    // checked by the test rather than re-checked here.
+    handleDelete();
+  }, [handleDelete]);
+
   const content = (
     <>
       <View style={styles.number}>
@@ -250,32 +439,71 @@ export const SetRow = memo(function SetRow({
     </>
   );
 
+  // Both ways in that a screen reader can reach: the row's own custom
+  // action, and — when it is also a button — the edit hint it already had.
+  // Spread rather than branched so the accessible element stays ONE element
+  // either way (`accessibility` §2).
+  const deleteProps = canDelete
+    ? {
+        accessibilityActions: DELETE_ACTIONS,
+        onAccessibilityAction: handleAccessibilityAction,
+      }
+    : null;
+
   // The entrance lives on the outer view and the box on the inner one, so
   // the row can become a control without the animation having to know.
   return (
-    <Animated.View style={rowStyle} testID={testID}>
-      {onEdit === undefined ? (
-        // One item, not five fragments (`accessibility` §2). Not a button:
-        // with nothing to do to it, claiming it is one would be a lie to a
-        // screen reader — and that is exactly the state every other row is
-        // in while one of them is open for editing.
-        <View style={[styles.row, themed.row]} accessible accessibilityLabel={label}>
-          {content}
-        </View>
-      ) : (
-        // 44pt by slop, never by growing the box. The hint is the visible
-        // equivalent of the gesture, spoken.
-        <Pressable
-          onPress={handlePress}
-          style={[styles.row, themed.row]}
-          hitSlop={ROW_HIT_SLOP}
-          accessibilityRole="button"
-          accessibilityLabel={label}
-          accessibilityHint={SET_ENTRY_COPY.editHint}
+    <Animated.View style={rowStyle} exiting={exiting} layout={layout} testID={testID}>
+      <View style={styles.swipe}>
+        {/* Behind the row, revealed by it and never focusable: it is what
+            the gesture uncovers, not a second control. Warm maroon at 14%
+            because §8 reserves `urgent` for destructive — the one place in
+            this feature it is correct. */}
+        <Animated.View
+          style={[styles.reveal, themed.reveal, revealStyle]}
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
         >
-          {content}
-        </Pressable>
-      )}
+          <Text size="label" tone="urgent">
+            {SET_ENTRY_COPY.swipeDelete}
+          </Text>
+        </Animated.View>
+
+        <GestureDetector gesture={pan}>
+          {/* Opaque, so the panel behind shows only where the row is not. */}
+          <Animated.View style={[themed.surface, swipeStyle]} onLayout={handleMeasure}>
+            {onEdit === undefined ? (
+              // One item, not five fragments (`accessibility` §2). Not a
+              // button: with nothing to do to it, claiming it is one would be
+              // a lie to a screen reader — and that is exactly the state
+              // every other row is in while one of them is open for editing.
+              <View
+                style={[styles.row, themed.row]}
+                accessible
+                accessibilityLabel={label}
+                {...deleteProps}
+              >
+                {content}
+              </View>
+            ) : (
+              // 44pt by slop, never by growing the box. The hint is the
+              // visible equivalent of the gesture, spoken.
+              <Pressable
+                onPress={handlePress}
+                style={[styles.row, themed.row]}
+                hitSlop={ROW_HIT_SLOP}
+                accessibilityRole="button"
+                accessibilityLabel={label}
+                accessibilityHint={SET_ENTRY_COPY.editHint}
+                {...deleteProps}
+              >
+                {content}
+              </Pressable>
+            )}
+          </Animated.View>
+        </GestureDetector>
+      </View>
     </Animated.View>
   );
 });
@@ -308,6 +536,8 @@ function speakSet(set: LoggedSetView, unit: WeightUnit, trailingLabel?: string):
 }
 
 const RISE = Easing.bezier(easing.rise[0], easing.rise[1], easing.rise[2], easing.rise[3]);
+const OUT = Easing.bezier(easing.out[0], easing.out[1], easing.out[2], easing.out[3]);
+const FILL = Easing.bezier(easing.fill[0], easing.fill[1], easing.fill[2], easing.fill[3]);
 const CELL_POP = Easing.bezier(
   easing.cellPop[0],
   easing.cellPop[1],
@@ -316,6 +546,21 @@ const CELL_POP = Easing.bezier(
 );
 
 const styles = StyleSheet.create({
+  swipe: {
+    // Clips the row to its own track, so a swiped row never draws over the
+    // one above it.
+    overflow: 'hidden',
+  },
+  reveal: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    paddingRight: spacing(14),
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -338,5 +583,25 @@ const useThemedStyles = createThemedStyles(({ colors }) => ({
   row: {
     // §9's list-row divider, the same hairline `TargetLine` closes with.
     borderBottomColor: colors.border.soft,
+  },
+  reveal: {
+    // The design's panel is `urgent` at 14% over the page. `colors.urgent`
+    // is reserved for adherence-state files (the `adherence-colors-only`
+    // rule), and a reveal panel is not one — so it is reached through §1.1's
+    // `deep`, the maroon that is NOT the adherence red, at the alpha that
+    // composites to the same pixel over `bg.DEFAULT`: 0.35 of #541A2E gives
+    // (44, 29, 47) against the design's (44, 29, 46).
+    //
+    // `ExerciseRail`'s dash makes the identical move for `state.notStarted`.
+    // §8's real requirement is unaffected — the word **Delete** is the
+    // second channel, so nothing here rests on hue.
+    backgroundColor: withAlpha(colors.deep, '0.35'),
+    borderBottomColor: colors.border.soft,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  surface: {
+    // Opaque, and the page's own base — the row slides over the panel, it
+    // does not become translucent against it.
+    backgroundColor: colors.bg.DEFAULT,
   },
 }));

@@ -1,15 +1,16 @@
-import { Button, Text, hapticSetLogged } from '@coachos/ui';
+import { Button, Text, hapticSetLogged, useToast } from '@coachos/ui';
 import { spacing, useTheme } from '@coachos/ui/theme';
 import { parseWeight, resolveWeightStep, type WeightUnit } from '@coachos/utils';
 import { and, asc, eq } from 'drizzle-orm';
 import { AlertTriangle } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, StyleSheet, View } from 'react-native';
 
 import { getLocalDb } from '../../../db/client.ts';
 import { localSetLogs } from '../../../db/schema/local-training.ts';
 import { useWeightUnit } from '../../../hooks/useWeightUnit.ts';
 import type { LocalSessionPayload } from '../../../lib/prefetch/sessions.ts';
+import { useDeleteSet } from '../hooks/useDeleteSet.ts';
 import { useExerciseTarget } from '../hooks/useExerciseTarget.ts';
 import { useLogSet } from '../hooks/useLogSet.ts';
 import { useUpdateSet } from '../hooks/useUpdateSet.ts';
@@ -22,6 +23,7 @@ import {
   SET_ENTRY_COPY,
   SetEntryRow,
   cancelEditingLabel,
+  deleteSetActionLabel,
   speakLoad,
   toDisplayWeight,
 } from './SetEntryRow.tsx';
@@ -116,6 +118,36 @@ import type { LoggedSetView } from './SetRow.tsx';
 // out are Cancel (which discards, and says so) and Save (which writes) — and
 // while the editor is open every other row drops its `button` role and its
 // "Double tap to edit" hint, so no stray tap can close it either.
+//
+// ==================== WITHDRAWING A SET ================================
+//
+// `set-entry/06`. `useDeleteSet` owns the deferral and the outbox; three
+// decisions are this component's, and each is a way the delete path goes
+// wrong if it is made the other way:
+//
+// **The hidden set stays in `logged`, and only `SetList` filters it.** The
+// row is display state, not data — nothing has been deleted while the window
+// is open. Filtering here instead would take the set out of
+// `highestWorkingSetNumber`, so deleting set 4 of 4 would offer 4 again; log
+// it, then undo, and the client has two rows numbered 4. Gaps persist and the
+// next number only ever goes up (`useDeleteSet` rule (d)).
+//
+// **Two deletes in one window are two toasts, not one.** `ToastProvider`
+// stacks up to three and queues the rest, and `useDeleteSet` keeps one
+// pending entry per set, so nothing here serialises or coalesces them: each
+// withdrawal is a separate thing the client did and each is owed its own
+// five seconds. Collapsing them into "2 sets deleted" would offer one Undo
+// for two decisions, and the second set's window would be spent waiting on
+// the first.
+//
+// **Leaving the logger settles every open window.** The toast host lives at
+// the app root and would outlive this screen — so an Undo would still be on
+// screen for a row that is no longer anywhere the client can see, and
+// tapping it would restore a set into a list they have left. The unmount
+// dismisses them instead, which `useUndoToast` defines as a commit: the
+// client is done looking, and the delete they asked for stands. Nothing is
+// lost either way — the commit writes to SQLite and the outbox, neither of
+// which needs this component mounted.
 
 /** Neither a target nor a history to seed from: the stepper's own floor, not a guess. */
 const REPS_FALLBACK = 1;
@@ -133,6 +165,8 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
   const unit = useWeightUnit();
   const { logSet } = useLogSet();
   const { updateSet } = useUpdateSet();
+  const { deleteSet, hiddenSetIds } = useDeleteSet();
+  const { dismissToast } = useToast();
   const { target, history } = useExerciseTarget({ page, payload, sessionLocalId });
 
   const exerciseId = page.exerciseId;
@@ -142,6 +176,7 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
   const [enteringLocalId, setEnteringLocalId] = useState<string | null>(null);
   const [hasFailed, setHasFailed] = useState(false);
   const [hasEditFailed, setHasEditFailed] = useState(false);
+  const [hasDeleteFailed, setHasDeleteFailed] = useState(false);
   /**
    * Corrections already applied, by `client_local_id`. Kept beside the rows
    * rather than folded into them because a corrected set can live in EITHER
@@ -350,6 +385,7 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
   const handleEditSet = useCallback(
     (row: LoggedSetView) => {
       setHasEditFailed(false);
+      setHasDeleteFailed(false);
       // Seeded from the STORED row, in the client's display unit — so
       // re-opening an editor always shows what is on the device, never a
       // stale draft from a previous edit.
@@ -473,6 +509,73 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
     })();
   }, [editDraft, edits, unit, updateSet]);
 
+  // ── withdrawing a set (`set-entry/06`) ────────────────────────────────
+
+  /** The toasts whose windows are still open, so leaving can settle them. */
+  const openToastIds = useRef<Set<string>>(new Set());
+
+  const handleDeleteSet = useCallback(
+    (row: LoggedSetView) => {
+      setHasDeleteFailed(false);
+      // The editor closes first, whichever way in was used. It is mounted
+      // over the row, and a card correcting a set the client has just
+      // withdrawn is a card with nothing behind it.
+      setEditing(null);
+
+      // **No haptic.** Three are sanctioned on this product and a delete is
+      // none of them (`ui-conventions` §5): `Light` is a set logged, and
+      // buzzing for a withdrawal would say the opposite thing in the same
+      // word. **No announcement either** — the toast is an `alert` and
+      // announces itself, so saying it here would say it twice
+      // (design spec, Accessibility).
+      const toastId = deleteSet({
+        setLocalId: row.localId,
+        setNumber: row.setNumber,
+        isWarmup: row.isWarmup,
+        onCommitted: () => {
+          openToastIds.current.delete(toastId);
+          // The row is gone from SQLite, so it goes from the copies this
+          // component holds too. `hiddenSetIds` keeps the id regardless —
+          // this is housekeeping, not what makes the row stay away.
+          setSets((current) => current.filter((candidate) => candidate.localId !== row.localId));
+          setEdits((current) => withEdit(current, row.localId, undefined));
+        },
+        onFailed: () => {
+          openToastIds.current.delete(toastId);
+          // Nothing was written and `useDeleteSet` has already revealed the
+          // row, so the honest render is the set back where it was, plus a
+          // line saying why (`code-conventions` §8 — reported, not swallowed).
+          setHasDeleteFailed(true);
+        },
+      });
+      openToastIds.current.add(toastId);
+    },
+    [deleteSet],
+  );
+
+  // A set that was hidden and is not any more was undone — and a restored
+  // row is a fresh mount, so it replays the entrance the design gives it
+  // (`opacity 0→1`, `translateY 8→0`). Tracked here because the undo is the
+  // toast's, and the toast does not know this list exists.
+  const previouslyHidden = useRef<ReadonlySet<string>>(hiddenSetIds);
+  useEffect(() => {
+    for (const localId of previouslyHidden.current) {
+      if (!hiddenSetIds.has(localId)) setEnteringLocalId(localId);
+    }
+    previouslyHidden.current = hiddenSetIds;
+  }, [hiddenSetIds]);
+
+  useEffect(
+    () => () => {
+      // See the header. Dismissing is a commit, and it is the right one:
+      // the client has left the surface the offer was about.
+      const open = openToastIds.current;
+      for (const toastId of open) dismissToast(toastId);
+      open.clear();
+    },
+    [dismissToast],
+  );
+
   const handleConfirm = useCallback(() => {
     // First line, before any work: this is what `set_logged.entry_ms`
     // measures against, and it is how §19's budget gets proven in the field
@@ -496,6 +599,7 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
     // same (unread) number rather than skipping the client's set 1.
     if (!wasWarmup) setWorkingInFlight((count) => count + 1);
     setHasFailed(false);
+    setHasDeleteFailed(false);
 
     // Cleared in the same tick the number is claimed, and for the same
     // reason — see the header. Warm-up is deliberately left alone.
@@ -573,15 +677,17 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
     handleFailureChange,
   ]);
 
-  // One message band, two local-mirror faults. A correction says "save that
-  // change" rather than "log that set", because nothing was logged — and
-  // neither is ever phrased as a network problem, since neither is one
-  // (`ERRORS.md` ER§1.4).
+  // One message band, three local-mirror faults. Each names what the client
+  // was doing — logging, saving a change, deleting — because that is what
+  // they will try again, and none is ever phrased as a network problem,
+  // since none is one (`ERRORS.md` ER§1.4).
   const failureMessage = hasFailed
     ? SET_ENTRY_COPY.failed
     : hasEditFailed
       ? SET_ENTRY_COPY.editFailed
-      : null;
+      : hasDeleteFailed
+        ? SET_ENTRY_COPY.deleteFailed
+        : null;
 
   useEffect(() => {
     if (failureMessage === null) return;
@@ -656,9 +762,11 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
           isFailure={editDraft.isFailure}
           onWarmupChange={handleEditWarmupChange}
           onFailureChange={handleEditFailureChange}
-          // Cancel takes the head's trailing seam and the flags move to
-          // their own line. A `View` rather than the button alone so task
-          // 06's Delete set joins it as a sibling.
+          // Cancel and Delete set take the head's trailing seam and the
+          // flags move to their own line (design frame F). Both are `sm`, so
+          // the head keeps its 33px minimum and edit mode stays at 244 —
+          // create mode's 205 is untouched, because create mode mounts
+          // neither of them.
           headTrailing={
             <View style={styles.editActions}>
               <Button
@@ -669,6 +777,20 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
                 testID="set-entry-cancel-edit"
               >
                 {SET_ENTRY_COPY.cancelEdit}
+              </Button>
+              {/* `danger`, and it deletes on the first press — §7.5's rule
+                  is undo after the fact, never a confirm before it. The
+                  five-second window is the safety, and it is real. */}
+              <Button
+                size="sm"
+                variant="danger"
+                onPress={() => {
+                  handleDeleteSet(row);
+                }}
+                accessibilityLabel={deleteSetActionLabel(row.setNumber, editDraft.isWarmup)}
+                testID="set-entry-delete"
+              >
+                {SET_ENTRY_COPY.deleteSet}
               </Button>
             </View>
           }
@@ -706,6 +828,7 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
       handleEditWarmupChange,
       handleEditFailureChange,
       handleCancelEdit,
+      handleDeleteSet,
       handleEditSelectNearest,
     ],
   );
@@ -721,6 +844,10 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
         editingLocalId={editingLocalId}
         renderEditor={renderEditor}
         onEditSet={handleEditSet}
+        // The rows with an open undo window, and the ones whose window has
+        // closed. `logged` still holds them — see the header.
+        hiddenLocalIds={hiddenSetIds}
+        onDeleteSet={handleDeleteSet}
         testID="set-list"
       />
 
