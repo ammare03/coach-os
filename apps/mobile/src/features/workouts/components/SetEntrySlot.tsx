@@ -17,6 +17,7 @@ import { useUpdateSet } from '../hooks/useUpdateSet.ts';
 import type { ExercisePage } from '../lib/exercise-pages.ts';
 import { selectRecordSetIds, usePRCelebrationStore } from '../store/pr-celebration-store.ts';
 
+import { AddSetButton, addSetAnnouncement } from './AddSetButton.tsx';
 import { EditingBar } from './EditingBar.tsx';
 import { NearestWeightLine, PlateStack } from './PlateStack.tsx';
 import { PRCelebration } from './PRCelebration.tsx';
@@ -713,6 +714,29 @@ export function SetEntrySlot({
     targetRestSeconds,
   ]);
 
+  // ── going past the plan (`session-modifications/01`) ──────────────────
+  //
+  // **The set number is not computed here, and that is the whole point.**
+  // `setNumber` above is already `max(working) + workingInFlight + 1` — what
+  // is actually logged or pending for this exercise, never `target_sets` —
+  // so a second added set, or one added after a delete, keeps incrementing
+  // for free. Deriving it from the plan at this seam is the one way this
+  // task breaks (task Risks).
+  //
+  // So pressing `Add set` changes exactly one thing: it closes an open
+  // editor. That is not housekeeping — while the editor is open the
+  // composer is collapsed to `EditingBar` and carries no confirm, so it is
+  // the only state in which the next set is out of reach. The announcement
+  // is the rest of it: the composer sits below a scroll view, and a control
+  // that appears to do nothing is the worst outcome a screen-reader user
+  // can be handed (`accessibility` §2).
+  const handleAddSet = useCallback(() => {
+    setEditing(null);
+    AccessibilityInfo.announceForAccessibility(
+      addSetAnnouncement(setNumber, isWarmup, speakLoad(weight === 0 ? null : weight, reps, unit)),
+    );
+  }, [setNumber, isWarmup, weight, reps, unit]);
+
   // One message band, three local-mirror faults. Each names what the client
   // was doing — logging, saving a change, deleting — because that is what
   // they will try again, and none is ever phrased as a network problem,
@@ -885,6 +909,17 @@ export function SetEntrySlot({
         hiddenLocalIds={hiddenSetIds}
         recordLocalIds={recordLocalIds}
         onDeleteSet={handleDeleteSet}
+        // Always, at or past the plan — a client may want to add a set
+        // INSTEAD of completing every planned one, not only after
+        // (`session-modifications/01`, Approach step 2).
+        footer={
+          <AddSetButton
+            setNumber={setNumber}
+            isWarmup={isWarmup}
+            onPress={handleAddSet}
+            testID="add-set"
+          />
+        }
         testID="set-list"
       />
 
