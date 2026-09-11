@@ -89,6 +89,7 @@ function buildContext(opts: { user: ContextUser | null; trustedIp?: string | nul
       userAgent: null,
       receivedAt: new Date(),
     },
+    deviceId: null,
     ownershipCache: createOwnershipCache(),
   };
 }

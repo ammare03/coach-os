@@ -79,6 +79,7 @@ function describeCode(code: AppErrorCode): string {
     case 'PROGRAM_ALTERNATIVE_IS_ORIGIN':
     case 'PROGRAM_COPY_CROSS_PROGRAM':
     case 'CLIENT_ALREADY_HAS_ACTIVE_ASSIGNMENT':
+    case 'SESSION_CLAIMED_ELSEWHERE':
       return code;
     default:
       return assertNever(code);

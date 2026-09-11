@@ -1,6 +1,6 @@
 import { schema, type DbClient, type WorkoutSession } from '@coachos/db';
 import type { workouts as workoutsSchemas } from '@coachos/schemas';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 
 import { appError } from '../../lib/app-error.ts';
@@ -10,7 +10,7 @@ import { appError } from '../../lib/app-error.ts';
 // session their coach programmed; this is the row transition that lands
 // behind them once the outbox reaches the network.
 //
-// Four decisions, in the order they matter:
+// Five decisions, in the order they matter:
 //
 // (a) **This is an UPDATE, not an upsert.** Every other offline-capable
 //     write in P09 goes through `../../lib/offline-upsert.ts`, because it
@@ -51,6 +51,30 @@ import { appError } from '../../lib/app-error.ts';
 //     of that guard, not a substitute for it — and it is what makes the
 //     UPDATE itself unable to touch another client's row even if the
 //     middleware were ever removed.
+//
+// (e) **The claim is taken by the transition, in the same statement**
+//     (`./claim.ts`, DB§14.5 mechanism 3, added by `session-runtime/08`).
+//     Claiming on Start and not on open is the rule; this IS the start, so
+//     this is where it belongs. Three properties make it safe on a path
+//     that may be replayed from an outbox hours later:
+//
+//     - It only ever fills a claim that is **empty**. `COALESCE` keeps
+//       whatever is already there, so a late-arriving start from a device
+//       that lost the race cannot take the session from the device that
+//       won. Adjudicating a live claim is `workouts.claim`'s job, on the
+//       live call the client is actually waiting on.
+//     - It rides the existing `WHERE status = 'scheduled'` predicate, so a
+//       replay writes nothing here either — decision (b) covers both
+//       columns for free.
+//     - Both expressions read the OLD row (one `SET`, one snapshot), so
+//       `claimed_at` moves exactly when `active_device_id` did.
+//
+//     **It cannot fail the start.** There is no claim check in front of
+//     this UPDATE and no branch where a claim refuses one: an offline start
+//     is never blocked by a claim check (task 08's named risk), and a start
+//     replayed from the outbox has a client who stopped waiting for the
+//     answer long ago.
+//
 
 /**
  * What the device is told about the row it started. Mapped field by field
@@ -76,6 +100,13 @@ export async function startSession(
   db: DbClient,
   clientProfileId: string,
   input: StartSessionInput,
+  /**
+   * `ctx.deviceId` — the `did` claim, never the wire (`./claim.ts` rule
+   * (c)). `null` leaves the claim columns untouched: a token with no device
+   * identity is not a reason to refuse a client the session in front of
+   * them.
+   */
+  deviceId: string | null = null,
 ): Promise<StartedSessionSummary> {
   const owned = and(
     eq(schema.workoutSessions.id, input.workoutSessionId),
@@ -89,7 +120,24 @@ export async function startSession(
   // on the row lock and only the first matches.
   const [updated] = await db
     .update(schema.workoutSessions)
-    .set({ status: 'in_progress', startedAt: input.startedAt })
+    .set({
+      status: 'in_progress',
+      startedAt: input.startedAt,
+      // Decision (e). `claimed_at` is the last heartbeat (`./claim.ts` rule
+      // (b)), and a start is the first one.
+      //
+      // The instant is bound as an ISO string with an explicit cast, not as
+      // a `Date`: a raw `sql` fragment carries no column type mapper, so
+      // postgres.js is handed a value it cannot serialise and the statement
+      // fails at Bind. Drizzle applies the mapper only to the plain-object
+      // form used for `status`/`started_at` above.
+      ...(deviceId === null
+        ? {}
+        : {
+            activeDeviceId: sql`COALESCE(${schema.workoutSessions.activeDeviceId}, ${deviceId})`,
+            claimedAt: sql`CASE WHEN ${schema.workoutSessions.activeDeviceId} IS NULL THEN ${input.startedAt.toISOString()}::timestamptz ELSE ${schema.workoutSessions.claimedAt} END`,
+          }),
+    })
     .where(and(owned, eq(schema.workoutSessions.status, 'scheduled')))
     .returning();
 

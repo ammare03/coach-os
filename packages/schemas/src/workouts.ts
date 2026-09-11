@@ -119,3 +119,74 @@ export const startSessionInput = strictObject({
   startedAt: z.date(),
 });
 export type StartSessionInput = z.infer<typeof startSessionInput>;
+
+/**
+ * `workouts.claim` — DB§14.5 mechanism 3, taken at the moment the client
+ * taps Start and **before** the logger opens
+ * (`phase-09-workout-logger/session-runtime/08`).
+ *
+ * Three things it deliberately does not take:
+ *
+ * - **No `deviceId`.** It is the `did` claim on the access token, read from
+ *   `ctx.deviceId` and never the wire (`apps/api/src/trpc/context.ts`). A
+ *   caller-supplied device id would let one device name another device's id
+ *   and take, or falsely hold, a claim on the client's own session.
+ * - **No instant.** The staleness decision is made entirely against the
+ *   server's own clock. This procedure carried an `at` until the instant was
+ *   found to be the one untrusted input the whole rule rests on: a device
+ *   whose clock runs fast reports a claim that never ages, so the other
+ *   device is asked to confirm a transfer that should have been silent; one
+ *   running slow makes a live holder look abandoned and its session is taken
+ *   out from under it mid-set. Neither is exotic — a wrong phone clock is
+ *   ordinary. And unlike `workouts.start`, there is no offline case that
+ *   needs the device's own instant: a claim is a live call on a live
+ *   connection and is **never queued** (see below), so the server's clock is
+ *   within a round trip of the tap and is the only one of the two that
+ *   cannot be wrong.
+ * - **No `clientId`.** The client is `ctx.user.clientProfileId`, the same
+ *   shape as `upcoming` and `startAdHoc` above; `workoutSessionId` is the
+ *   one caller-supplied id, and `ownsResource` guards it.
+ *
+ * This procedure is **never queued in the outbox.** It is a live call on a
+ * live connection: with no signal there is no claim check at all, because
+ * blocking an offline start on one would break the case the product exists
+ * for (task 08's own Risks section). A queued claim would also be answering
+ * a question hours after the client stopped asking it.
+ */
+export const claimSessionInput = strictObject({
+  /** The server's own id. `ownsResource('workoutSession', …)` guards it. */
+  workoutSessionId: id,
+  /**
+   * Whether the caller has already been told the session is claimed and the
+   * client chose "Continue here" (`ERRORS.md` ER§1.4). `false` — the
+   * default — makes a live claim held by another device throw
+   * `SESSION_CLAIMED_ELSEWHERE` instead of taking it.
+   *
+   * A **stale** claim transfers regardless of this flag and with no sheet:
+   * six hours since the session started, or fifteen minutes without a
+   * heartbeat, means the holder is a phone in a drawer, and a client
+   * standing in a gym must never be unable to log because of it (DB§14.5).
+   */
+  transfer: z.boolean().default(false),
+});
+export type ClaimSessionInput = z.infer<typeof claimSessionInput>;
+
+/**
+ * `workouts.heartbeat` — the liveness touch the active device sends every
+ * few minutes while the logger is open (task 08 approach step 5). It is what
+ * makes the fifteen-minute staleness rule safe in both directions: a dead
+ * app releases the session quickly, a live one holds it.
+ *
+ * Shaped like {@link claimSessionInput} minus `transfer`, and that omission
+ * is the whole difference between the two procedures. A heartbeat that could
+ * transfer would steal the session back from a device the client had just
+ * deliberately moved to, once per interval, forever.
+ *
+ * It carries no instant either, and for the stronger version of the same
+ * reason: a heartbeat's entire claim is "I am alive **now**", so an instant
+ * the caller chooses is the one part of it that cannot be taken on trust.
+ */
+export const heartbeatSessionInput = strictObject({
+  workoutSessionId: id,
+});
+export type HeartbeatSessionInput = z.infer<typeof heartbeatSessionInput>;

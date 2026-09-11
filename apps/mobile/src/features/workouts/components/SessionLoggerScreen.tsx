@@ -1,11 +1,15 @@
 import { NotFoundState } from '@coachos/ui';
 import { createThemedStyles, density } from '@coachos/ui/theme';
-import { useContext } from 'react';
+import { useContext, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
+import { useExercisePosition } from '../hooks/useExercisePosition.ts';
 import { useLoggerSession, type LoggerSessionState } from '../hooks/useLoggerSession.ts';
+import { useSessionHeartbeat } from '../hooks/useSessionHeartbeat.ts';
+import { buildExercisePages, type ExercisePage } from '../lib/exercise-pages.ts';
 
+import { ExercisePager } from './ExercisePager.tsx';
 import { LoggerHeader } from './LoggerHeader.tsx';
 import { LoggerLoadError } from './LoggerLoadError.tsx';
 import { LoggerNoPrescription } from './LoggerNoPrescription.tsx';
@@ -31,9 +35,9 @@ import { LoggerNoPrescription } from './LoggerNoPrescription.tsx';
 //
 // **Where the next tasks attach.** The body slot below is task 03's
 // (exercise paging) and task 04's (the target line). Task 05 mounts
-// `useKeepAwake()` and task 08 a `useSessionHeartbeat()` in this component —
-// both are session-scoped side effects that belong beside the read, and
-// neither changes the layout.
+// `useKeepAwake()` here — a session-scoped side effect that belongs beside
+// the read and does not change the layout, the same way task 08's
+// `useSessionHeartbeat()` already does below.
 
 export interface SessionLoggerScreenProps {
   /** `local_workout_sessions.client_local_id`, from the route (`useLoggerSession` rule (b)). */
@@ -56,6 +60,33 @@ export function SessionLoggerScreen({ sessionLocalId, onExit, now }: SessionLogg
   const insets = useContext(SafeAreaInsetsContext);
   const { state, retry } = useLoggerSession(sessionLocalId);
 
+  // Task 03. Built here rather than inside `ExercisePager` so the pager
+  // stays controlled: the position has to survive an app kill, so it lives
+  // in local SQLite rather than in a component (`useExercisePosition`).
+  //
+  // `setsLogged` is deliberately unsupplied — nothing in `session-runtime`
+  // writes a set log, so every count would be a `0` claiming nothing was
+  // logged. `set-entry` owns the counts and their invalidation, and passes
+  // them here when it lands (`lib/exercise-pages.ts`).
+  const pages = useMemo(
+    () => buildExercisePages(state.kind === 'session' ? state.session.payload : null),
+    [state],
+  );
+  const position = useExercisePosition(sessionLocalId, pages.length);
+
+  // Task 08. Mounted here because the claim belongs to the screen that is
+  // open, not to the tap that opened it: `useStartSession` takes the claim,
+  // this is what keeps it (DB§14.5 mechanism 3).
+  //
+  // Both arguments are read off the same state the body renders, and both
+  // gate the hook rather than being asserted by it — a session with no
+  // server id yet (started offline, outbox unflushed) and one that is not
+  // in progress each have nothing to hold, and the hook idles.
+  useSessionHeartbeat({
+    serverId: state.kind === 'session' ? state.session.serverId : null,
+    isActive: state.kind === 'session' && state.session.isInProgress,
+  });
+
   return (
     <View
       style={[
@@ -69,7 +100,13 @@ export function SessionLoggerScreen({ sessionLocalId, onExit, now }: SessionLogg
           every state, so nothing shifts when the read lands
           (`screen-composition` §4). */}
       <View style={styles.body} testID="logger-body">
-        {renderBody(state, { onExit, onRetry: retry })}
+        {renderBody(state, {
+          onExit,
+          onRetry: retry,
+          pages,
+          currentIndex: position.index,
+          onIndexChange: position.setIndex,
+        })}
       </View>
     </View>
   );
@@ -78,6 +115,10 @@ export function SessionLoggerScreen({ sessionLocalId, onExit, now }: SessionLogg
 interface BodyHandlers {
   onExit: () => void;
   onRetry: () => void;
+  /** Task 03's page model. Empty for a session with no prescription to page. */
+  pages: readonly ExercisePage[];
+  currentIndex: number;
+  onIndexChange: (index: number) => void;
 }
 
 function renderBody(state: LoggerSessionState, handlers: BodyHandlers) {
@@ -110,15 +151,24 @@ function renderBody(state: LoggerSessionState, handlers: BodyHandlers) {
       );
 
     case 'session':
-      return state.session.exerciseCount === 0 ? (
+      // `pages`, not `exerciseCount`: they are derived from the same
+      // payload and agree, but the pager is what renders, so the emptiness
+      // that decides between these two branches must be the pager's.
+      return handlers.pages.length === 0 ? (
         <View style={styles.centred}>
           <LoggerNoPrescription />
         </View>
-      ) : // Task 03's slot: one exercise at a time, with task 04's target
-      // line above it. Empty until then, deliberately — a placeholder
-      // rendered here would be the design by default, which is the one
-      // thing `design-gate` exists to prevent.
-      null;
+      ) : (
+        // Task 03. `renderPage` is left unpassed: task 04's target line and
+        // `set-entry`'s surface go there, and a placeholder rendered now
+        // would be the design by default — the one thing `design-gate`
+        // exists to prevent.
+        <ExercisePager
+          pages={handlers.pages}
+          currentIndex={handlers.currentIndex}
+          onIndexChange={handlers.onIndexChange}
+        />
+      );
   }
 }
 

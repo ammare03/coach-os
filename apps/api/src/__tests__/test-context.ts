@@ -15,9 +15,16 @@ export function createTestContext(opts: {
   db: DbClient;
   user?: ContextUser | null;
   requestId?: string;
+  /**
+   * The `did` claim. `null` by default, which is what an unauthenticated
+   * request carries — a test exercising DB§14.5's session claim supplies a
+   * value per simulated device (`routers/__tests__/workouts.claim.test.ts`).
+   */
+  deviceId?: string | null;
 }): Context {
   return {
     user: opts.user ?? null,
+    deviceId: opts.deviceId ?? null,
     db: opts.db,
     // The real singleton (`lib/redis.ts`), `lazyConnect`-ed — importing it
     // does not open a connection, so this stays safe for every test in this
