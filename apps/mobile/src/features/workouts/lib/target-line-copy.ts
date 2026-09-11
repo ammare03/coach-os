@@ -42,6 +42,25 @@ export const TARGET_UNAVAILABLE_LABEL = 'target unavailable';
 /** The lead-in on the history half. Lowercase: it is a label, not a sentence. */
 const LAST_TIME_PREFIX = 'last time:';
 
+/**
+ * `session-modifications/04` — what the line says when the client's coach
+ * changed it mid-session, live (§8.9).
+ *
+ * Lowercase, to sit beside `last time:` rather than shout over it. It
+ * attributes the change to the **coach**, which `product-copy` §1 makes the
+ * one permitted form of judgement in this product — the product is relaying
+ * their decision, not making one. It does not say why, and it never implies
+ * the client was doing anything wrong: a coach adjusting a session live is
+ * ordinary coaching, not a correction (§CO2's no-shame rule).
+ */
+export const LIVE_OVERRIDE_LABEL = 'coach update';
+
+/** Its spoken form, which has to attribute in a full sentence. */
+const LIVE_OVERRIDE_SENTENCE = 'Updated live by your coach.';
+
+/** The spoken lead-in on the value the coach replaced. */
+const SUPERSEDED_PREFIX = 'Previously';
+
 /** `CLAUDE.md` §8.4 joins the two halves with this. */
 const SEPARATOR = '·';
 
@@ -75,6 +94,26 @@ export function labelLastPerformance(last: LastPerformance, unit: WeightUnit): s
   return `${String(last.reps ?? 0)} reps`;
 }
 
+/**
+ * `3 × 8–10 @ RPE 8` — what the coach programmed, printed struck through
+ * beside what they changed it to.
+ *
+ * **`null` when the two read identically**, which is the whole reason this
+ * is a function rather than a second `labelTarget` call: an adjustment to
+ * rest seconds does not appear on this line at all, and printing the same
+ * numbers twice with an arrow between them would be worse than printing
+ * them once.
+ */
+export function labelSupersededTarget(
+  programTarget: ExerciseTarget | null,
+  liveTarget: ExerciseTarget | null,
+  unit: WeightUnit,
+): string | null {
+  if (programTarget === null || liveTarget === null) return null;
+  const before = formatLoggerTarget(programTarget, unit);
+  return before === formatLoggerTarget(liveTarget, unit) ? null : before;
+}
+
 /** The `·` between the halves, printed only when there is a half on each side. */
 export function targetSeparator(hasTarget: boolean, hasHistory: boolean): string | null {
   return hasTarget && hasHistory ? SEPARATOR : null;
@@ -98,14 +137,27 @@ export function speakTargetLine(
   target: ExerciseTarget | null,
   last: LastPerformance | null,
   unit: WeightUnit,
-  options: { unavailable?: boolean } = {},
+  options: {
+    unavailable?: boolean;
+    /** `session-modifications/04` — the coach changed this one, live. */
+    isLiveOverridden?: boolean;
+    /** What they changed it from, or `null` when the line reads the same. */
+    supersededTarget?: ExerciseTarget | null;
+  } = {},
 ): string {
   if (target === null && last === null && options.unavailable === true) {
     return 'Target unavailable.';
   }
 
   const sentences: string[] = [];
+  // Attribution first: a client hears the start of the utterance and stops
+  // listening, so the fact that these are not the programmed numbers has to
+  // arrive before the numbers do.
+  if (options.isLiveOverridden === true) sentences.push(LIVE_OVERRIDE_SENTENCE);
   if (target !== null) sentences.push(`Target: ${speakTarget(target, unit)}.`);
+  if (options.supersededTarget != null) {
+    sentences.push(`${SUPERSEDED_PREFIX} ${speakTarget(options.supersededTarget, unit)}.`);
+  }
   sentences.push(
     last === null
       ? 'First time logging this exercise.'
