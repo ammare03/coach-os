@@ -9,6 +9,11 @@ import { localSetLogs, localWorkoutSessions } from '../../../../db/schema/local-
 import { deserializeOutboxPayload, enqueueMutation } from '../../../../lib/outbox/enqueue.ts';
 import { resetOutboxFlushStateForTests } from '../../../../lib/outbox/flush.ts';
 import { serialiseSessionPayload } from '../../../../lib/prefetch/sessions.ts';
+import {
+  DEFAULT_REST_SECONDS,
+  resetRestTimerForTests,
+  useRestTimerStore,
+} from '../../store/rest-timer-store.ts';
 import { LOG_SET_PROCEDURE, logSet } from '../useLogSet.ts';
 
 // `phase-09-workout-logger/set-entry/01`. Five things have to be true, and
@@ -42,6 +47,12 @@ beforeEach(() => {
   resetLocalDbForTests();
   resetOutboxFlushStateForTests();
   mockTrackEvent.mockClear();
+});
+
+// A logged set arms a real interval (`store/rest-timer-store.ts`), which
+// would otherwise outlive the file that started it.
+afterEach(() => {
+  resetRestTimerForTests();
 });
 
 const STARTED = new Date('2026-08-15T09:00:00.000Z');
@@ -409,5 +420,58 @@ describe('analytics', () => {
     expect(logged.localId).toBeTruthy();
     const { sets } = await readRows();
     expect(sets).toHaveLength(1);
+  });
+});
+
+describe('the rest timer', () => {
+  // `rest-timer/01`. §8.4: "Auto rest timer starts on set completion." The
+  // trigger is the confirm, the duration is the coach's, and neither waits
+  // on anything remote.
+  it("starts on the local write, from the exercise's coach-set target", async () => {
+    await seedInProgress();
+
+    await logSet({ ...ONE_SET, targetRestSeconds: 120, now: () => TAP });
+
+    expect(useRestTimerStore.getState()).toMatchObject({
+      isRunning: true,
+      targetSeconds: 120,
+      remainingSeconds: 120,
+    });
+  });
+
+  it('starts from the default for an exercise with no rest target', async () => {
+    await seedInProgress();
+
+    await logSet({ ...ONE_SET, targetRestSeconds: null, now: () => TAP });
+
+    expect(useRestTimerStore.getState().targetSeconds).toBe(DEFAULT_REST_SECONDS);
+  });
+
+  it('starts from the default for an ad-hoc set, which carries no prescription', async () => {
+    await seedInProgress();
+
+    await logSet({ ...ONE_SET, now: () => TAP });
+
+    expect(useRestTimerStore.getState().targetSeconds).toBe(DEFAULT_REST_SECONDS);
+  });
+
+  it('is running while the set is still queued, so the rest never waits on a flush', async () => {
+    await seedInProgress();
+
+    await logSet({ ...ONE_SET, isConnected: false, now: () => TAP });
+
+    const { entries } = await readRows();
+    // The server has not seen this set and will not for as long as the
+    // radio is off — the rest is under way regardless.
+    expect(entries).toHaveLength(1);
+    expect(useRestTimerStore.getState().isRunning).toBe(true);
+  });
+
+  it('does not start when the write is refused', async () => {
+    await seedInProgress({ status: 'scheduled' });
+
+    await expect(logSet({ ...ONE_SET, now: () => TAP })).rejects.toThrow('not in progress');
+
+    expect(useRestTimerStore.getState().isRunning).toBe(false);
   });
 });

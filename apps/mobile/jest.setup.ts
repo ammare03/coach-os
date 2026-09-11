@@ -1,3 +1,5 @@
+import { resetRestTimerForTests } from './src/features/workouts/store/rest-timer-store.ts';
+
 // The one place a native module or global gets patched for Jest, so the
 // fix is defined once and stays consistent across every test file
 // (quality-gates/01). jest-expo's own preset already mocks the Expo
@@ -45,3 +47,15 @@ require('@coachos/config/jest.native-mocks');
 // own test declares its own copy of this mock so it can assert on the call.
 // This mock lives in apps/mobile only — packages/ui imports no Sentry.
 jest.mock('@sentry/react-native', () => ({ init: jest.fn() }));
+
+// `rest-timer/01`. Logging a set arms a 1Hz interval in the rest-timer
+// store, and any suite that logs one through the real `logSet` inherits it
+// — four already do, and every future one that exercises the logger will.
+// A real interval outliving its test file is what Jest reports as "a worker
+// process has failed to exit gracefully", so the teardown is here rather
+// than copied into each suite: this file is the one place a cross-cutting
+// Jest fix is defined, and a per-file copy would be forgotten by the fifth.
+// The store's own spec resets as well, so it does not depend on this.
+afterEach(() => {
+  resetRestTimerForTests();
+});

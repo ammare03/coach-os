@@ -166,6 +166,36 @@ describe('SetEntrySlot', () => {
     expect(typeof call?.tapAtMs).toBe('number');
   });
 
+  it("hands the coach's rest target to the write path, with no separate rest action", async () => {
+    // `rest-timer/01`. §8.4: the rest timer starts on set completion, so the
+    // duration has to travel with the confirm — there is no control that
+    // could supply it later, and this slot must not grow one.
+    mockTarget.target = { ...mockTarget.target, targetRestSeconds: 120 };
+
+    renderSlot();
+    await waitFor(() => screen.getByTestId('set-entry-confirm'));
+
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+
+    await waitFor(() => {
+      expect(mockLogSet).toHaveBeenCalledTimes(1);
+    });
+    expect(mockLogSet.mock.calls[0]?.[0]).toMatchObject({ targetRestSeconds: 120 });
+    expect(screen.queryByLabelText(/rest/i)).toBeNull();
+  });
+
+  it('sends null for an exercise the coach set no rest on, so the default applies', async () => {
+    renderSlot();
+    await waitFor(() => screen.getByTestId('set-entry-confirm'));
+
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+
+    await waitFor(() => {
+      expect(mockLogSet).toHaveBeenCalledTimes(1);
+    });
+    expect(mockLogSet.mock.calls[0]?.[0]).toMatchObject({ targetRestSeconds: null });
+  });
+
   it('shows the logged set as a row the client can read back', async () => {
     renderSlot();
     await waitFor(() => screen.getByTestId('set-entry-confirm'));
