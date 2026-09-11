@@ -7,6 +7,7 @@ import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useExercisePosition } from '../hooks/useExercisePosition.ts';
 import { useLoggerSession, type LoggerSessionState } from '../hooks/useLoggerSession.ts';
 import { useSessionHeartbeat } from '../hooks/useSessionHeartbeat.ts';
+import { useSessionKeepAwake } from '../hooks/useSessionKeepAwake.ts';
 import { buildExercisePages, type ExercisePage } from '../lib/exercise-pages.ts';
 
 import { ExercisePager } from './ExercisePager.tsx';
@@ -34,10 +35,10 @@ import { LoggerNoPrescription } from './LoggerNoPrescription.tsx';
 // derived from `state`.
 //
 // **Where the next tasks attach.** The body slot below is task 03's
-// (exercise paging) and task 04's (the target line). Task 05 mounts
-// `useKeepAwake()` here — a session-scoped side effect that belongs beside
-// the read and does not change the layout, the same way task 08's
-// `useSessionHeartbeat()` already does below.
+// (exercise paging) and task 04's (the target line). Session-scoped side
+// effects — task 08's `useSessionHeartbeat()`, task 05's
+// `useSessionKeepAwake()` — mount together beside the read, where they cost
+// no layout and read their gate off the same state the body renders.
 
 export interface SessionLoggerScreenProps {
   /** `local_workout_sessions.client_local_id`, from the route (`useLoggerSession` rule (b)). */
@@ -84,6 +85,14 @@ export function SessionLoggerScreen({ sessionLocalId, onExit, now }: SessionLogg
   // in progress each have nothing to hold, and the hook idles.
   useSessionHeartbeat({
     serverId: state.kind === 'session' ? state.session.serverId : null,
+    isActive: state.kind === 'session' && state.session.isInProgress,
+  });
+
+  // Task 05. §8.4's "screen stays awake during an active session". Gated on
+  // the same `isActive` as the heartbeat rather than on the route: a
+  // completed session opened for review is not a workout, and keep-awake is
+  // charged against §19's 90-minute battery budget either way.
+  useSessionKeepAwake({
     isActive: state.kind === 'session' && state.session.isInProgress,
   });
 

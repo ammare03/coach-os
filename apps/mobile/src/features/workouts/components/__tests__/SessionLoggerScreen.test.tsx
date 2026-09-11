@@ -40,6 +40,19 @@ jest.mock('../../hooks/useSessionHeartbeat.ts', () => ({
   },
 }));
 
+// Task 05's keep-awake, split the same way. When the lock is taken and
+// released is `hooks/__tests__/useSessionKeepAwake.test.tsx`; what the screen
+// owns is the gate it hands the hook, and both ways of getting it wrong are
+// invisible on screen — a session pinned awake that nobody is logging is a
+// battery regression against `CLAUDE.md` §19, and one left unpinned is the
+// screen locking on a client mid-rest.
+const mockKeepAwake = jest.fn();
+jest.mock('../../hooks/useSessionKeepAwake.ts', () => ({
+  useSessionKeepAwake: (options: unknown) => {
+    mockKeepAwake(options);
+  },
+}));
+
 const STARTED_AT = new Date('2026-08-15T09:00:00.000Z');
 
 const EXERCISE_NAMES = [
@@ -177,6 +190,50 @@ describe('the claim the open logger holds', () => {
     renderScreen();
 
     expect(mockHeartbeat).toHaveBeenCalledWith({ serverId: null, isActive: false });
+  });
+});
+
+describe('the screen the open logger holds awake', () => {
+  it('holds it while the client is logging', () => {
+    mockState = { kind: 'session', session: buildSession() };
+    renderScreen();
+
+    expect(mockKeepAwake).toHaveBeenCalledWith({ isActive: true });
+  });
+
+  it('holds it for a session started offline, which the server has never seen', () => {
+    // Unlike the claim, keep-awake needs no server id: the client is standing
+    // in the gym under a loaded bar either way, and a session logged in
+    // airplane mode is the logger's normal case, not its edge case.
+    mockState = { kind: 'session', session: buildSession({ serverId: null }) };
+    renderScreen();
+
+    expect(mockKeepAwake).toHaveBeenCalledWith({ isActive: true });
+  });
+
+  it('lets it sleep for a session the client is not logging', () => {
+    // A completed or paused session opened for review. Pinning the screen for
+    // it is pure battery cost (`frontend-performance` §8).
+    mockState = {
+      kind: 'session',
+      session: buildSession({ status: 'completed', isInProgress: false }),
+    };
+    renderScreen();
+
+    expect(mockKeepAwake).toHaveBeenCalledWith({ isActive: false });
+  });
+
+  it.each([
+    ['while the read is still in flight', { kind: 'loading' } as const],
+    ['for a session the device does not have', { kind: 'not-found' } as const],
+    ['when the local read failed', { kind: 'error', error: new Error('locked') } as const],
+  ])('lets it sleep %s', (_label, state) => {
+    // None of these is a workout in progress, and each is a screen a client
+    // could leave open indefinitely.
+    mockState = state;
+    renderScreen();
+
+    expect(mockKeepAwake).toHaveBeenCalledWith({ isActive: false });
   });
 });
 
