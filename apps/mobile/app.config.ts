@@ -64,6 +64,23 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // file is domain-side and unbuilt. Tracked in `docs/UNFORGET.md` (S14) —
     // until it exists, `coachos://` is the only link form that works.
     associatedDomains: [`applinks:${UNIVERSAL_LINK_HOST}`],
+    infoPlist: {
+      // `rest-timer/04` — `CLAUDE.md` §25.7, the pitfall that task exists
+      // to close. Without the `audio` background mode the rest-timer tone
+      // is silent the moment the screen locks, which is the only moment it
+      // matters: a client who can see their phone can see the countdown.
+      // The failure is invisible in every foreground test, which is why it
+      // is written down here and not only in the module that plays the
+      // sound.
+      //
+      // Stated here as well as left to the `expo-audio` plugin below, which
+      // appends the same value when `enableBackgroundPlayback` is on. Two
+      // reasons: the plugin's default could move in an SDK bump and take
+      // the entitlement with it silently, and this is the line a reviewer
+      // greps for. The plugin checks membership before appending, so the
+      // generated Info.plist carries exactly one `audio` either way.
+      UIBackgroundModes: ['audio'],
+    },
   },
   android: {
     package: APP_ID,
@@ -136,6 +153,42 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // configuration. Native either way: dev-client rebuild, never an OTA
     // (`configuration` skill §8, `CLAUDE.md` §25.1, §25.11).
     'expo-router',
+    // `rest-timer/04`. `expo-audio` is the fifth of the modules discussed
+    // above and the first that needs real options rather than none — so it
+    // is an entry, and a tuple rather than the bare `'expo-audio'` string
+    // `expo install` suggests. The plugin's defaults are written for a media
+    // app; this app plays one half-second tone and records nothing, and
+    // three of the four defaults are wrong for that.
+    //
+    // `enableBackgroundPlayback` is the one that must stay on: it is what
+    // appends `UIBackgroundModes: ['audio']` to the generated Info.plist
+    // (§25.7, and see `ios.infoPlist` above) and what adds the Android
+    // media-playback service the OS needs to let a backgrounded process
+    // make a sound at all.
+    //
+    // The other three are turned off deliberately. `microphonePermission:
+    // false` drops `NSMicrophoneUsageDescription`, and `recordAudioAndroid:
+    // false` drops the `RECORD_AUDIO` permission — a rest timer that asks
+    // for a microphone is a store-review question we would deserve, and on
+    // Android it is a permission row a client reads before installing.
+    // `enableBackgroundRecording: false` is the plugin's own default,
+    // stated rather than inherited, because turning it on would add
+    // `POST_NOTIFICATIONS` and `FOREGROUND_SERVICE_MICROPHONE` for a
+    // capability this app does not have. Voice notes (`CLAUDE.md` §3.1)
+    // will need the microphone; that is the phase that turns it on, with
+    // its own permission copy.
+    //
+    // Native, all of it: dev-client rebuild, never an OTA (`configuration`
+    // skill §8, `CLAUDE.md` §25.1, §25.11).
+    [
+      'expo-audio',
+      {
+        microphonePermission: false,
+        recordAudioAndroid: false,
+        enableBackgroundRecording: false,
+        enableBackgroundPlayback: true,
+      },
+    ],
     // `providers-and-gates/05`. Unlike the three modules above, Sentry DOES
     // ship a config plugin, and it is the whole source-map story: it writes
     // `sentry.properties` into the generated iOS and Android projects and

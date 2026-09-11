@@ -2,6 +2,7 @@ import { router, useRootNavigationState } from 'expo-router';
 import { useEffect, useRef } from 'react';
 
 import { useAuthStore } from '../../auth/store.ts';
+import { alertForRestoredRest, ensureRestCompletionAlert } from '../lib/rest-timer-audio.ts';
 import { ensureRestTimerLiveActivity } from '../lib/rest-timer-live-activity.ts';
 import { ensureRestTimerPersistence } from '../lib/rest-timer-persistence.ts';
 import {
@@ -118,7 +119,15 @@ export function SessionRecoveryRedirect({
     // same reason as its neighbours: this is the one place that already
     // knows the mirror is readable and the client is a client.
     ensureRestTimerLiveActivity();
-    void (restoreRestTimer ?? ensureRestTimerPersistence)();
+    // The completion alert (`rest-timer/04`), subscribed before the restore
+    // so a rest that ran out while the process was dead is alerted on by
+    // whichever path reaches it first. Both dedupe on the same key, so
+    // neither can fire it twice.
+    ensureRestCompletionAlert();
+    void (restoreRestTimer ?? ensureRestTimerPersistence)().then(
+      alertForRestoredRest,
+      () => undefined,
+    );
 
     // No cancellation flag, deliberately. This is a one-shot navigation with
     // nothing to undo, and cancelling it on a dependency change would throw
