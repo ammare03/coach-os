@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { wipeLocalDatabase, type WipeResult } from '../../db/wipe.ts';
 import { clearPersistedQueryCache } from '../../lib/query/persister.ts';
 import { resetClientTimeZone } from '../../lib/time-zone/store.ts';
+import { useRestTimerStore } from '../workouts/store/rest-timer-store.ts';
 
 import type { AccessTokenRole } from './jwt.ts';
 
@@ -86,6 +87,10 @@ export async function wipeLocalDataOnSignOut(
     // first prefetch pass (`lib/time-zone/store.ts`). The persisted copy
     // went with the database; this drops the in-memory one.
     resetClientTimeZone();
+    // Same argument, one screen further on (`rest-timer/05`): the persisted
+    // anchor went with the database, but the running rest is module state
+    // and would otherwise count down for the next user on a shared phone.
+    useRestTimerStore.getState().stopRest();
   }
   return result;
 }

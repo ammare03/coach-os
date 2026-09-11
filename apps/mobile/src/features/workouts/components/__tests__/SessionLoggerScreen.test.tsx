@@ -1,5 +1,5 @@
 import { NOT_FOUND_COPY, ToastProvider } from '@coachos/ui';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import * as Haptics from 'expo-haptics';
 
 import {
@@ -15,6 +15,8 @@ import type {
 import type { LoggerSession, LoggerSessionState } from '../../hooks/useLoggerSession.ts';
 import { PROGRAM_CHANGED_WHEN, speakProgramChanged } from '../../lib/program-change-copy.ts';
 import { NO_HISTORY_LABEL } from '../../lib/target-line-copy.ts';
+import { useRestTimerStore } from '../../store/rest-timer-store.ts';
+import { REST_TIMER_COPY } from '../RestTimerBar.tsx';
 import { FINISH_COPY } from '../SessionFinish.tsx';
 import { SessionLoggerScreen } from '../SessionLoggerScreen.tsx';
 
@@ -718,5 +720,77 @@ describe('a completion the device refused', () => {
     // that can fail, including this.
     fireEvent.press(screen.getByLabelText('Pause workout and go back'));
     expect(onExit).toHaveBeenCalledTimes(1);
+  });
+});
+
+/** Every `testID` in the rendered tree, in document order. */
+function testIdsInOrder(node: unknown, found: string[] = []): string[] {
+  if (Array.isArray(node)) {
+    for (const child of node) testIdsInOrder(child, found);
+    return found;
+  }
+  if (node === null || typeof node !== 'object') return found;
+  const element = node as { props?: Record<string, unknown>; children?: unknown };
+  const id = element.props?.['testID'];
+  if (typeof id === 'string') found.push(id);
+  return testIdsInOrder(element.children, found);
+}
+
+describe('the rest countdown', () => {
+  // Scoped here so it runs before `jest.setup.ts`'s root-level store reset,
+  // which would otherwise land on a mounted subscriber.
+  afterEach(cleanup);
+
+  beforeEach(() => {
+    mockState = { kind: 'session', session: buildSession() };
+  });
+
+  it('is absent from the shell until a rest is actually running', async () => {
+    renderScreen();
+    // The slot's seed read is asynchronous; letting it land before the
+    // assertions keeps its state update inside `act()`.
+    await screen.findByTestId('set-entry-row');
+
+    // `ui-conventions`' absent-not-gated: it costs no layout on every other
+    // frame of the session.
+    expect(screen.queryByTestId('rest-timer-bar')).toBeNull();
+  });
+
+  it('mounts above the body, so the composer below it cannot move', async () => {
+    renderScreen();
+    // The slot's seed read is asynchronous; letting it land before the
+    // assertions keeps its state update inside `act()`.
+    await screen.findByTestId('set-entry-row');
+
+    act(() => {
+      useRestTimerStore.getState().startRest(90, { nowMs: Date.now() });
+    });
+
+    expect(screen.getByTestId('rest-timer-bar')).toBeTruthy();
+    // The ORDER is the acceptance criterion, not merely the presence: the
+    // bar must be a sibling ahead of `logger-body`, because everything from
+    // the body down is bottom-pinned to `set-entry`'s 205px composer. A bar
+    // that drifted below the body would lift the confirm control off its
+    // one screen coordinate, forty times a session.
+    const order = testIdsInOrder(screen.toJSON());
+    expect(order).toContain('rest-timer-bar');
+    expect(order.indexOf('rest-timer-bar')).toBeLessThan(order.indexOf('logger-body'));
+  });
+
+  it('ends the rest in full idle when skipped, so nothing alerts', async () => {
+    renderScreen();
+    // The slot's seed read is asynchronous; letting it land before the
+    // assertions keeps its state update inside `act()`.
+    await screen.findByTestId('set-entry-row');
+
+    act(() => {
+      useRestTimerStore.getState().startRest(90, { nowMs: Date.now() });
+    });
+    fireEvent.press(screen.getByLabelText(REST_TIMER_COPY.skipAction));
+
+    expect(useRestTimerStore.getState().startedAtMs).toBeNull();
+    expect(screen.queryByTestId('rest-timer-bar')).toBeNull();
+    // The session is untouched — skipping a rest is not leaving a workout.
+    expect(screen.getByTestId('exercise-pager')).toBeTruthy();
   });
 });

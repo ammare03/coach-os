@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 
+import { useRestTimerStore } from '../features/workouts/store/rest-timer-store.ts';
 import { clearPersistedQueryCache } from '../lib/query/persister.ts';
 import { resetClientTimeZone } from '../lib/time-zone/store.ts';
 
@@ -81,6 +82,16 @@ export async function ensureLocalDatabaseBelongsTo(
   // Same reason, for the in-memory copy the wipe cannot reach
   // (`lib/time-zone/store.ts`).
   resetClientTimeZone();
+  // And for the other one (`rest-timer/05`). `useRestTimerStore` is module
+  // state: the persisted rest anchor goes with the database file, the
+  // in-memory rest does not, so a rest the previous user was taking is
+  // still running here. Invisible until something renders a countdown, and
+  // from that point it is the next user on a shared device being shown
+  // someone else's rest — and, once tasks 03 and 04 land, alerted for it.
+  // `stopRest()` is the store's own cancellation rather than a second path:
+  // it disarms the interval and lands in full idle, which is exactly what
+  // those two read as "cancelled, do not alert".
+  useRestTimerStore.getState().stopRest();
 
   // `wipeLocalDatabase` deleted the file; `getLocalDb()` re-bootstraps a
   // fresh, empty one on the next open (`client.ts`'s own contract).
