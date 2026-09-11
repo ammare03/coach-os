@@ -58,7 +58,12 @@ function StubScreen() {
   return null;
 }
 
-/** Screens that pull the design system in; irrelevant to route resolution. */
+/**
+ * Screens that pull the design system in; irrelevant to route resolution.
+ * The logger also mounts the heartbeat, which needs a tRPC provider this
+ * test deliberately does not build — it mounts the real group layouts for
+ * the real `AuthGate`, not the app's provider stack.
+ */
 const SUBSTITUTED = new Set([
   '(auth)/sign-in',
   '(auth)/sign-up',
@@ -66,6 +71,7 @@ const SUBSTITUTED = new Set([
   '(auth)/welcome',
   '(auth)/forgot-password',
   '(auth)/invite/[code]',
+  '(client)/workout/[sessionId]',
   '_dev/gallery',
   'your-data',
 ]);
