@@ -434,3 +434,63 @@ export const deleteSetInput = strictObject({
   deletedAt: z.date(),
 });
 export type DeleteSetInput = z.infer<typeof deleteSetInput>;
+
+/**
+ * `workouts.updateNotes` — the two subjective fields a client attaches to a
+ * finished session (`phase-09-workout-logger/session-summary/03`).
+ *
+ * Four decisions:
+ *
+ * - **The session is named by its `client_local_id`** —
+ *   {@link completeSessionInput}'s first decision, verbatim and for its
+ *   reason. An ad-hoc session started and finished offline has no
+ *   `workout_sessions.id` for the device to send, and the note written about
+ *   it in the same basement must travel too.
+ * - **Both fields are nullable rather than optional.** `client_notes` and
+ *   `perceived_exertion` are device-authored, so the device wins (DB§14.3),
+ *   and the server writes exactly what it is handed. A payload that omitted
+ *   a field the client had CLEARED would leave the old value standing on the
+ *   server with nothing to ever correct it — the same argument
+ *   {@link logSetInput}'s `notes` makes one screen earlier.
+ * - **The device composes the whole `client_notes` string**, and the server
+ *   words nothing. `session-modifications/03`'s skip lines are prepended on
+ *   the device by `composeSessionNotes`, so the one place that decides what
+ *   this column says is the one place that can see every skip.
+ * - **No instant.** There is nothing to stamp: neither column has a
+ *   timestamp of its own, and the session's `updated_at` is the server's.
+ *   An instant here would be an untrusted input no rule reads.
+ */
+export const updateSessionNotesInput = strictObject({
+  /** `workout_sessions.client_local_id` — the session's own key. Not the mutation's. */
+  sessionClientLocalId: clientLocalId,
+  /**
+   * The mutation's own idempotency key, merged into the payload by the flush
+   * loop, which is why `strictObject` has to name it. The server does not key
+   * on it: this procedure is a plain overwrite of two columns with values the
+   * device computed, so a replay writes the same two values again.
+   */
+  clientLocalId,
+  /**
+   * `workout_sessions.perceived_exertion` — RPE, 1–10 (`CLAUDE.md` §26).
+   * The column is a `smallint` with no `CHECK` (DB§5.2), so this is the only
+   * bound it has, and the only thing stopping a 0 or a 7.5 reaching it.
+   *
+   * `null` is "the client did not answer", which is an ordinary outcome:
+   * nothing in this phase reads the value, and §8.2's adherence formula does
+   * not include it.
+   */
+  perceivedExertion: z.number().int().min(1).max(10).nullable(),
+  /**
+   * `workout_sessions.client_notes` — every skip line this session recorded,
+   * then the client's own words, composed on the device.
+   *
+   * The cap clears the worst realistic composition (a session of skipped
+   * exercises, each with a full-length reason note, plus the client's own
+   * 500 characters) with headroom. A composed value that failed validation
+   * would retry ten times and surface as "couldn't sync" over a note
+   * (`offline-sync` §4), so the bound is set to be unreachable rather than
+   * tight.
+   */
+  clientNotes: z.string().max(4_000).nullable(),
+});
+export type UpdateSessionNotesInput = z.infer<typeof updateSessionNotesInput>;

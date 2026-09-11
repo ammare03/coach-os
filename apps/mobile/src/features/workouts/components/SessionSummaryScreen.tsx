@@ -20,6 +20,7 @@ import {
 } from '../store/substituted-exercises-store.ts';
 
 import { ModificationsSummary } from './ModificationsSummary.tsx';
+import { SessionNoteCapture } from './SessionNoteCapture.tsx';
 import { SessionSummaryCard } from './SessionSummaryCard.tsx';
 
 // `phase-09-workout-logger/session-summary/01` — the terminal screen of the
@@ -154,6 +155,12 @@ export function SessionSummaryScreen({ sessionLocalId, onDone }: SessionSummaryS
             <SummaryHeader summary={state.summary} timeZone={timeZone} />
             <SessionSummaryCard summary={state.summary} records={records} unit={unit} />
             <ModificationsSummary skippedCount={skips.size} substitutedCount={substitutions.size} />
+            {/* `session-summary/03`. Below the figures because it is the one
+                thing on this screen that asks the client for something, and
+                only in the `summary` state: a session this device does not
+                hold has nothing to attach a note to. It gates nothing —
+                Done, in the foot, never reads it (decision (c)). */}
+            <SessionNoteCapture sessionLocalId={sessionLocalId} />
           </>
         ) : null}
       </ScrollView>

@@ -7,6 +7,7 @@ import { logSet } from '../features/workouts/log-set.ts';
 import { startAdHocSession } from '../features/workouts/start-ad-hoc.ts';
 import { startSession } from '../features/workouts/start.ts';
 import { listUpcomingWorkouts } from '../features/workouts/upcoming.ts';
+import { updateSessionNotes } from '../features/workouts/update-notes.ts';
 import { appError } from '../lib/app-error.ts';
 import { router } from '../trpc/init.ts';
 import { clientProcedure, ownsResource } from '../trpc/procedures.ts';
@@ -126,6 +127,27 @@ export const workoutsRouter = router({
     }
     return deleteSet(ctx.db, ctx.user.clientProfileId, input);
   }),
+
+  // The two subjective fields a client attaches to a finished session
+  // (`session-summary/03`): `perceived_exertion` and `client_notes`. The
+  // device composes the whole note — `session-modifications/03`'s skip lines
+  // first, then the client's own words — and this stores what it is given
+  // (`../features/workouts/update-notes.ts` decision (c)).
+  //
+  // No `ownsResource`, and it is `complete` above's reasoning verbatim: the
+  // only ids in the input are the client's own keys, the client is
+  // `ctx.user.clientProfileId` rather than the wire, and the UPDATE pins
+  // `client_id` to it, so `sessionClientLocalId` resolves to nothing outside
+  // the caller's own scope. Both fields are already registered in
+  // `NON_RESOURCE_ID_FIELDS`, so the enumeration test asserts the choice.
+  updateNotes: clientProcedure
+    .input(workoutsSchemas.updateSessionNotesInput)
+    .mutation(({ ctx, input }) => {
+      if (ctx.user.clientProfileId === null) {
+        throw new Error('workouts.updateNotes: authenticated client has no clientProfileId');
+      }
+      return updateSessionNotes(ctx.db, ctx.user.clientProfileId, input);
+    }),
 
   // DB§14.5 mechanism 3 (`session-runtime/08`). Called live, at the moment
   // the client taps Start and BEFORE the logger opens — never queued in the
