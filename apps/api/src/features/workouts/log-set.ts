@@ -1,4 +1,10 @@
-import { recomputeSessionVolume, schema, type DbClient, type SetLog } from '@coachos/db';
+import {
+  recomputeSessionVolume,
+  schema,
+  type DbClient,
+  type PersonalRecordType,
+  type SetLog,
+} from '@coachos/db';
 import type { workouts as workoutsSchemas } from '@coachos/schemas';
 import { estimateOneRepMax } from '@coachos/utils';
 import { and, eq, isNull } from 'drizzle-orm';
@@ -6,12 +12,13 @@ import type { z } from 'zod';
 
 import { appError } from '../../lib/app-error.ts';
 import { offlineUpsert } from '../../lib/offline-upsert.ts';
+import { detectPersonalRecords, type DetectPersonalRecords } from '../../lib/pr-detection.ts';
 
 // `workouts.logSet` — the server half of
 // `phase-09-workout-logger/set-entry/01`, and the most frequently replayed
 // mutation in the product.
 //
-// Six decisions, in the order they matter:
+// Seven decisions, in the order they matter:
 //
 // (a) **This IS an upsert**, unlike `./start.ts` and `./complete.ts`, which
 //     are both UPDATEs and say at length why. The difference is one column's
@@ -83,6 +90,18 @@ import { offlineUpsert } from '../../lib/offline-upsert.ts';
 //     it from the rows anyway, so doing it per set would be a sum over the
 //     whole session on every single tap.
 //
+// (g) **Personal records are re-derived in the same transaction, for every
+//     set, not only a heavier one.** `personal-records/02`'s risk is the
+//     same as decision (e)'s: a PR recorded for a set log that then fails to
+//     commit. The detection itself holds no rules — `../../lib/pr-detection
+//     .ts` decision (a) explains why they all live in `packages/db`'s
+//     `recomputePersonalRecords` instead, and decision (b) why a warm-up
+//     gets no early return here even though it can never set one.
+//
+//     Unconditional, unlike (e): the set that changes a record is not
+//     knowable without asking, and an EDIT that lowers a number has to be
+//     able to take a record away.
+//
 // (f) **`deleted_at` is not in the payload.** Omitting it means
 //     `offlineUpsert`'s inferred `set` never touches it, so a replay of the
 //     original log cannot resurrect a set the client later deleted
@@ -116,6 +135,13 @@ export interface LoggedSetSummary extends Pick<
   weightKg: number | null;
   /** Epley, decision (d). `null` for a bodyweight or zero-rep set. */
   estimated1rmKg: number | null;
+  /**
+   * Record types this set newly took, decision (g) — empty for almost every
+   * set, and always empty for a warm-up. `personal-records/03` celebrates
+   * off this, deduping on `clientLocalId` for the replay it can still see
+   * when the device retries a response it never received.
+   */
+  newPersonalRecords: PersonalRecordType[];
 }
 
 export type LogSetInput = z.infer<typeof workoutsSchemas.logSetInput>;
@@ -131,6 +157,7 @@ export async function logSet(
   clientProfileId: string,
   input: LogSetInput,
   recompute: RecomputeVolume = recomputeSessionVolume,
+  detect: DetectPersonalRecords = detectPersonalRecords,
 ): Promise<LoggedSetSummary> {
   return db.transaction(async (tx) => {
     // Decision (b). `client_id` is from `ctx.user`, never the wire, and it
@@ -191,11 +218,14 @@ export async function logSet(
       await recompute(tx, session.id);
     }
 
-    return summarise(row);
+    // Decision (g). Still inside the transaction, for (e)'s reason.
+    const newPersonalRecords = await detect(tx, row);
+
+    return summarise(row, newPersonalRecords);
   });
 }
 
-function summarise(row: SetLog): LoggedSetSummary {
+function summarise(row: SetLog, newPersonalRecords: PersonalRecordType[]): LoggedSetSummary {
   return {
     id: row.id,
     clientLocalId: row.clientLocalId,
@@ -208,5 +238,6 @@ function summarise(row: SetLog): LoggedSetSummary {
     isWarmup: row.isWarmup,
     isFailure: row.isFailure,
     loggedAt: row.loggedAt,
+    newPersonalRecords,
   };
 }

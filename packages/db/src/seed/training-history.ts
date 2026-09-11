@@ -206,6 +206,18 @@ export async function seedTrainingHistory(
 
           await tx.insert(setLogs).values(rows);
           setLogsCreated += rows.length;
+          // Real since `phase-09-workout-logger/personal-records/02` — a
+          // seeded client now holds max-weight, max-reps, and max-volume
+          // records for every exercise they have trained.
+          //
+          // **Not `1rm_estimated`**, and that is structural rather than an
+          // oversight: the recompute reads `set_logs.estimated_1rm_kg`
+          // instead of re-expressing Epley (its decision (c)), the rows
+          // above do not set that column, and filling it in here would
+          // require `@coachos/utils`' `estimateOneRepMax` — the dependency
+          // `../aggregates/recompute-session-volume.ts` decision (a) rules
+          // this package out of taking. Absent beats a second copy of the
+          // formula; the demo dataset is one record type short, not wrong.
           await recomputePersonalRecords(tx, clientId, exercise.exerciseId);
         }
       }

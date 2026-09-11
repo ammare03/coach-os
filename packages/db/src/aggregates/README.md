@@ -33,10 +33,10 @@ call to `recomputeDailySummary`, in the same transaction, is a bug — not a sty
 | ---------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------ |
 | `recomputeDailySummary(tx, clientId, loggedDate)`    | `nutrition.daily_nutrition_summary`         | Any insert, update, or delete against `nutrition.meal_items` |
 | `recomputeStorageUsage(tx, userId)`                  | `platform.storage_usage`                    | Any `coaching.media_assets` insert or (soft-)delete          |
-| `recomputePersonalRecords(tx, clientId, exerciseId)` | `training.personal_records`                 | Any `training.set_logs` insert                               |
+| `recomputePersonalRecords(tx, clientId, exerciseId)` | `training.personal_records`                 | Any `training.set_logs` insert, edit, or withdrawal          |
 | `recomputeSessionVolume(tx, workoutSessionId)`       | `training.workout_sessions.total_volume_kg` | Marking a `training.workout_sessions` row completed          |
 
-## Current state: one implemented, three still stubs
+## Current state: two implemented, two still stubs
 
 **`recomputeSessionVolume` is real** as of `phase-09-workout-logger/session-runtime/07-completion`,
 which is the task that owns the volume formula and the `workouts.complete` procedure that calls it.
@@ -45,15 +45,26 @@ It sums `reps × weight_kg` across non-warm-up, non-deleted sets, in one SQL sta
 exists in SQL here and in TypeScript in `packages/utils`' `sessionVolumeKg`, and where the two are
 pinned against each other (`apps/api/src/routers/__tests__/workouts.complete.test.ts`).
 
-The other three are placeholders. **None of them contains real business logic**, and none writes a
-fabricated value — all three are either read-only or throw. Do not build on top of a stub's current
-output (there isn't one); replace the function body entirely.
+**`recomputePersonalRecords` is real** as of `phase-09-workout-logger/personal-records/02`. It is the
+one place in the product that decides what a personal record is: the highest estimated 1RM, weight,
+rep count, and volume across a client's performed working sets for one exercise, each credited to the
+set that first reached it, with ties keeping the earlier set. It **derives from history rather than
+accumulating**, so an edit that lowers a number (`set-entry/05`) or a withdrawal (`set-entry/06`) can
+take a record away — which an incremental "is this bigger than the stored record" check never could.
+`apps/api/src/lib/pr-detection.ts` is its hot-path caller and deliberately holds no second opinion
+about any of those rules: it reads, calls this, reads again, and reports which types the new set took.
+Tests: `recompute-personal-records.test.ts` (the rules) and `apps/api/src/lib/pr-detection.test.ts`
+(the seam).
+
+The remaining two are placeholders. **Neither contains real business logic**, and neither writes a
+fabricated value — both throw. Do not build on top of a stub's current output (there isn't one);
+replace the function body entirely.
 
 Owning phases, so there's no ambiguity about who implements the real version:
 
 - `recomputeDailySummary` → `phase-13-nutrition/nutrition-summary/01` (the adherence formula)
 - `recomputeStorageUsage` → `phase-11-media-pipeline/retention-and-quota/03` (byte counting + quota)
-- `recomputePersonalRecords` → `phase-09-workout-logger/personal-records/01` (Epley 1RM + PR rules)
+- ~~`recomputePersonalRecords`~~ → **done**, `personal-records/02`
 - ~~`recomputeSessionVolume`~~ → **done**, `session-runtime/07`
 
 ### The one pairing `recomputeSessionVolume` still needs
@@ -67,6 +78,16 @@ by recomputing on replay too; closing it is `phase-09-workout-logger/set-entry`'
 its own insert with this function in the same transaction, exactly as this README's table asks of
 every other write path.
 
+### What `pnpm db:seed` produces, and the one record type it does not
+
+The seed's `recomputePersonalRecords` call is live, so a seeded client now holds `max_weight`,
+`max_reps`, and `max_volume` records for every exercise they have trained. It holds **no
+`1rm_estimated` record**, and that is structural. The recompute reads `set_logs.estimated_1rm_kg`
+rather than re-expressing Epley in SQL (its own decision (c)); `seed/training-history.ts` never sets
+that column, and setting it would need `@coachos/utils`' `estimateOneRepMax` — the dependency
+`recompute-session-volume.ts` decision (a) rules this package out of taking. A demo dataset one record
+type short beats a second copy of the formula.
+
 F6 (pre-phase-09 audit): three of the four used to upsert an inert-looking zero (`'0'`, `0/0`, a
 zeroed row) — correct scaffolding for proving the transactional shape, but a real _lie_ once a
 caller starts depending on the output, since `'0'` reads as a genuine (if unusually low) value
@@ -78,7 +99,8 @@ row would look like real athlete data, not obviously-fake scaffolding), so it al
 never wrote, and needed no change.
 
 **Consequence for `pnpm db:seed`**: `seed/training-history.ts`, `seed/nutrition-history.ts`, and
-`seed.ts` itself used to call the three now-throwing functions. They no longer do — the seed
+`seed.ts` itself used to call the then-throwing functions. They no longer do (bar the personal-records
+call, restored above) — the seed
 leaves `daily_nutrition_summary`, `storage_usage`, and `workout_sessions.total_volume_kg` absent
 or `null` rather than computing the real formulas itself (which would duplicate business logic
 these owning phases haven't written yet, violating the one-implementation rule in
