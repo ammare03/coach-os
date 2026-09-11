@@ -107,8 +107,13 @@ import type { RestRestoration } from './rest-timer-persistence.ts';
  * typed form needs an ambient `declare module '*.wav'`, and a repo-global
  * declaration for one file is the larger change — and the one likelier to
  * collide with the next task that ships a sound.
+ *
+ * Annotated rather than `require<number>(…)`: that generic form resolves
+ * only against a `require` declaration carrying a type parameter, which is
+ * not what a clean install of this workspace provides — it typechecks on a
+ * warm tree and fails on CI.
  */
-const REST_COMPLETE_TONE = require<number>('../../../../assets/audio/rest-complete.wav');
+const REST_COMPLETE_TONE: number = require('../../../../assets/audio/rest-complete.wav');
 
 /**
  * How old a zero may be and still be worth interrupting someone for —
