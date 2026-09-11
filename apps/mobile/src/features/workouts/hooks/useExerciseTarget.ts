@@ -4,7 +4,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { getLocalDb } from '../../../db/client.ts';
 import type { LocalSessionPayload } from '../../../lib/prefetch/sessions.ts';
 import type { ExercisePage } from '../lib/exercise-pages.ts';
-import { readLastPerformance, type LastPerformance } from '../lib/last-performance.ts';
+import {
+  readPreviousSession,
+  type LastPerformance,
+  type PreviousSession,
+} from '../lib/last-performance.ts';
 import { resolvePrescription } from '../lib/prescription.ts';
 
 // `session-runtime/04` — what one exercise page's target line is made of.
@@ -59,9 +63,25 @@ import { resolvePrescription } from '../lib/prescription.ts';
 // asked for, and vice versa — `UI-UX.md` §UX8's "the primary action works
 // when every optional section fails", applied inside one small block.
 
-/** The history half's own lifecycle — it degrades without taking the target with it. */
+/**
+ * The history half's own lifecycle — it degrades without taking the target
+ * with it.
+ *
+ * `ready` carries the same answer at two grains, read in one pass:
+ *
+ * - `last` is the exercise-level number `session-runtime/04`'s `TargetLine`
+ *   prints. Exactly `previous?.last ?? null`; it stays a field of its own
+ *   only because that component reads it.
+ * - `previous` is `set-entry/03`'s per-set-number map. `null` means the
+ *   client has never logged this exercise; present-but-missing-set-N means
+ *   the previous session simply had no set N. The two render differently
+ *   (nothing, versus the composer's "no set N last time"), so a consumer
+ *   must not collapse them.
+ */
 export type LastPerformanceState =
-  { kind: 'loading' } | { kind: 'ready'; last: LastPerformance | null } | { kind: 'error' };
+  | { kind: 'loading' }
+  | { kind: 'ready'; last: LastPerformance | null; previous: PreviousSession | null }
+  | { kind: 'error' };
 
 export interface ExerciseTargetState {
   /**
@@ -147,11 +167,19 @@ export function useExerciseTarget(options: UseExerciseTargetOptions): ExerciseTa
     void (async () => {
       try {
         const db = await getLocalDb();
-        const last = await readLastPerformance(db, {
+        // One read for both grains — see `readPreviousSession`. A per-row
+        // read would be a query per set row on the screen that is least
+        // able to afford one.
+        const previous = await readPreviousSession(db, {
           exerciseId,
           excludeSessionLocalId: sessionLocalId,
         });
-        if (alive) setEntry({ key: readKey, state: { kind: 'ready', last } });
+        if (alive) {
+          setEntry({
+            key: readKey,
+            state: { kind: 'ready', last: previous?.last ?? null, previous },
+          });
+        }
       } catch {
         // Swallowed into a state, not reported: a missing "last time" is an
         // absent convenience, not a crash, and Sentry must not collect one

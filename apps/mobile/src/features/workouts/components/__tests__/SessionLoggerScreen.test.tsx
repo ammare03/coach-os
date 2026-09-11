@@ -30,7 +30,7 @@ const mockExerciseTarget = jest.fn();
 jest.mock('../../hooks/useExerciseTarget.ts', () => ({
   useExerciseTarget: (options: UseExerciseTargetOptions): ExerciseTargetState => {
     mockExerciseTarget(options);
-    return { target: null, history: { kind: 'ready', last: null } };
+    return { target: null, history: { kind: 'ready', last: null, previous: null } };
   },
 }));
 
@@ -237,7 +237,16 @@ describe('a session that loaded', () => {
     // ±1. A six-exercise session that built all six would run six history
     // reads on mount, four of them for pages the client cannot reach without
     // swiping (`frontend-performance` §3).
-    expect(mockExerciseTarget).toHaveBeenCalledTimes(2);
+    //
+    // Counted as DISTINCT PAGES rather than calls: `set-entry/01` mounts a
+    // second consumer of this hook in the same slot (the composer needs the
+    // same last-time weight the line prints), so the call count is now one
+    // per consumer per page. The window is what this test owns, and a third
+    // consumer must not break it.
+    const windowed = new Set(
+      mockExerciseTarget.mock.calls.map((call) => call[0]?.page?.key as string),
+    );
+    expect(windowed.size).toBe(2);
     expect(mockExerciseTarget).not.toHaveBeenCalledWith(
       expect.objectContaining({ page: expect.objectContaining({ key: 'b-4' }) }),
     );
