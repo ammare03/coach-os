@@ -1,6 +1,6 @@
 import { Text, hapticSetLogged } from '@coachos/ui';
 import { spacing, useTheme } from '@coachos/ui/theme';
-import { parseWeight, resolveWeightStepKg, weightStepFor, type WeightUnit } from '@coachos/utils';
+import { parseWeight, resolveWeightStep, type WeightUnit } from '@coachos/utils';
 import { and, asc, eq } from 'drizzle-orm';
 import { AlertTriangle } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -17,6 +17,7 @@ import type { ExercisePage } from '../lib/exercise-pages.ts';
 import { NearestWeightLine, PlateStack } from './PlateStack.tsx';
 import { PreviousSetLine, speakPreviousSetLine } from './PreviousSetLine.tsx';
 import { SET_ENTRY_COPY, SetEntryRow, speakLoad, toDisplayWeight } from './SetEntryRow.tsx';
+import { renderSetTrailing, speakSetTrailing } from './SetFlagChips.tsx';
 import { SetList } from './SetList.tsx';
 import type { LoggedSetView } from './SetRow.tsx';
 
@@ -46,9 +47,36 @@ import type { LoggedSetView } from './SetRow.tsx';
 //     offline are byte-for-byte the same code path and must look identical.
 //
 // **The set number cannot collide under a fast thumb.** It is
-// `max(logged) + inFlight + 1`, so a client double-tapping the confirm
-// before the first write resolves gets 3 and 4, never 3 and 3 — and a
-// rejected write hands its number straight back.
+// `max(working) + workingInFlight + 1`, so a client double-tapping the
+// confirm before the first write resolves gets 3 and 4, never 3 and 3 — and
+// a rejected write hands its number straight back.
+//
+// **A warm-up takes no number on either side of that sum** (`set-entry/04`).
+// It is excluded from `max` and it never bumps `workingInFlight`, so three
+// warm-ups then a working set makes the working set set 1 — which is what a
+// set number means, and what DB§22's `is_warmup = false` filter assumes one
+// row further down. The warm-up row still carries the number it sat before
+// (the schema's floor is 1), but nothing reads it: `SetRow` prints `W` and
+// `readPreviousSession` drops it from the per-set grain.
+//
+// ==================== WHAT A CONFIRM DOES TO THE FLAGS ==================
+//
+// **Warm-up persists; to-failure clears.** They are not the same kind of
+// fact, so they cannot have the same lifetime:
+//
+//   - Warm-up describes a PHASE. Nobody does one warm-up set. Clearing it
+//     would charge a client a chip tap per set through the exact stretch of
+//     the session where sets come fastest; persisting costs two taps for a
+//     ramp of any length — on, then off. The composer keeps saying so while
+//     it is on (the head label stays dropped), so it is never a silent mode.
+//   - To-failure describes ONE SET'S OUTCOME, and the next set is not it.
+//     Persisting would quietly mark every following set as taken to failure
+//     — the product asserting something about a client that is not true, in
+//     the data their coach reads (`COPY.md` §CO2). A false positive here is
+//     worse than the one tap it costs on the rare set that earns the flag.
+//
+// Neither affects §8.4: both start `false`, and the clear happens after the
+// confirm, never between the stepper and it.
 
 /** Neither a target nor a history to seed from: the stepper's own floor, not a guess. */
 const REPS_FALLBACK = 1;
@@ -69,7 +97,8 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
 
   const exerciseId = page.exerciseId;
   const [sets, setSets] = useState<readonly LoggedSetView[]>([]);
-  const [inFlight, setInFlight] = useState(0);
+  /** Working sets only — a warm-up claims no number, so it reserves none. */
+  const [workingInFlight, setWorkingInFlight] = useState(0);
   const [enteringLocalId, setEnteringLocalId] = useState<string | null>(null);
   const [hasFailed, setHasFailed] = useState(false);
 
@@ -95,6 +124,10 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
             reps: localSetLogs.reps,
             weightKg: localSetLogs.weightKg,
             isWarmup: localSetLogs.isWarmup,
+            // Read back, not only written: a client who logs a set to
+            // failure and force-quits must find it still flagged when the
+            // session reloads from this mirror (`set-entry/04`).
+            isFailure: localSetLogs.isFailure,
             loggedAt: localSetLogs.loggedAt,
           })
           .from(localSetLogs)
@@ -118,6 +151,7 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
             weightKg: row.weightKg,
             loggedAt: new Date(row.loggedAt),
             isWarmup: row.isWarmup,
+            isFailure: row.isFailure,
           })),
         });
       } catch {
@@ -143,7 +177,36 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
     [seedRows, sets],
   );
 
-  const setNumber = highestSetNumber(logged) + inFlight + 1;
+  const setNumber = highestWorkingSetNumber(logged) + workingInFlight + 1;
+
+  // `set-entry/04`. Keyed on the exercise and session rather than reset in
+  // an effect, for the reason the draft below gives: a page turn must not
+  // show the previous exercise's flags for one frame under this exercise's
+  // name. NOT keyed on the unit — a flag is not a measurement.
+  const [flags, setFlags] = useState<DraftFlags | null>(null);
+  const { isWarmup, isFailure } = liveFlags(flags, readKey);
+
+  const handleWarmupChange = useCallback(
+    (next: boolean) => {
+      setFlags((current) => ({
+        key: readKey,
+        isWarmup: next,
+        isFailure: liveFlags(current, readKey).isFailure,
+      }));
+    },
+    [readKey],
+  );
+
+  const handleFailureChange = useCallback(
+    (next: boolean) => {
+      setFlags((current) => ({
+        key: readKey,
+        isWarmup: liveFlags(current, readKey).isWarmup,
+        isFailure: next,
+      }));
+    },
+    [readKey],
+  );
 
   // `set-entry/02`. Both fields ride in on the payload the pager already
   // holds — `workouts.upcoming` returns the exercise cache beside the
@@ -155,10 +218,10 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
   const equipment = exercise?.equipment ?? null;
 
   // The increment is native to the unit — 2.5kg converted to lb is an
-  // unusable 5.5lb step. `resolveWeightStepKg` owns the 2.5 default and the
-  // zero/negative cases, so nothing here re-checks them (DB§5.2).
-  const weightStep =
-    unit === 'kg' ? resolveWeightStepKg(exercise?.defaultIncrementKg) : weightStepFor(unit);
+  // unusable 5.5lb step. `resolveWeightStep` composes the coach's increment
+  // with the unit's own grid and owns the 2.5 default and the zero/negative
+  // cases, so nothing here re-checks them (DB§5.2).
+  const weightStep = resolveWeightStep(exercise?.defaultIncrementKg, unit);
 
   const last = history.kind === 'ready' ? history.last : null;
   const lastInSession = logged.length === 0 ? null : logged[logged.length - 1];
@@ -223,16 +286,27 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
     // rather than on a desk.
     const tapAtMs = Date.now();
     const number = setNumber;
+    // Read once, here: everything below describes the set as it was at the
+    // tap, not as the chips read by the time the write resolves.
+    const wasWarmup = isWarmup;
+    const wasFailure = isFailure;
 
     // `Light`, once, on create — the only haptic on this surface
-    // (`ui-conventions` §5). Fire-and-forget; it never gates the write.
+    // (`ui-conventions` §5). A warm-up is logged work and gets the same one.
+    // Fire-and-forget; it never gates the write.
     hapticSetLogged();
 
     // Synchronous, same tick as the tap: the head reads "Set 4" before the
     // frame is drawn, and the number is claimed so a second tap cannot take
     // it. Nothing re-layouts — no band changes size.
-    setInFlight((count) => count + 1);
+    // A warm-up claims nothing, so two fast warm-up taps both log as the
+    // same (unread) number rather than skipping the client's set 1.
+    if (!wasWarmup) setWorkingInFlight((count) => count + 1);
     setHasFailed(false);
+
+    // Cleared in the same tick the number is claimed, and for the same
+    // reason — see the header. Warm-up is deliberately left alone.
+    if (wasFailure) handleFailureChange(false);
 
     // The one place this feature crosses the unit edge (`CLAUDE.md` §0).
     // Below the stepper's own floor there is no external load, which is a
@@ -248,6 +322,8 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
           reps,
           weightKg,
           tapAtMs,
+          isWarmup: wasWarmup,
+          isFailure: wasFailure,
         });
 
         setSets((current) => [
@@ -258,14 +334,20 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
             reps,
             weightKg,
             loggedAt: result.loggedAt,
-            isWarmup: false,
+            isWarmup: wasWarmup,
+            isFailure: wasFailure,
           },
         ]);
         setEnteringLocalId(result.localId);
         // An optimistic write is invisible to a screen reader otherwise
-        // (`accessibility` §2) — the row appears with no sound at all.
+        // (`accessibility` §2) — the row appears with no sound at all. A
+        // warm-up names itself rather than a set number it does not hold,
+        // the same substitution the confirm's own label makes.
+        const load = speakConfirmed(weightKg, reps, unit);
         AccessibilityInfo.announceForAccessibility(
-          SET_ENTRY_COPY.loggedAnnouncement(result.setNumber, speakConfirmed(weightKg, reps, unit)),
+          wasWarmup
+            ? SET_ENTRY_COPY.warmupLoggedAnnouncement(load)
+            : SET_ENTRY_COPY.loggedAnnouncement(result.setNumber, load),
         );
       } catch {
         // `useLogSet` rejects on exactly one thing: a local-mirror fault —
@@ -273,13 +355,30 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
         // progress. There is no network outcome to handle here, so this is
         // never phrased as one.
         setHasFailed(true);
+        // The tap is undone whole, not in part: the set number goes back
+        // below and the flag that described the refused set comes back with
+        // it, so a retry does not silently drop it. Read through the
+        // updater rather than `wasWarmup`, so a warm-up toggled while the
+        // write was in flight survives.
+        if (wasFailure) handleFailureChange(true);
       } finally {
         // Hands the set number straight back on failure; on success the
         // appended row has already taken it, so the head never skips.
-        setInFlight((count) => count - 1);
+        if (!wasWarmup) setWorkingInFlight((count) => count - 1);
       }
     })();
-  }, [setNumber, weight, reps, unit, logSet, sessionLocalId, exerciseId]);
+  }, [
+    setNumber,
+    weight,
+    reps,
+    unit,
+    logSet,
+    sessionLocalId,
+    exerciseId,
+    isWarmup,
+    isFailure,
+    handleFailureChange,
+  ]);
 
   useEffect(() => {
     if (!hasFailed) return;
@@ -295,19 +394,24 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
   //
   // **Task 04 resolves the priority here, not inside `SetRow`**: a flag tag
   // wins the slot, then this line, then nothing (design spec, "One slot,
-  // two occupants"). Today this is the only occupant.
+  // two occupants"). `renderSetTrailing` owns that precedence — it is a
+  // product rule and it has to match what `speakSetTrailing` says below.
   const trailingByLocalId = useMemo(() => {
     const nodes = new Map<string, ReactNode>();
     for (const row of logged) {
       nodes.set(
         row.localId,
-        <PreviousSetLine
-          history={history}
-          setNumber={row.setNumber}
-          unit={unit}
-          placement="row"
-          testID={`set-row-previous-${row.localId}`}
-        />,
+        renderSetTrailing(
+          row,
+          <PreviousSetLine
+            history={history}
+            setNumber={row.setNumber}
+            unit={unit}
+            placement="row"
+            testID={`set-row-previous-${row.localId}`}
+          />,
+          `set-row-flag-${row.localId}`,
+        ),
       );
     }
     return nodes;
@@ -318,9 +422,12 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
     [trailingByLocalId],
   );
 
-  // A string compares by value, so this one needs no such cache.
+  // A string compares by value, so this one needs no such cache. Same
+  // priority, spoken — the two resolutions can only stay in step by going
+  // through the same pair of helpers.
   const renderTrailingLabel = useCallback(
-    (row: LoggedSetView) => speakPreviousSetLine(history, row.setNumber, unit),
+    (row: LoggedSetView) =>
+      speakSetTrailing(row, speakPreviousSetLine(history, row.setNumber, unit)),
     [history, unit],
   );
 
@@ -370,11 +477,18 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
           onWeightChange={handleWeightChange}
           onRepsChange={handleRepsChange}
           onConfirm={handleConfirm}
+          // The head band's trailing seam. Supplying both handlers is what
+          // mounts the chips; neither sits between the steppers and the
+          // confirm, so the default working set is still two taps (§8.4).
+          isWarmup={isWarmup}
+          isFailure={isFailure}
+          onWarmupChange={handleWarmupChange}
+          onFailureChange={handleFailureChange}
           // Left of the band; `PreviousSetLine` takes the right.
           // `PlateStack` draws an empty view rather than nothing when it
           // does not apply, so that slot keeps its place under
           // `space-between`.
-          contextLeading={<PlateStack equipment={equipment} weightKg={weightKg} />}
+          contextLeading={<PlateStack equipment={equipment} weightKg={weightKg} unit={unit} />}
           // Right of the band, against the set number being composed — so
           // a client about to log set 4 reads set 4's own history, or
           // "no set 4 last time" when the previous session stopped at 3.
@@ -396,6 +510,7 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
             <NearestWeightLine
               equipment={equipment}
               weightKg={weightKg}
+              unit={unit}
               onSelectNearest={handleSelectNearest}
             />
           }
@@ -409,14 +524,37 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
 /** Stable identity, so the `useMemo` below it does not rebuild on every render. */
 const EMPTY_ROWS: readonly LoggedSetView[] = [];
 
+/** The composer's two flags, and the exercise-and-session they belong to. */
+interface DraftFlags {
+  key: string;
+  isWarmup: boolean;
+  isFailure: boolean;
+}
+
+/** Both off — a page this composer has not been touched on, and the default. */
+const NO_FLAGS = { isWarmup: false, isFailure: false } as const;
+
 /**
- * `max`, never `length`: task 06 deletes a set without renumbering the rest,
- * and a warm-up (task 04) occupies no number at all.
+ * The flags as they apply to `key`, or both off. Derived rather than reset
+ * in an effect, so a page turn can never show the previous exercise's flags
+ * for one frame under this exercise's name.
  */
-function highestSetNumber(sets: readonly LoggedSetView[]): number {
+function liveFlags(flags: DraftFlags | null, key: string): Omit<DraftFlags, 'key'> {
+  return flags !== null && flags.key === key ? flags : NO_FLAGS;
+}
+
+/**
+ * `max`, never `length`: task 06 deletes a set without renumbering the rest.
+ *
+ * **Warm-ups are skipped** (task 04). A warm-up occupies no set number, so
+ * a ramp of three followed by the first working set makes that set 1 — the
+ * same thing `readPreviousSession` assumes when it drops warm-ups from the
+ * per-set grain, and what DB§22's filter means one row further down.
+ */
+function highestWorkingSetNumber(sets: readonly LoggedSetView[]): number {
   let highest = 0;
   for (const set of sets) {
-    if (set.setNumber > highest) highest = set.setNumber;
+    if (!set.isWarmup && set.setNumber > highest) highest = set.setNumber;
   }
   return highest;
 }

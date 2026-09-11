@@ -5,6 +5,8 @@ import { Check } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { SetFlagChips } from './SetFlagChips.tsx';
+
 // `set-entry/01` — the composer. Two steppers and a confirm, pinned to the
 // bottom of the slot, and the single most repeated interaction in the
 // product.
@@ -56,6 +58,14 @@ export const SET_ENTRY_COPY = {
   repsLabel: 'Reps',
   /** `Log set 3, 82.5 kilograms for 8 reps` — the whole sentence, §10.8's label. */
   confirmLabel: (setNumber: number, load: string) => `Log set ${String(setNumber)}, ${load}`,
+  /**
+   * The same sentence for a warm-up, which has no set number to name. It is
+   * also the only place the composer still says "warm-up set" out loud once
+   * the visible head label is omitted, so it is not optional politeness.
+   */
+  confirmWarmupLabel: (load: string) => `Log warm-up set, ${load}`,
+  /** The announcement's warm-up form, for the same reason. */
+  warmupLoggedAnnouncement: (load: string) => `Warm-up set logged, ${load}`,
   /** Announced on confirm, so an optimistic write is not silent to a screen reader. */
   loggedAnnouncement: (setNumber: number, load: string) =>
     `Set ${String(setNumber)} logged, ${load}`,
@@ -99,8 +109,25 @@ export interface SetEntryRowProps {
   onRepsChange: (reps: number) => void;
   onConfirm: () => void;
   /**
-   * **Seam — `set-entry/04`'s `SetFlagChips`.** The right of the head band.
-   * The chips take ~191px of the card's 270, which is why the head label is
+   * `set-entry/04`'s two flags. Both default `false`, so a working set is
+   * still exactly two taps (§8.4) — the chips are secondary and sit nowhere
+   * near the path from stepper to confirm.
+   *
+   * Supplying the two handlers is what mounts `SetFlagChips` into the head's
+   * trailing seam; a caller that has nowhere to put the flags gets the band
+   * it always had.
+   */
+  isWarmup?: boolean;
+  isFailure?: boolean;
+  onWarmupChange?: (next: boolean) => void;
+  onFailureChange?: (next: boolean) => void;
+  /**
+   * **The head band's trailing occupant, when it is not the flags.**
+   * `set-entry/05` puts Cancel and Delete set here and moves the chips to
+   * their own line; supplied, it replaces them rather than joining them —
+   * 270px carries one occupant, not two.
+   *
+   * The chips take ~191px of that 270, which is why the head label is
    * omitted for a warm-up rather than wrapped.
    */
   headTrailing?: ReactNode;
@@ -137,6 +164,10 @@ export function SetEntryRow({
   onWeightChange,
   onRepsChange,
   onConfirm,
+  isWarmup = false,
+  isFailure = false,
+  onWarmupChange,
+  onFailureChange,
   headTrailing,
   contextLeading,
   contextTrailing,
@@ -149,6 +180,24 @@ export function SetEntryRow({
   const iconColor = resolveButtonVariantVisuals('primary', false, false, theme).textColor;
   const load = speakLoad(displayLoad(weight), reps, unit);
 
+  // **The head label is the set number, and a warm-up has none.** `Warm-up
+  // set` needs ~86px of the ~71 the chips leave and would wrap the head to a
+  // second line, taking the card off 205px — the one thing this layout may
+  // not do. The selected chip is the label instead, and set 1 is the first
+  // *working* set, so there was never a number to print.
+  const showsSetLabel = mode !== 'edit' && !isWarmup;
+
+  const flags =
+    onWarmupChange === undefined || onFailureChange === undefined ? null : (
+      <SetFlagChips
+        isWarmup={isWarmup}
+        isFailure={isFailure}
+        onWarmupChange={onWarmupChange}
+        onFailureChange={onFailureChange}
+        testID="set-entry-flags"
+      />
+    );
+
   return (
     // The wrapper, not the `Card`, carries `flexShrink: 0` — `Card` owns its
     // own surface and takes no style. This is what makes the list above
@@ -158,13 +207,15 @@ export function SetEntryRow({
           the confirm out of the slot. */}
       <Card elevation="raised" density="coach">
         <View style={styles.head} testID="set-entry-head">
-          {mode === 'edit' ? null : (
+          {showsSetLabel ? (
             <Text size="eyebrow" tone="muted" style={styles.upper}>
               {SET_ENTRY_COPY.setLabel(setNumber)}
             </Text>
-          )}
-          {/* Task 04's chips. Empty today, and the band still stands. */}
-          {headTrailing}
+          ) : null}
+          {/* One occupant: task 05's actions if it supplied any, else the
+              flags. The band stands either way, and at its own minimum when
+              it holds neither. */}
+          {headTrailing ?? flags}
         </View>
 
         <View style={styles.weight} testID="set-entry-weight-band">
@@ -222,7 +273,14 @@ export function SetEntryRow({
             variant="primary"
             size="lg"
             onPress={onConfirm}
-            accessibilityLabel={SET_ENTRY_COPY.confirmLabel(setNumber, load)}
+            // A warm-up names itself rather than a number it does not have —
+            // and with the visible head label gone, this is where a screen
+            // reader learns which kind of set it is about to log.
+            accessibilityLabel={
+              isWarmup
+                ? SET_ENTRY_COPY.confirmWarmupLabel(load)
+                : SET_ENTRY_COPY.confirmLabel(setNumber, load)
+            }
             testID="set-entry-confirm"
           />
         </View>

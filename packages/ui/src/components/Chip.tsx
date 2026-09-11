@@ -28,6 +28,12 @@ export interface ChipProps {
    * not a breaking one.
    */
   density?: Density;
+  /**
+   * The spoken name, when the visible label is an abbreviation of it —
+   * `Warm-up` announcing as `Warm-up set`. Absent, the label is the name,
+   * which is every caller that predates this prop.
+   */
+  accessibilityLabel?: string;
   testID?: string;
 }
 
@@ -46,10 +52,21 @@ const CHIP_HIT_SLOP = centeredHitSlop(CHIP_HEIGHT, tapTarget.MIN);
  * from `SegmentedControl`: that component is exactly one choice from a
  * fixed, always-visible 2-4 option set.
  */
-export function Chip({ label, selected = false, onPress, iconLeft, onRemove, testID }: ChipProps) {
+export function Chip({
+  label,
+  selected = false,
+  onPress,
+  iconLeft,
+  onRemove,
+  accessibilityLabel,
+  testID,
+}: ChipProps) {
   const { colors, control, selectionPill } = useTheme();
   const themed = useThemedStyles();
   const interactive = Boolean(onPress);
+  // Resolved once: the tag branch, the button branch and the remove
+  // affordance all name the same thing and may not disagree about it.
+  const spokenLabel = accessibilityLabel ?? label;
 
   const chipStyle = [
     styles.chip,
@@ -90,7 +107,7 @@ export function Chip({ label, selected = false, onPress, iconLeft, onRemove, tes
           onPress={onPress}
           hitSlop={CHIP_HIT_SLOP}
           accessibilityRole="button"
-          accessibilityLabel={label}
+          accessibilityLabel={spokenLabel}
           accessibilityState={{ selected }}
           testID={testID}
           containerStyle={selected ? themed.selectedShadow : undefined}
@@ -105,7 +122,7 @@ export function Chip({ label, selected = false, onPress, iconLeft, onRemove, tes
         // (`component-gallery/03`). The shadow sits on an outer view because
         // `chip` clips its own children.
         <View style={selected ? themed.selectedShadow : undefined}>
-          <View accessible accessibilityLabel={label} testID={testID} style={chipStyle}>
+          <View accessible accessibilityLabel={spokenLabel} testID={testID} style={chipStyle}>
             {body}
           </View>
         </View>
@@ -117,7 +134,7 @@ export function Chip({ label, selected = false, onPress, iconLeft, onRemove, tes
           variant="secondary"
           size="sm"
           onPress={onRemove}
-          accessibilityLabel={`Remove ${label}`}
+          accessibilityLabel={`Remove ${spokenLabel}`}
         />
       ) : null}
     </View>

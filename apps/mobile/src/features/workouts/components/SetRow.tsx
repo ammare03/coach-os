@@ -25,6 +25,7 @@ import { labelLastPerformance } from '../lib/target-line-copy.ts';
 // way `SessionFinish.tsx` owns `FINISH_COPY` — one home per surface, so the
 // composer and the row it produces can never word the same set differently.
 import { speakLoad, toDisplayWeight } from './SetEntryRow.tsx';
+import { SET_FLAG_COPY } from './SetFlagChips.tsx';
 
 // `set-entry/01` — one set the client has already logged, and the moment it
 // arrives. The receipt half of the two-tap interaction: the composer below
@@ -57,6 +58,42 @@ export const SET_ROW_MIN_HEIGHT = 40;
 
 const TICK_SIZE = 15;
 
+/**
+ * The three channels a warm-up is de-emphasised on, **none of them hue**.
+ *
+ * Resolved in one place rather than spelled out across three JSX attributes,
+ * because "three channels" is the rule and a rule split across three
+ * expressions is a rule that loses one of them in a later edit. Desaturating
+ * the design's frame J is the check it exists to pass (`accessibility` §4):
+ * strip colour and the `W` still says warm-up.
+ */
+export interface SetRowInk {
+  /** Channel 1. `W`, not a numeral — a warm-up occupies no set number. */
+  glyph: string;
+  numberTone: 'warm' | 'muted';
+  /** Channel 2. The load, one step down from a working set's ink. */
+  loadTone: 'default' | 'muted';
+  /** Channel 3. The tick — muted, never absent: a warm-up is logged work. */
+  tick: 'brand' | 'muted';
+}
+
+export function setRowInk(set: Pick<LoggedSetView, 'isWarmup' | 'setNumber'>): SetRowInk {
+  if (set.isWarmup) {
+    return {
+      glyph: SET_FLAG_COPY.warmupGlyph,
+      numberTone: 'muted',
+      loadTone: 'muted',
+      tick: 'muted',
+    };
+  }
+  return {
+    glyph: String(set.setNumber),
+    numberTone: 'warm',
+    loadTone: 'default',
+    tick: 'brand',
+  };
+}
+
 /** What one logged set looks like to this feature, after the local write. */
 export interface LoggedSetView {
   /** `local_set_logs.client_local_id` — task 05 edits by it, task 06 deletes by it. */
@@ -67,6 +104,16 @@ export interface LoggedSetView {
   weightKg: number | null;
   loggedAt: Date;
   isWarmup: boolean;
+  /**
+   * `local_set_logs.is_failure` (`set-entry/04`). Optional because a caller
+   * seeding rows from a read that predates the column has nothing to put
+   * here; absent means `false`, exactly as the mirror's own default does.
+   *
+   * The row draws nothing from it directly — the `to failure` tag arrives
+   * through `trailing`, whose priority `SetFlagChips.renderSetTrailing`
+   * resolves — but it travels with the set so that resolution has one input.
+   */
+  isFailure?: boolean;
 }
 
 export interface SetRowProps {
@@ -145,6 +192,7 @@ export const SetRow = memo(function SetRow({
   }));
 
   const load = labelLoad(set, unit);
+  const ink = setRowInk(set);
 
   return (
     <Animated.View
@@ -158,12 +206,12 @@ export const SetRow = memo(function SetRow({
       testID={testID}
     >
       <View style={styles.number}>
-        <Metric value={String(set.setNumber)} size="numeral" tone="warm" />
+        <Metric value={ink.glyph} size="numeral" tone={ink.numberTone} />
       </View>
 
       {/* No `numberOfLines`: at 200% text the load wraps and the row grows
           (`accessibility` §3). */}
-      <Metric value={load} size="numeral" />
+      <Metric value={load} size="numeral" tone={ink.loadTone} />
 
       <View style={styles.gap} />
 
@@ -172,7 +220,7 @@ export const SetRow = memo(function SetRow({
       <Animated.View style={tickStyle}>
         <Check
           size={TICK_SIZE}
-          color={theme.colors.brand.DEFAULT}
+          color={ink.tick === 'brand' ? theme.colors.brand.DEFAULT : theme.colors.fg.muted}
           strokeWidth={2.8}
           // `accessible` above merges it in; the label already says "logged".
         />
@@ -196,10 +244,15 @@ function labelLoad(set: LoggedSetView, unit: WeightUnit): string {
  * `Set 3, 82.5 kilograms for 8 reps, logged.` — glyphs expanded to words,
  * plus whatever the trailing slot has to say: `… logged. Last time 80
  * kilograms for 8 reps.`
+ *
+ * A warm-up says what it is instead of a number, which is the spoken half of
+ * the `W` in the number cell: reading "Set 3" for a row the client can see
+ * is unnumbered would put the screen reader and the screen at odds.
  */
 function speakSet(set: LoggedSetView, unit: WeightUnit, trailingLabel?: string): string {
   const load = speakLoad(toDisplayWeight(set.weightKg, unit), set.reps, unit);
-  const sentence = `Set ${String(set.setNumber)}, ${load}, logged.`;
+  const name = set.isWarmup ? SET_FLAG_COPY.warmupSetLabel : `Set ${String(set.setNumber)}`;
+  const sentence = `${name}, ${load}, logged.`;
   return trailingLabel === undefined ? sentence : `${sentence} ${trailingLabel}`;
 }
 

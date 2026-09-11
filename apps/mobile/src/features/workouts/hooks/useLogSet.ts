@@ -98,13 +98,7 @@ export interface LogSetArgs {
   weightKg?: number | null;
   /** Ramp-up work. Excluded from volume and from the session's set count. */
   isWarmup?: boolean;
-  /**
-   * Taken to momentary failure. Accepted now so `set-entry/04` adds a
-   * control rather than a signature — but note it travels to the server only:
-   * `local_set_logs` has no `is_failure` column yet, so the value lives in
-   * the queued payload and not in the device's own render copy. Task 04 adds
-   * the column, the DDL, and the drift-test entry together.
-   */
+  /** Taken to momentary failure. Mirrored locally as well as queued (`set-entry/04`). */
   isFailure?: boolean;
   /**
    * `Date.now()` sampled by the caller at the moment of the confirming tap,
@@ -182,6 +176,7 @@ export async function logSet(deps: LogSetDeps): Promise<LoggedSet> {
   const loggedAt = (deps.now ?? (() => new Date()))();
   const weightKg = deps.weightKg ?? null;
   const isWarmup = deps.isWarmup ?? false;
+  const isFailure = deps.isFailure ?? false;
 
   // Rules (b) and (c). The payload carries no `clientLocalId` — `flush.ts`
   // merges the outbox row's own, which is the only authoritative copy of it.
@@ -197,7 +192,7 @@ export async function logSet(deps: LogSetDeps): Promise<LoggedSet> {
       weightKg,
       loggedAt,
       isWarmup,
-      isFailure: deps.isFailure ?? false,
+      isFailure,
     },
     ...(session.startOutboxId === null ? {} : { dependsOn: session.startOutboxId }),
   });
@@ -215,6 +210,10 @@ export async function logSet(deps: LogSetDeps): Promise<LoggedSet> {
     reps: deps.reps,
     weightKg,
     isWarmup,
+    // Mirrored, not just queued: a client who logs a set to failure and
+    // force-quits reloads the session from this row, and a flag that lived
+    // only in the outbox payload came back gone (`set-entry/04`).
+    isFailure,
     loggedAt: loggedAt.getTime(),
     // The device authored this and the server has not confirmed it, so a
     // refresh must not overwrite it (`offline-sync` §5).

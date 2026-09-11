@@ -41,6 +41,31 @@ describe('SetEntryRow', () => {
     expect(screen.getByText('Set 3')).toBeTruthy();
   });
 
+  it('names a warm-up on the confirm, since its head label is gone', () => {
+    renderComposer({ isWarmup: true, onWarmupChange: jest.fn(), onFailureChange: jest.fn() });
+
+    expect(screen.getByLabelText('Log warm-up set, 82.5 kilograms for 8 reps')).toBeTruthy();
+  });
+
+  it('leaves the head band empty rather than mounting chips a caller cannot handle', () => {
+    renderComposer();
+
+    expect(screen.queryByText('Warm-up')).toBeNull();
+  });
+
+  it('gives task 05’s head actions the slot ahead of the flags', () => {
+    // 270px carries one occupant. The editor moves the chips to their own
+    // line and puts Cancel / Delete set here (design frame F).
+    renderComposer({
+      headTrailing: <Text>Cancel</Text>,
+      onWarmupChange: jest.fn(),
+      onFailureChange: jest.fn(),
+    });
+
+    expect(screen.getByText('Cancel')).toBeTruthy();
+    expect(screen.queryByText('Warm-up')).toBeNull();
+  });
+
   it('speaks the unit as a word, never as the glyph', () => {
     renderComposer({ unit: 'lb', weight: 185, reps: 5 });
 
@@ -151,6 +176,44 @@ describe('SetEntryRow — the 205px contract', () => {
       ),
     });
 
+    expect(composerHeightPx()).toBe(205);
+  });
+
+  it('is still 205px with both flag chips in the head', () => {
+    // Task 04 adds no band: the chips occupy the head's existing trailing
+    // seam. If they ever move the confirm, they have taken the one property
+    // the whole layout is built to hold.
+    renderComposer({
+      onWarmupChange: jest.fn(),
+      onFailureChange: jest.fn(),
+    });
+
+    expect(screen.getByText('Warm-up')).toBeTruthy();
+    expect(screen.getByText('To failure')).toBeTruthy();
+    expect(composerHeightPx()).toBe(205);
+  });
+
+  it('is still 205px with warm-up on, where the head label is dropped', () => {
+    // The reason the label is dropped rather than wrapped: `Warm-up set`
+    // would take the head to two lines and the card to 244.
+    renderComposer({
+      isWarmup: true,
+      onWarmupChange: jest.fn(),
+      onFailureChange: jest.fn(),
+    });
+
+    expect(screen.queryByText('Set 3')).toBeNull();
+    expect(composerHeightPx()).toBe(205);
+  });
+
+  it('is still 205px with to-failure on', () => {
+    renderComposer({
+      isFailure: true,
+      onWarmupChange: jest.fn(),
+      onFailureChange: jest.fn(),
+    });
+
+    expect(screen.getByText('Set 3')).toBeTruthy();
     expect(composerHeightPx()).toBe(205);
   });
 

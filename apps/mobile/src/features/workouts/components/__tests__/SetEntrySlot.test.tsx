@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 import type { UpcomingExercise } from 'api/src/features/workouts/upcoming.ts';
 import { AccessibilityInfo } from 'react-native';
 
+import { getLocalDb, resetLocalDbForTests } from '../../../../db/client.ts';
+import { localSetLogs, localWorkoutSessions } from '../../../../db/schema/local-training.ts';
 import {
   buildBlock,
   buildExercise,
@@ -66,7 +68,14 @@ function logged(overrides: Partial<LoggedSet> = {}): LoggedSet {
   };
 }
 
+const sqlite = jest.requireMock('expo-sqlite') as { __reset: () => void };
+
 beforeEach(() => {
+  // The seed-read tests below write real rows through the fake; without a
+  // reset they would leak into every test after them.
+  sqlite.__reset();
+  resetLocalDbForTests();
+
   mockTarget = {
     target: {
       targetSets: 3,
@@ -346,6 +355,339 @@ describe('SetEntrySlot · the composer never changes height', () => {
     expect(composerHeightPx()).toBe(229);
   });
 });
+
+// `set-entry/04` — the flags in the RUNNING screen, not in an isolated
+// composer. `SetFlagChips.test.tsx` proves the component and the write path;
+// everything below proves the slot actually holds the state, feeds it to
+// `logSet`, reads it back, and derives the set number around it.
+
+describe('SetEntrySlot · warm-up and to-failure flags', () => {
+  it('carries a warm-up from the chip into the logged set', async () => {
+    renderSlot();
+    await waitFor(() => screen.getByTestId('set-entry-confirm'));
+
+    fireEvent.press(screen.getByTestId('set-flag-warmup'));
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+
+    await waitFor(() => {
+      expect(mockLogSet).toHaveBeenCalledTimes(1);
+    });
+    expect(mockLogSet.mock.calls[0]?.[0]).toMatchObject({ isWarmup: true, isFailure: false });
+  });
+
+  it('carries to-failure through too, and the two are independent', async () => {
+    renderSlot();
+    await waitFor(() => screen.getByTestId('set-entry-confirm'));
+
+    fireEvent.press(screen.getByTestId('set-flag-failure'));
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+
+    await waitFor(() => {
+      expect(mockLogSet).toHaveBeenCalledTimes(1);
+    });
+    expect(mockLogSet.mock.calls[0]?.[0]).toMatchObject({ isWarmup: false, isFailure: true });
+  });
+
+  it('names the warm-up in the announcement rather than a set number it has not got', async () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
+
+    renderSlot();
+    await waitFor(() => screen.getByTestId('set-entry-confirm'));
+
+    fireEvent.press(screen.getByTestId('set-flag-warmup'));
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+
+    await waitFor(() => {
+      expect(announce).toHaveBeenCalledWith('Warm-up set logged, 60 kilograms for 8 reps');
+    });
+  });
+
+  it('speaks each chip in full, not the abbreviation the pill prints', async () => {
+    renderSlot();
+    await waitFor(() => screen.getByTestId('set-entry-confirm'));
+
+    // `Chip`'s `accessibilityLabel` passthrough, applied. The pill still
+    // prints the short form the head band has room for.
+    expect(screen.getByLabelText('Warm-up set')).toBeTruthy();
+    expect(screen.getByLabelText('Taken to failure')).toBeTruthy();
+    expect(screen.getByText('Warm-up')).toBeTruthy();
+    expect(screen.getByText('To failure')).toBeTruthy();
+  });
+});
+
+describe('SetEntrySlot · a warm-up consumes no set number', () => {
+  beforeEach(() => {
+    // Echo the caller's own arguments back, so the appended row carries the
+    // number the slot actually asked for.
+    let issued = 0;
+    mockLogSet.mockImplementation((args) => {
+      issued += 1;
+      return Promise.resolve(logged({ localId: `set-local-${String(issued)}`, ...args }));
+    });
+  });
+
+  it('gives the working set logged after a warm-up the number 1', async () => {
+    renderSlot();
+    await waitFor(() => screen.getByTestId('set-entry-confirm'));
+
+    // The ramp: warm-up on, log, warm-up off, log.
+    fireEvent.press(screen.getByTestId('set-flag-warmup'));
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+    await waitFor(() => {
+      expect(mockLogSet).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.press(screen.getByTestId('set-flag-warmup'));
+    // The head can say it again the moment the warm-up is off, which is the
+    // visible half of the same claim.
+    await waitFor(() => {
+      expect(screen.getByText('Set 1')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+    await waitFor(() => {
+      expect(mockLogSet).toHaveBeenCalledTimes(2);
+    });
+
+    const calls = mockLogSet.mock.calls.map((call) => call[0]);
+    expect(calls[0]).toMatchObject({ setNumber: 1, isWarmup: true });
+    expect(calls[1]).toMatchObject({ setNumber: 1, isWarmup: false });
+  });
+
+  it('still numbers a three-set ramp’s working sets 1, 2, 3', async () => {
+    renderSlot();
+    await waitFor(() => screen.getByTestId('set-entry-confirm'));
+
+    fireEvent.press(screen.getByTestId('set-flag-warmup'));
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+    await waitFor(() => {
+      expect(mockLogSet).toHaveBeenCalledTimes(3);
+    });
+
+    fireEvent.press(screen.getByTestId('set-flag-warmup'));
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+    await waitFor(() => {
+      expect(mockLogSet).toHaveBeenCalledTimes(4);
+    });
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+    await waitFor(() => {
+      expect(mockLogSet).toHaveBeenCalledTimes(5);
+    });
+
+    const numbers = mockLogSet.mock.calls.map((call) => call[0]?.setNumber);
+    // Three warm-ups at the unread floor, then the client's real sets.
+    expect(numbers).toEqual([1, 1, 1, 1, 2]);
+  });
+});
+
+describe('SetEntrySlot · what a confirm does to the flags', () => {
+  beforeEach(() => {
+    let issued = 0;
+    mockLogSet.mockImplementation((args) => {
+      issued += 1;
+      return Promise.resolve(logged({ localId: `set-local-${String(issued)}`, ...args }));
+    });
+  });
+
+  it('keeps warm-up on across a ramp, so it costs one tap and not one per set', async () => {
+    renderSlot();
+    await waitFor(() => screen.getByTestId('set-entry-confirm'));
+
+    fireEvent.press(screen.getByTestId('set-flag-warmup'));
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+
+    await waitFor(() => {
+      expect(mockLogSet).toHaveBeenCalledTimes(2);
+    });
+    expect(mockLogSet.mock.calls.map((call) => call[0]?.isWarmup)).toEqual([true, true]);
+    expect(screen.getByTestId('set-flag-warmup').props.accessibilityState).toMatchObject({
+      selected: true,
+    });
+  });
+
+  it('clears to-failure after the one set it describes', async () => {
+    renderSlot();
+    await waitFor(() => screen.getByTestId('set-entry-confirm'));
+
+    fireEvent.press(screen.getByTestId('set-flag-failure'));
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+    await waitFor(() => {
+      expect(mockLogSet).toHaveBeenCalledTimes(1);
+    });
+
+    // Marking every following set as taken to failure would be the product
+    // asserting something untrue about the client, in the data their coach
+    // reads (`COPY.md` §CO2).
+    expect(screen.getByTestId('set-flag-failure').props.accessibilityState).toMatchObject({
+      selected: false,
+    });
+
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+    await waitFor(() => {
+      expect(mockLogSet).toHaveBeenCalledTimes(2);
+    });
+    expect(mockLogSet.mock.calls.map((call) => call[0]?.isFailure)).toEqual([true, false]);
+  });
+
+  it('hands to-failure back when the write is refused, exactly as it hands the number back', async () => {
+    mockLogSet.mockRejectedValue(new Error('logSet: session "x" is not in progress (completed)'));
+
+    renderSlot();
+    await waitFor(() => screen.getByTestId('set-entry-confirm'));
+
+    fireEvent.press(screen.getByTestId('set-flag-failure'));
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('set-entry-error')).toBeTruthy();
+    });
+    // The tap is undone whole: a retry must not silently drop the flag.
+    expect(screen.getByTestId('set-flag-failure').props.accessibilityState).toMatchObject({
+      selected: true,
+    });
+  });
+});
+
+describe('SetEntrySlot · the logged row’s one trailing occupant', () => {
+  beforeEach(() => {
+    // A previous session with a set 1, so the previous-performance line is
+    // a real competitor for the slot rather than absent anyway.
+    mockTarget.history = {
+      kind: 'ready',
+      // `last` stays null so the pre-fill is the coach's 60kg and the
+      // spoken labels below are readable; `previous` is what the row's
+      // trailing slot actually looks up.
+      last: null,
+      previous: {
+        bySetNumber: new Map([
+          [1, { weightKg: 80, reps: 8, loggedAt: new Date('2026-09-04T10:00:00Z') }],
+        ]),
+      },
+    };
+  });
+
+  it('gives the slot to previous performance when neither flag is set', async () => {
+    renderSlot();
+    await waitFor(() => screen.getByTestId('set-entry-confirm'));
+
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('set-row-previous-set-local-1')).toBeTruthy();
+    });
+  });
+
+  it('gives it to the flag tag instead when the set was taken to failure', async () => {
+    renderSlot();
+    await waitFor(() => screen.getByTestId('set-entry-confirm'));
+
+    fireEvent.press(screen.getByTestId('set-flag-failure'));
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+
+    await waitFor(() => {
+      // Hidden from the reading order by design — the words reach a screen
+      // reader through the row's own label instead.
+      expect(
+        screen.getByTestId('set-row-flag-set-local-1', { includeHiddenElements: true }),
+      ).toBeTruthy();
+    });
+    expect(screen.queryByTestId('set-row-previous-set-local-1')).toBeNull();
+    expect(
+      screen.getByLabelText('Set 1, 60 kilograms for 8 reps, logged. Taken to failure.'),
+    ).toBeTruthy();
+  });
+
+  it('gives a warm-up nothing at all — no line, no tag, no placeholder', async () => {
+    renderSlot();
+    await waitFor(() => screen.getByTestId('set-entry-confirm'));
+
+    fireEvent.press(screen.getByTestId('set-flag-warmup'));
+    fireEvent.press(screen.getByTestId('set-entry-confirm'));
+
+    // `last 80 × 8` beside a warm-up is the misleading comparison DB§22's
+    // filter exists to prevent.
+    await waitFor(() => {
+      expect(screen.getByLabelText('Warm-up set, 60 kilograms for 8 reps, logged.')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('set-row-previous-set-local-1')).toBeNull();
+    expect(screen.queryByText('—')).toBeNull();
+  });
+});
+
+describe('SetEntrySlot · the seed read after a force-quit', () => {
+  it('brings both flags back from the mirror, not just the warm-up', async () => {
+    await seedMirror();
+
+    renderSlot();
+
+    // The session reloads from `local_set_logs`; a flag that only ever
+    // travelled in the outbox payload came back gone.
+    await waitFor(() => {
+      expect(screen.getByLabelText('Warm-up set, 40 kilograms for 10 reps, logged.')).toBeTruthy();
+    });
+    expect(
+      screen.getByLabelText('Set 1, 82.5 kilograms for 6 reps, logged. Taken to failure.'),
+    ).toBeTruthy();
+  });
+
+  it('numbers the next set after the seeded warm-up and working set 2', async () => {
+    await seedMirror();
+
+    renderSlot();
+    await waitFor(() => screen.getByTestId('set-entry-confirm'));
+
+    // One warm-up and one working set on disk: the warm-up contributes
+    // nothing, so `max(working) + 1` is 2.
+    expect(screen.getByText('Set 2')).toBeTruthy();
+  });
+});
+
+/**
+ * Two rows already on the device for this exercise and session — what a
+ * client finds after force-quitting mid-workout: one warm-up, one working
+ * set taken to failure.
+ */
+async function seedMirror() {
+  const db = await getLocalDb();
+  await db.insert(localWorkoutSessions).values({
+    id: 'session-local-1',
+    clientLocalId: 'session-local-1',
+    scheduledDate: '2026-09-11',
+    status: 'in_progress',
+    payloadJson: '{}',
+    syncState: 'pending',
+    updatedAt: 1_757_000_000_000,
+  });
+  // One statement per row: the SQLite fake's INSERT grammar takes a single
+  // `VALUES (...)` tuple, so a two-row array silently writes only the first.
+  await db.insert(localSetLogs).values({
+    id: 'seed-warm',
+    clientLocalId: 'seed-warm',
+    sessionLocalId: 'session-local-1',
+    exerciseId: 'exercise-1',
+    setNumber: 1,
+    reps: 10,
+    weightKg: 40,
+    isWarmup: true,
+    isFailure: false,
+    loggedAt: new Date('2026-09-11T09:50:00Z').getTime(),
+  });
+  await db.insert(localSetLogs).values({
+    id: 'seed-work',
+    clientLocalId: 'seed-work',
+    sessionLocalId: 'session-local-1',
+    exerciseId: 'exercise-1',
+    setNumber: 1,
+    reps: 6,
+    weightKg: 82.5,
+    isWarmup: false,
+    isFailure: true,
+    loggedAt: new Date('2026-09-11T09:55:00Z').getTime(),
+  });
+}
 
 /**
  * The pips are hidden from the accessibility tree — the stack speaks for

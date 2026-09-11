@@ -48,6 +48,11 @@ export const localSetLogs = sqliteTable('local_set_logs', {
   weightKg: real('weight_kg'),
   rpe: real('rpe'),
   isWarmup: integer('is_warmup', { mode: 'boolean' }).notNull().default(false),
+  // Sibling of `is_warmup`, and named for `set_logs.is_failure` (DB§5.2) so
+  // the two sides can't drift. Task 01 shipped the flag on the wire only,
+  // which left a set taken to failure invisible once the session reloaded
+  // from this mirror after a force-quit (`set-entry/04`).
+  isFailure: integer('is_failure', { mode: 'boolean' }).notNull().default(false),
   notes: text('notes'),
   loggedAt: integer('logged_at').notNull(), // epoch ms, captured at action time
   syncState: text('sync_state', { enum: ['synced', 'pending', 'conflict'] })
@@ -107,6 +112,7 @@ export const LOCAL_TRAINING_SCHEMA_SQL: string[] = [
     weight_kg REAL,
     rpe REAL,
     is_warmup INTEGER NOT NULL DEFAULT 0,
+    is_failure INTEGER NOT NULL DEFAULT 0,
     notes TEXT,
     logged_at INTEGER NOT NULL,
     sync_state TEXT NOT NULL DEFAULT 'pending'

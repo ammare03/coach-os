@@ -33,6 +33,36 @@ describe('Chip', () => {
     expect(onPress).not.toHaveBeenCalled();
   });
 
+  it('speaks its visible label when no override is given', () => {
+    // The default every caller that predates `accessibilityLabel` relies on.
+    render(<Chip label="Legs" onPress={jest.fn()} />);
+    expect(screen.getByLabelText('Legs')).toBeTruthy();
+  });
+
+  it('speaks the override instead, without changing what is printed', () => {
+    render(<Chip label="Warm-up" accessibilityLabel="Warm-up set" onPress={jest.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Warm-up set' })).toBeTruthy();
+    expect(screen.queryByLabelText('Warm-up')).toBeNull();
+    // The pill still reads `Warm-up`: the override is the spoken name, not
+    // a second copy string (`accessibility` §2).
+    expect(screen.getByText('Warm-up')).toBeTruthy();
+  });
+
+  it('applies the override on the tag branch too, where there is no onPress', () => {
+    render(<Chip label="Warm-up" accessibilityLabel="Warm-up set" />);
+
+    expect(screen.getByLabelText('Warm-up set')).toBeTruthy();
+  });
+
+  it('names the remove affordance after the spoken label, not the printed one', () => {
+    render(
+      <Chip label="Legs" accessibilityLabel="Legs day" onPress={jest.fn()} onRemove={jest.fn()} />,
+    );
+
+    expect(screen.getByLabelText('Remove Legs day')).toBeTruthy();
+  });
+
   it('still fires onPress from the chip body when a remove affordance is also present', () => {
     const onPress = jest.fn();
     const onRemove = jest.fn();

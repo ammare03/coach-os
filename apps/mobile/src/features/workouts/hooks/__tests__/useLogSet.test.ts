@@ -186,6 +186,29 @@ describe('the local write', () => {
     const { sets } = await readRows();
     expect(sets[0]?.weightKg).toBeNull();
   });
+
+  it('mirrors both flags, not just the one the server sees', async () => {
+    // `set-entry/04`. `is_failure` reached the outbox payload and stopped
+    // there while this mirror had no column for it, so a client who logged a
+    // set to failure and force-quit reloaded the session with the flag gone.
+    await seedInProgress();
+
+    await logSet({ ...ONE_SET, isWarmup: true, isFailure: true, now: () => TAP });
+
+    const { sets } = await readRows();
+    expect(sets[0]?.isWarmup).toBe(true);
+    expect(sets[0]?.isFailure).toBe(true);
+  });
+
+  it('defaults both flags to false, so the common case stays a plain working set', async () => {
+    await seedInProgress();
+
+    await logSet({ ...ONE_SET, now: () => TAP });
+
+    const { sets } = await readRows();
+    expect(sets[0]?.isWarmup).toBe(false);
+    expect(sets[0]?.isFailure).toBe(false);
+  });
 });
 
 describe('the queued mutation', () => {
