@@ -1,5 +1,6 @@
 import { NOT_FOUND_COPY } from '@coachos/ui';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import * as Haptics from 'expo-haptics';
 
 import {
   buildBlock,
@@ -7,12 +8,58 @@ import {
   buildSession as buildUpcomingSession,
 } from '../../../../lib/prefetch/__fixtures__/upcoming.ts';
 import type { LocalSessionPayload } from '../../../../lib/prefetch/sessions.ts';
+import type {
+  ExerciseTargetState,
+  UseExerciseTargetOptions,
+} from '../../hooks/useExerciseTarget.ts';
 import type { LoggerSession, LoggerSessionState } from '../../hooks/useLoggerSession.ts';
+import { PROGRAM_CHANGED_WHEN, speakProgramChanged } from '../../lib/program-change-copy.ts';
+import { NO_HISTORY_LABEL } from '../../lib/target-line-copy.ts';
+import { FINISH_COPY } from '../SessionFinish.tsx';
 import { SessionLoggerScreen } from '../SessionLoggerScreen.tsx';
 
 jest.mock('expo-sqlite', () =>
   require('../../../../lib/outbox/__fixtures__/sqlite-fake.ts').createSqliteFake(),
 );
+
+// The real `TargetLine` renders below — only its READ is stood in for, the
+// same split this file already makes for the session read. What the shell
+// owns is which page slot the line lands in and which three values reach the
+// resolver; how the line then renders them is `TargetLine.test.tsx`.
+const mockExerciseTarget = jest.fn();
+jest.mock('../../hooks/useExerciseTarget.ts', () => ({
+  useExerciseTarget: (options: UseExerciseTargetOptions): ExerciseTargetState => {
+    mockExerciseTarget(options);
+    return { target: null, history: { kind: 'ready', last: null } };
+  },
+}));
+
+jest.mock('../../../../hooks/useWeightUnit.ts', () => ({ useWeightUnit: () => 'kg' }));
+
+// Task 07's completion. The hook's own rules — the local write, the outbox
+// chain, the second tap that queues nothing — are its own tests; what the
+// screen owns is the order of complete → haptic → navigate, and that a
+// rejection reaches the surface instead of being swallowed.
+const mockComplete = jest.fn();
+jest.mock('../../hooks/useCompleteSession.ts', () => ({
+  useCompleteSession: () => ({ complete: mockComplete }),
+}));
+
+// `ui-conventions` §5 sanctions exactly three haptics. Mocked at the native
+// module rather than at `@coachos/ui` so the assertions below can prove both
+// halves of that rule: that `Success` fires here, and that nothing else does.
+jest.mock('expo-haptics', () => ({
+  impactAsync: jest.fn(() => Promise.resolve()),
+  notificationAsync: jest.fn(() => Promise.resolve()),
+  ImpactFeedbackStyle: { Light: 'light' },
+  NotificationFeedbackType: { Success: 'success', Warning: 'warning' },
+}));
+
+const COMPLETED: { localId: string; outboxId: string | null; completedAt: Date } = {
+  localId: 'local-1',
+  outboxId: 'outbox-1',
+  completedAt: new Date('2026-08-15T10:02:00.000Z'),
+};
 
 // The shell's body, state by state. The screen is real; only its local read
 // is stood in for, the same split `TodayScreen.test.tsx` makes and for the
@@ -64,22 +111,51 @@ const EXERCISE_NAMES = [
   'Rope triceps pushdown',
 ];
 
+const BLOCKS = EXERCISE_NAMES.map((_, i) =>
+  buildBlock({
+    programExerciseId: `b-${String(i + 1)}`,
+    exerciseId: `e-${String(i + 1)}`,
+    orderIndex: i + 1,
+  }),
+);
+
+const LIBRARY = EXERCISE_NAMES.map((name, i) => buildExercise({ id: `e-${String(i + 1)}`, name }));
+
 /**
  * A real prescription, not a `null` payload with a count beside it. Task 03
  * renders the pager FROM the payload, so a stub whose `exerciseCount`
  * disagreed with it would assert a screen the app cannot produce.
+ *
+ * The fixture session is `scheduled` with no `programSnapshot`, so nothing
+ * is frozen and task 09's notice is correctly absent from every test that
+ * uses it.
  */
 const PRESCRIPTION: LocalSessionPayload = {
+  session: buildUpcomingSession({ exercises: BLOCKS }),
+  exercises: LIBRARY,
+};
+
+/**
+ * Started, frozen, and untouched since — the ordinary case. The frozen copy
+ * and the coach's live day are the same blocks, so there is nothing to say.
+ */
+const FROZEN_UNCHANGED: LocalSessionPayload = {
   session: buildUpcomingSession({
-    exercises: EXERCISE_NAMES.map((_, i) =>
-      buildBlock({
-        programExerciseId: `b-${String(i + 1)}`,
-        exerciseId: `e-${String(i + 1)}`,
-        orderIndex: i + 1,
-      }),
-    ),
+    status: 'in_progress',
+    programSnapshot: BLOCKS,
+    exercises: BLOCKS,
   }),
-  exercises: EXERCISE_NAMES.map((name, i) => buildExercise({ id: `e-${String(i + 1)}`, name })),
+  exercises: LIBRARY,
+};
+
+/** The same session after the coach raised the opening block's target sets. */
+const FROZEN_CHANGED: LocalSessionPayload = {
+  session: buildUpcomingSession({
+    status: 'in_progress',
+    programSnapshot: BLOCKS,
+    exercises: BLOCKS.map((block, i) => (i === 0 ? { ...block, targetSets: 5 } : block)),
+  }),
+  exercises: LIBRARY,
 };
 
 /** What `useStartAdHocSession` writes: a real payload carrying no blocks. */
@@ -107,12 +183,21 @@ function buildSession(overrides: Partial<LoggerSession> = {}): LoggerSession {
 beforeEach(() => {
   jest.clearAllMocks();
   mockState = { kind: 'loading' };
+  mockComplete.mockResolvedValue(COMPLETED);
 });
 
 function renderScreen() {
   const onExit = jest.fn();
-  render(<SessionLoggerScreen sessionLocalId="local-1" onExit={onExit} now={STARTED_AT} />);
-  return { onExit };
+  const onCompleted = jest.fn();
+  render(
+    <SessionLoggerScreen
+      sessionLocalId="local-1"
+      onExit={onExit}
+      onCompleted={onCompleted}
+      now={STARTED_AT}
+    />,
+  );
+  return { onExit, onCompleted };
 }
 
 describe('a session that loaded', () => {
@@ -134,6 +219,50 @@ describe('a session that loaded', () => {
     expect(screen.getByTestId('exercise-pager')).toBeTruthy();
     expect(screen.getByText('Exercise 1 of 6')).toBeTruthy();
     expect(screen.getByText('Barbell bench press')).toBeTruthy();
+  });
+
+  it('fills the page slot with task 04 s target line', () => {
+    renderScreen();
+
+    // Without this the pager renders a card with an exercise name and an
+    // empty well under it. Exactly ONE is reachable, not two: task 03 keeps
+    // the neighbouring page out of the reading order, so its line is mounted
+    // but not queryable — the same thing a screen reader sees.
+    expect(screen.getAllByText(NO_HISTORY_LABEL)).toHaveLength(1);
+  });
+
+  it('builds it only for the pages inside the render window', () => {
+    renderScreen();
+
+    // ±1. A six-exercise session that built all six would run six history
+    // reads on mount, four of them for pages the client cannot reach without
+    // swiping (`frontend-performance` §3).
+    expect(mockExerciseTarget).toHaveBeenCalledTimes(2);
+    expect(mockExerciseTarget).not.toHaveBeenCalledWith(
+      expect.objectContaining({ page: expect.objectContaining({ key: 'b-4' }) }),
+    );
+  });
+
+  it('resolves the target for the page the client is actually on', () => {
+    renderScreen();
+
+    // Matched on `programExerciseId`, which is the page key — a day may carry
+    // the same exercise twice, so resolving by anything else shows the wrong
+    // prescription.
+    expect(mockExerciseTarget).toHaveBeenCalledWith(
+      expect.objectContaining({ page: expect.objectContaining({ key: 'b-1' }) }),
+    );
+  });
+
+  it('gives it the live payload and the session it belongs to', () => {
+    renderScreen();
+
+    // The payload is the live prescription mirror — a `null` here is the
+    // bulk-edit read path silently going dark. The session id is what the
+    // history read is scoped by; the wrong one reads another session's sets.
+    expect(mockExerciseTarget).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: PRESCRIPTION, sessionLocalId: 'local-1' }),
+    );
   });
 
   it('shows no error, empty or not-found state', () => {
@@ -331,6 +460,250 @@ describe('while the read is in flight', () => {
 
     fireEvent.press(screen.getByLabelText('Pause workout and go back'));
 
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a coach who edited the day mid-session', () => {
+  it('tells the client, and says when the change applies', () => {
+    mockState = { kind: 'session', session: buildSession({ payload: FROZEN_CHANGED }) };
+    renderScreen();
+
+    expect(screen.getByTestId('program-changed-notice')).toBeTruthy();
+    // Both sentences, and as ONE accessible element. The fact on its own
+    // reads mid-set as something to act on, so the sentence that defuses it
+    // has to be announced with it rather than after it.
+    expect(screen.getByLabelText(speakProgramChanged())).toBeTruthy();
+    expect(screen.getByText(PROGRAM_CHANGED_WHEN)).toBeTruthy();
+  });
+
+  it('says nothing when the frozen and live copies agree', () => {
+    // The ordinary session. A note that appeared on every workout would stop
+    // being read by the one client who needs it.
+    mockState = { kind: 'session', session: buildSession({ payload: FROZEN_UNCHANGED }) };
+    renderScreen();
+
+    expect(screen.queryByTestId('program-changed-notice')).toBeNull();
+  });
+
+  it('says nothing once the session is over', () => {
+    // The freeze rule ends with the session — from here the edit simply
+    // applies, so there is no longer a discrepancy to report.
+    mockState = {
+      kind: 'session',
+      session: buildSession({
+        status: 'completed',
+        isInProgress: false,
+        payload: {
+          ...FROZEN_CHANGED,
+          session: { ...FROZEN_CHANGED.session, status: 'completed' },
+        },
+      }),
+    };
+    renderScreen();
+
+    expect(screen.queryByTestId('program-changed-notice')).toBeNull();
+  });
+
+  it.each([
+    ['while the read is still in flight', { kind: 'loading' } as const],
+    ['for a session the device does not have', { kind: 'not-found' } as const],
+    ['when the local read failed', { kind: 'error', error: new Error('locked') } as const],
+  ])('says nothing %s', (_label, state) => {
+    // None of these holds a payload to compare, and the screen hands the
+    // notice `null` rather than letting it guess.
+    mockState = state;
+    renderScreen();
+
+    expect(screen.queryByTestId('program-changed-notice')).toBeNull();
+  });
+
+  it('sits above the body without displacing the pager or the target line', () => {
+    mockState = { kind: 'session', session: buildSession({ payload: FROZEN_CHANGED }) };
+    renderScreen();
+
+    // A note rendered INSIDE the body would travel with the pages. All four
+    // still stand with it on screen, and the target line is still the only
+    // one in the reading order.
+    expect(screen.getByTestId('program-changed-notice')).toBeTruthy();
+    expect(screen.getByTestId('exercise-pager')).toBeTruthy();
+    expect(screen.getByTestId('logger-finish')).toBeTruthy();
+    expect(screen.getAllByText(NO_HISTORY_LABEL)).toHaveLength(1);
+  });
+});
+
+describe('finishing the session', () => {
+  beforeEach(() => {
+    mockState = { kind: 'session', session: buildSession() };
+  });
+
+  it('offers one way to finish, named for what it ends', () => {
+    renderScreen();
+
+    // "Finish workout", not "Finish": the control sits on the same screen as
+    // `Pause` and the two mean opposite things, so the object is named
+    // (`DESIGN.md` §10.8).
+    expect(screen.getByTestId('logger-finish')).toBeTruthy();
+    expect(screen.getByLabelText(FINISH_COPY.action)).toBeTruthy();
+  });
+
+  it('never asks the client to confirm', () => {
+    const { onCompleted } = renderScreen();
+
+    fireEvent.press(screen.getByTestId('logger-finish'));
+
+    // `ui-conventions` §5 prefers undo to confirm, and the summary screen is
+    // the confirmation. A dialog between the tap and the completion would be
+    // the reflex-dismissed kind.
+    expect(mockComplete).toHaveBeenCalledWith('local-1');
+    return waitFor(() => {
+      expect(onCompleted).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('hands the summary route the id the completion resolved, not the one it was mounted with', async () => {
+    const { onCompleted } = renderScreen();
+
+    fireEvent.press(screen.getByTestId('logger-finish'));
+
+    await waitFor(() => {
+      expect(onCompleted).toHaveBeenCalledWith(COMPLETED.localId);
+    });
+  });
+
+  it('fires the one sanctioned Success haptic, and no other', async () => {
+    renderScreen();
+
+    fireEvent.press(screen.getByTestId('logger-finish'));
+
+    await waitFor(() => {
+      expect(Haptics.notificationAsync).toHaveBeenCalledWith('success');
+    });
+    // Once per session, never per exercise, and never the set-logged impact
+    // — `ui-conventions` §5 sanctions exactly three triggers and this screen
+    // may fire exactly one of them.
+    expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
+    expect(Haptics.impactAsync).not.toHaveBeenCalled();
+  });
+
+  it('offers it for an ad-hoc session, which has no last exercise to reach', () => {
+    // The session `today-card/04` starts. There is no plan to page, so a
+    // control living inside the pager would leave this client unable to
+    // finish at all.
+    mockState = {
+      kind: 'session',
+      session: buildSession({ name: null, exerciseCount: 0, payload: AD_HOC }),
+    };
+    renderScreen();
+
+    expect(screen.getByTestId('logger-no-prescription')).toBeTruthy();
+    expect(screen.getByTestId('logger-finish')).toBeTruthy();
+  });
+
+  it.each([
+    ['while the read is still in flight', { kind: 'loading' } as const],
+    ['for a session the device does not have', { kind: 'not-found' } as const],
+    ['when the local read failed', { kind: 'error', error: new Error('locked') } as const],
+  ])('offers nothing to finish %s', (_label, state) => {
+    // None of these holds a session, and a control that queued a completion
+    // for one would report a finish that never happened.
+    mockState = state;
+    renderScreen();
+
+    expect(screen.queryByTestId('logger-finish')).toBeNull();
+  });
+
+  it('offers nothing to finish for a session that is already complete', () => {
+    // Opened for review. The same gate the claim and the wake lock read.
+    mockState = {
+      kind: 'session',
+      session: buildSession({ status: 'completed', isInProgress: false }),
+    };
+    renderScreen();
+
+    expect(screen.queryByTestId('logger-finish')).toBeNull();
+  });
+});
+
+describe('a completion the device refused', () => {
+  beforeEach(() => {
+    mockState = { kind: 'session', session: buildSession() };
+    mockComplete.mockRejectedValue(new Error('database is locked'));
+  });
+
+  it('says so in place rather than leaving the tap silent', async () => {
+    // The failure this whole surface exists for: without it the client taps
+    // Finish, nothing happens, and the session stays open.
+    renderScreen();
+
+    fireEvent.press(screen.getByTestId('logger-finish'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('logger-finish-error')).toBeTruthy();
+    });
+    expect(screen.getByText(FINISH_COPY.failed)).toBeTruthy();
+  });
+
+  it('never navigates, and never celebrates', async () => {
+    const { onCompleted } = renderScreen();
+
+    fireEvent.press(screen.getByTestId('logger-finish'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('logger-finish-error')).toBeTruthy();
+    });
+    expect(onCompleted).not.toHaveBeenCalled();
+    // `Success` on a session that did not complete would be the phone saying
+    // something the data does not, and `Warning` belongs to validation
+    // failure — a mirror that could not be written is not a mistyped value.
+    expect(Haptics.notificationAsync).not.toHaveBeenCalled();
+    expect(Haptics.impactAsync).not.toHaveBeenCalled();
+  });
+
+  it('never shows the raw error, and never destroys the screen around it', async () => {
+    renderScreen();
+
+    fireEvent.press(screen.getByTestId('logger-finish'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('logger-finish-error')).toBeTruthy();
+    });
+    expect(screen.queryByText(/database is locked/)).toBeNull();
+    // The session and every logged set are still on screen and still fine;
+    // replacing the logger with a full error state would be disproportionate.
+    expect(screen.getByTestId('exercise-pager')).toBeTruthy();
+    expect(screen.queryByTestId('logger-error')).toBeNull();
+  });
+
+  it('leaves the control pressable, because it is the retry', async () => {
+    const { onCompleted } = renderScreen();
+
+    fireEvent.press(screen.getByTestId('logger-finish'));
+    await waitFor(() => {
+      expect(screen.getByTestId('logger-finish-error')).toBeTruthy();
+    });
+
+    mockComplete.mockResolvedValue(COMPLETED);
+    fireEvent.press(screen.getByTestId('logger-finish'));
+
+    // No second button, and no dismissal step between the message and the
+    // next attempt.
+    await waitFor(() => {
+      expect(onCompleted).toHaveBeenCalledWith(COMPLETED.localId);
+    });
+  });
+
+  it('still lets the client pause and leave', async () => {
+    const { onExit } = renderScreen();
+
+    fireEvent.press(screen.getByTestId('logger-finish'));
+    await waitFor(() => {
+      expect(screen.getByTestId('logger-finish-error')).toBeTruthy();
+    });
+
+    // `screen-composition` §3 rule 3 — the way out never depends on anything
+    // that can fail, including this.
+    fireEvent.press(screen.getByLabelText('Pause workout and go back'));
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 });

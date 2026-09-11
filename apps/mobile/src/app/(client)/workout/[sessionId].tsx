@@ -32,6 +32,17 @@ export default function ClientWorkoutScreen() {
         }
         router.replace('/(client)/(tabs)');
       }}
+      onCompleted={(localId) => {
+        // `replace`, never `push`. The session is finished, so the logger
+        // behind it is a screen no back gesture should reach — and this
+        // route is a `fullScreenModal` with `gestureEnabled: false`, so a
+        // pushed summary would leave the completed logger as the only thing
+        // under it with no way past.
+        router.replace({
+          pathname: '/(client)/workout/[sessionId]/summary',
+          params: { sessionId: localId },
+        });
+      }}
     />
   );
 }
