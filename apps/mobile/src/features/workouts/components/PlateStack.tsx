@@ -7,7 +7,7 @@ import {
   tapTarget,
   useReducedMotion,
 } from '@coachos/ui/theme';
-import { calculatePlates, formatWeight, DEFAULT_BARBELL_KG, type WeightUnit } from '@coachos/utils';
+import { formatWeight, resolvePlateLoad, type WeightUnit } from '@coachos/utils';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -18,16 +18,20 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { useWeightUnit } from '../../../hooks/useWeightUnit.ts';
-
 // `set-entry/02` — what is actually on the bar, drawn as mirrored pips in
 // the composer's 20px context band, plus the one-tap line that appears when
 // the requested weight is not makeable.
 //
-// **The maths is not here.** `calculatePlates` lives in `packages/utils`
+// **The maths is not here.** `resolvePlateLoad` lives in `packages/utils`
 // (`code-conventions` §1) because the API computes the same breakdown; a
 // second implementation in a component is the exact failure this task's
 // Risks section names. This file reads its result and draws it.
+//
+// **The rack follows the client's unit** (Ammar, 11 Sep 2026). A client in
+// an imperial gym is not loading 25 kg plates, so a lb client gets the US
+// rack — 45/35/25/10/5/2.5 lb on a 45 lb bar — computed in pounds end to
+// end. Kilograms are still what gets stored and what crosses this
+// component's props; the unit picks a rack, never a storage format.
 //
 // **`plates` is already ONE SIDE.** It is never halved and never doubled —
 // the mirror below renders the same array twice, once reversed. A client
@@ -66,7 +70,14 @@ export interface PlateStackProps {
   equipment: string | null | undefined;
   /** The weight currently in the composer's stepper. Kilograms (DB§5.1.1). */
   weightKg: number;
-  /** The bar being loaded. A 15 kg women's bar and a 20 kg men's bar load differently. */
+  /**
+   * `users.weight_unit` — which rack this client's gym has, not how the
+   * weight is stored. Taken as a prop rather than read from a hook so the
+   * slot's unit and this block's rack cannot drift apart, and so a caller
+   * cannot silently fall back to metric for a lb client (the defect).
+   */
+  unit: WeightUnit;
+  /** The bar being loaded, in kilograms. Defaults to the unit's own standard bar. */
   barbellWeightKg?: number;
 }
 
@@ -99,28 +110,37 @@ export function isBarbellEquipment(equipment: string | null | undefined): boolea
  * `hidden` covers three different reasons the block is absent, all of which
  * render the same nothing: the equipment is not a barbell, the weight is
  * not a number, or the ask is below the bare bar. That last one is **not**
- * an "over" rounding case — `calculatePlates` returns a negative remainder
+ * an "over" rounding case — `resolvePlateLoad` returns a negative remainder
  * there, and the design suppresses the block rather than telling a client
  * their 15 kg cannot be made on a 20 kg bar.
+ *
+ * `plates` come back in the **rack's** unit, which is `unit`: kilogram
+ * plates for a kg client, pound plates for a lb one.
  */
 export function resolvePlateStack({
   equipment,
   weightKg,
-  barbellWeightKg = DEFAULT_BARBELL_KG,
+  unit,
+  barbellWeightKg,
 }: PlateStackProps): PlateStackState {
   if (!isBarbellEquipment(equipment)) return { kind: 'hidden' };
-  // `calculatePlates` throws a `RangeError` on either of these. A throw in
+  // `resolvePlateLoad` throws a `RangeError` on either of these. A throw in
   // the context band would take the confirm button down with it, so the
   // guard is here rather than a boundary.
   if (!Number.isFinite(weightKg)) return { kind: 'hidden' };
-  if (!Number.isFinite(barbellWeightKg) || barbellWeightKg < 0) return { kind: 'hidden' };
+  if (barbellWeightKg !== undefined && (!Number.isFinite(barbellWeightKg) || barbellWeightKg < 0)) {
+    return { kind: 'hidden' };
+  }
 
-  const { plates, remainder } = calculatePlates(weightKg, barbellWeightKg);
-  if (remainder < 0) return { kind: 'hidden' };
+  const { plates, achievableKg, remainderKg } = resolvePlateLoad({
+    weightKg,
+    barbellWeightKg,
+    unit,
+  });
+  if (remainderKg < 0) return { kind: 'hidden' };
 
-  const achievableKg = round2(weightKg - remainder);
-  if (remainder === 0) return { kind: 'exact', plates, achievableKg };
-  return { kind: 'inexact', plates, achievableKg, deltaKg: remainder };
+  if (remainderKg === 0) return { kind: 'exact', plates, achievableKg };
+  return { kind: 'inexact', plates, achievableKg, deltaKg: remainderKg };
 }
 
 /**
@@ -175,12 +195,12 @@ export function PlateStack(props: PlateStackProps) {
       style={[styles.stack, riseStyle]}
       accessible
       accessibilityRole="image"
-      accessibilityLabel={labelPlates(plates)}
+      accessibilityLabel={labelPlates(plates, props.unit)}
     >
       {/* Outer plate first on the left, so the heaviest sits against the
           bar exactly as it does on a real rack. */}
-      {[...plates].reverse().map((plateKg, index) => (
-        <Pip key={`l${String(index)}`} plateKg={plateKg} palette={palette} />
+      {[...plates].reverse().map((plate, index) => (
+        <Pip key={`l${String(index)}`} rungKg={rungFor(plate, props.unit)} palette={palette} />
       ))}
       <LinearGradient
         colors={palette.bar}
@@ -188,8 +208,8 @@ export function PlateStack(props: PlateStackProps) {
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
       />
-      {plates.map((plateKg, index) => (
-        <Pip key={`r${String(index)}`} plateKg={plateKg} palette={palette} />
+      {plates.map((plate, index) => (
+        <Pip key={`r${String(index)}`} rungKg={rungFor(plate, props.unit)} palette={palette} />
       ))}
     </Animated.View>
   );
@@ -201,13 +221,12 @@ export function PlateStack(props: PlateStackProps) {
  * labelled equivalent is not reachable (`accessibility` §7).
  */
 export function NearestWeightLine({ onSelectNearest, ...props }: NearestWeightLineProps) {
-  const unit = useWeightUnit();
   const state = resolvePlateStack(props);
 
   if (state.kind !== 'inexact') return null;
 
   const { achievableKg, deltaKg } = state;
-  const copy = labelNearest(achievableKg, deltaKg, unit);
+  const copy = labelNearest(achievableKg, deltaKg, props.unit);
 
   return (
     <Pressable
@@ -257,25 +276,37 @@ export function labelNearest(
 }
 
 /**
- * `Plates per side: 25, 5 and 1.25 kilograms` — one utterance for the whole
- * stack, every physical plate named. Always kilograms: `STANDARD_PLATES_KG`
- * is a metric rack, and a 25 kg plate converted to "55 pounds" would be a
- * plate that does not exist. The *weight* on the nearest line is a display
- * value and does go through the client's unit.
+ * `Plates per side: 25, 5 and 1.25 kilograms` · `Plates per side: 45, 25
+ * and 10 pounds` — one utterance for the whole stack, every physical plate
+ * named, in the unit of the rack it came off. Never a converted number: a
+ * 25 kg plate read out as "55 pounds" would be a plate that does not exist,
+ * and so would a 45 lb one read out in kilograms.
  */
-function labelPlates(plates: number[]): string {
+function labelPlates(plates: number[], unit: WeightUnit): string {
   if (plates.length === 0) return PLATE_STACK_COPY.bareBar;
 
-  const names = plates.map((plateKg) => String(plateKg));
+  const names = plates.map((plate) => String(plate));
   const last = names[names.length - 1] ?? '';
   const list = names.length === 1 ? last : `${names.slice(0, -1).join(', ')} and ${last}`;
 
-  return `${PLATE_STACK_COPY.perSidePrefix} ${list} kilograms`;
+  return `${PLATE_STACK_COPY.perSidePrefix} ${list} ${PLATE_NOUN[unit]}`;
 }
 
-function Pip({ plateKg, palette }: { plateKg: number; palette: PlatePalette }) {
-  const size = PIP_SIZE.get(plateKg) ?? SMALLEST_PIP;
-  const stop = palette.plate.get(plateKg) ?? palette.fallback;
+/**
+ * Which rung of `DESIGN.md` §9's ladder a plate is drawn at.
+ *
+ * The ladder is keyed in kilograms because the drawn frames pin it that
+ * way. An imperial plate takes the rung of the metric plate closest to its
+ * actual mass — 45 lb is 20.4 kg, so it sits where the 20 kg plate sits —
+ * which keeps height a channel for real mass rather than for a numeral.
+ */
+function rungFor(plate: number, unit: WeightUnit): number {
+  return unit === 'lb' ? (LB_PLATE_RUNG_KG.get(plate) ?? plate) : plate;
+}
+
+function Pip({ rungKg, palette }: { rungKg: number; palette: PlatePalette }) {
+  const size = PIP_SIZE.get(rungKg) ?? SMALLEST_PIP;
+  const stop = palette.plate.get(rungKg) ?? palette.fallback;
 
   return (
     <LinearGradient
@@ -293,17 +324,28 @@ function printWeight(kg: number, unit: WeightUnit): string {
   return String(Number(formatWeight(kg, unit)));
 }
 
-/** `82.5 kilograms` · `182 pounds`. The numeral rounds exactly as the printed one does. */
+/** `82.5 kilograms` · `180 pounds`. The numeral rounds exactly as the printed one does. */
 function speakWeight(kg: number, unit: WeightUnit): string {
   const value = Number(formatWeight(kg, unit));
-  const noun = unit === 'kg' ? 'kilogram' : 'pound';
+  const noun = PLATE_NOUN_SINGULAR[unit];
   return `${String(value)} ${value === 1 ? noun : `${noun}s`}`;
 }
 
-/** Centi-kg, the precision the weight columns store (DB§2) — not a float subtraction. */
-function round2(value: number): number {
-  return Math.round(value * 100) / 100;
-}
+/** Spoken unit names, per rack. The abbreviations are `formatWeight`'s caller's job. */
+const PLATE_NOUN_SINGULAR: Record<WeightUnit, string> = { kg: 'kilogram', lb: 'pound' };
+const PLATE_NOUN: Record<WeightUnit, string> = { kg: 'kilograms', lb: 'pounds' };
+
+// The US rack mapped onto the metric ladder by mass, heaviest to lightest.
+// Six imperial plates, six of the seven metric rungs — the 25 kg rung has
+// no imperial equivalent, so nothing is drawn at it.
+const LB_PLATE_RUNG_KG = new Map<number, number>([
+  [45, 20],
+  [35, 15],
+  [25, 10],
+  [10, 5],
+  [5, 2.5],
+  [2.5, 1.25],
+]);
 
 const NEAREST_LINE_HEIGHT = 20;
 const PIP_RISE_PX = 8;
