@@ -1,5 +1,5 @@
 import { NotFoundState, hapticSessionComplete } from '@coachos/ui';
-import { createThemedStyles, density } from '@coachos/ui/theme';
+import { createThemedStyles, density, spacing } from '@coachos/ui/theme';
 import { useCallback, useContext, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
@@ -18,6 +18,7 @@ import { LoggerLoadError } from './LoggerLoadError.tsx';
 import { LoggerNoPrescription } from './LoggerNoPrescription.tsx';
 import { ProgramChangedNotice } from './ProgramChangedNotice.tsx';
 import { SessionFinish } from './SessionFinish.tsx';
+import { SetEntrySlot } from './SetEntrySlot.tsx';
 import { TargetLine } from './TargetLine.tsx';
 
 // `(client)/workout/[sessionId]` — Pattern C, focus mode (`UI-UX.md` §UX2),
@@ -251,11 +252,22 @@ function renderBody(state: LoggerSessionState, handlers: BodyHandlers) {
           currentIndex={handlers.currentIndex}
           onIndexChange={handlers.onIndexChange}
           renderPage={(page) => (
-            <TargetLine
-              page={page}
-              payload={handlers.payload}
-              sessionLocalId={handlers.sessionLocalId}
-            />
+            // The page's own composition: task 04's target line at its
+            // natural height, then `set-entry`'s slot taking the rest.
+            // `flex: 1` here is what makes the composer bottom-pinned — the
+            // slot measures itself against what the target line leaves.
+            <View style={styles.page}>
+              <TargetLine
+                page={page}
+                payload={handlers.payload}
+                sessionLocalId={handlers.sessionLocalId}
+              />
+              <SetEntrySlot
+                page={page}
+                payload={handlers.payload}
+                sessionLocalId={handlers.sessionLocalId}
+              />
+            </View>
           )}
         />
       );
@@ -274,6 +286,13 @@ const styles = StyleSheet.create({
   centred: {
     flex: 1,
     justifyContent: 'center',
+  },
+  page: {
+    flex: 1,
+    minHeight: 0,
+    // The page's own rhythm, matching `ExercisePager`'s gap between the
+    // head block and this content.
+    gap: spacing(12),
   },
   footer: {
     // The body's gutter, so the control lines up with the page above it.
