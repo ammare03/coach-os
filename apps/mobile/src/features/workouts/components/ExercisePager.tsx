@@ -107,8 +107,14 @@ export interface ExercisePagerProps {
    * and its immediate neighbours only — a stepper, a weight rail and a
    * plate stack per page is the expensive thing on this screen
    * (`frontend-performance` §3).
+   *
+   * `isCurrent` is the page the client is actually looking at — the two
+   * neighbours are mounted but off screen. Anything that may exist only
+   * once on the screen (`personal-records/03`'s pill, which is a child of
+   * the composer card and so cannot be hoisted out of the page) branches on
+   * it rather than rendering three times.
    */
-  renderPage?: (page: ExercisePage) => ReactNode;
+  renderPage?: (page: ExercisePage, isCurrent: boolean) => ReactNode;
 }
 
 export function ExercisePager({
@@ -258,7 +264,9 @@ export function ExercisePager({
                 width={width}
                 isCurrent={position === index}
                 content={
-                  Math.abs(position - index) <= RENDER_WINDOW ? renderPage?.(page) : undefined
+                  Math.abs(position - index) <= RENDER_WINDOW
+                    ? renderPage?.(page, position === index)
+                    : undefined
                 }
               />
             ))}

@@ -11,6 +11,11 @@ import {
   runFlushPass,
   type OutboxSender,
 } from './flush.ts';
+import {
+  resetOutboxResultListenersForTests,
+  subscribeOutboxResults,
+  type OutboxSendResult,
+} from './results.ts';
 
 // `trackEvent` fires on the ceiling transition (`ANALYTICS.md` AN§3.8's
 // `sync_failed`). Mocked rather than exercised: the real module reaches
@@ -118,8 +123,66 @@ async function readMirrorSetLog(clientLocalId: string): Promise<Row | undefined>
 beforeEach(() => {
   resetLocalDbForTests();
   resetOutboxFlushStateForTests();
+  resetOutboxResultListenersForTests();
   sqliteFake.__reset();
   analytics.trackEvent.mockClear();
+});
+
+// `personal-records/03`. The loop discards every response but one:
+// `workouts.logSet.newPersonalRecords` is computed inside the server's write
+// transaction and the device cannot know it, so `./results.ts` is the single
+// seam by which a response leaves this file.
+describe('delivered responses', () => {
+  it('announces what a delivered mutation returned, with the input it was sent', async () => {
+    const enqueued = await enqueueMutation({
+      procedure: 'workouts.logSet',
+      payload: { sessionClientLocalId: 'session-1', reps: 5 },
+    });
+    const delivered: OutboxSendResult[] = [];
+    subscribeOutboxResults((sent) => delivered.push(sent));
+    const send: OutboxSender = async () => ({ newPersonalRecords: ['max_weight'] });
+
+    await flushOutbox({ send, now: () => FIXED_NOW });
+
+    expect(delivered).toEqual([
+      {
+        procedure: 'workouts.logSet',
+        clientLocalId: enqueued.clientLocalId,
+        input: {
+          sessionClientLocalId: 'session-1',
+          reps: 5,
+          clientLocalId: enqueued.clientLocalId,
+        },
+        result: { newPersonalRecords: ['max_weight'] },
+      },
+    ]);
+  });
+
+  it('says nothing about a send that failed', async () => {
+    await enqueueMutation({ procedure: 'workouts.logSet', payload: { reps: 5 } });
+    const delivered: OutboxSendResult[] = [];
+    subscribeOutboxResults((sent) => delivered.push(sent));
+
+    await flushOutbox({ send: failingSender('offline'), now: () => FIXED_NOW });
+
+    expect(delivered).toHaveLength(0);
+  });
+
+  it('keeps a delivered mutation done when a listener throws', async () => {
+    // A listener is UI code. It must not be able to turn a mutation the
+    // server already applied into a retry (`./results.ts` rule (b)).
+    const enqueued = await enqueueMutation({ procedure: 'workouts.logSet', payload: { reps: 5 } });
+    subscribeOutboxResults(() => {
+      throw new Error('a bug in a celebration');
+    });
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const result = await flushOutbox({ send: recordingSender().send, now: () => FIXED_NOW });
+
+    expect(result).toMatchObject({ sent: 1, failed: 0 });
+    expect(await readRow(enqueued.outboxId)).toMatchObject({ status: 'done', attempts: 0 });
+    warn.mockRestore();
+  });
 });
 
 describe('claimReadyEntries', () => {

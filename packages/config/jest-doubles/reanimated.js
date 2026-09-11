@@ -29,6 +29,11 @@ module.exports = function reanimatedDouble() {
     withTiming: identity,
     withSpring: identity,
     withDelay: (_delay, value) => value,
+    // The PR pill's `prpop` overshoot (`personal-records/03`) is two
+    // segments — .86 → 1.05 → 1. Resolved to the LAST value, which is the
+    // end state a behavioural test asserts on; the overshoot in between is
+    // a UI-thread interpolation and is verified on hardware.
+    withSequence: (...values) => values[values.length - 1],
     // `Skeleton` (`ui-primitives-data/06`) loops its shimmer sweep; the
     // double resolves the loop to its target so nothing animates in a
     // behavioural test, and cancellation is a no-op with nothing running.

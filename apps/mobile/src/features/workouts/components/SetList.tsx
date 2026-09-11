@@ -81,6 +81,14 @@ export interface SetListProps {
    */
   hiddenLocalIds?: ReadonlySet<string>;
   /**
+   * **`personal-records/03` — the sets that took a record**, by
+   * `client_local_id`. A set membership rather than a field on the row for
+   * the same reason `hiddenLocalIds` is one: it arrives from the server,
+   * long after the row was created, and folding it into `LoggedSetView`
+   * would mean rebuilding every row object each time one set syncs.
+   */
+  recordLocalIds?: ReadonlySet<string>;
+  /**
    * Swiping a logged row left, or taking its `Delete set` custom action.
    * One stable callback for the list, for `onEditSet`'s reason.
    */
@@ -90,6 +98,7 @@ export interface SetListProps {
 
 /** No deletes pending — a stable identity, so the memo below does not rebuild. */
 const NO_HIDDEN: ReadonlySet<string> = new Set<string>();
+const NO_RECORDS: ReadonlySet<string> = new Set<string>();
 
 export function SetList({
   sets,
@@ -101,6 +110,7 @@ export function SetList({
   renderEditor,
   onEditSet,
   hiddenLocalIds = NO_HIDDEN,
+  recordLocalIds = NO_RECORDS,
   onDeleteSet,
   testID,
 }: SetListProps) {
@@ -184,6 +194,7 @@ export function SetList({
             set={set}
             unit={unit}
             isEntering={set.localId === enteringLocalId}
+            isRecord={recordLocalIds.has(set.localId)}
             trailing={renderTrailing?.(set)}
             trailingLabel={renderTrailingLabel?.(set)}
             onEdit={rowOnEdit}

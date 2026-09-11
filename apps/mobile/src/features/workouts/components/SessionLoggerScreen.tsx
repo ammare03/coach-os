@@ -4,10 +4,12 @@ import { useCallback, useContext, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
+import { useWeightUnit } from '../../../hooks/useWeightUnit.ts';
 import type { LocalSessionPayload } from '../../../lib/prefetch/sessions.ts';
 import { useCompleteSession } from '../hooks/useCompleteSession.ts';
 import { useExercisePosition } from '../hooks/useExercisePosition.ts';
 import { useLoggerSession, type LoggerSessionState } from '../hooks/useLoggerSession.ts';
+import { usePRCelebration } from '../hooks/usePRCelebration.ts';
 import { useSessionHeartbeat } from '../hooks/useSessionHeartbeat.ts';
 import { useSessionKeepAwake } from '../hooks/useSessionKeepAwake.ts';
 import { buildExercisePages, type ExercisePage } from '../lib/exercise-pages.ts';
@@ -86,6 +88,10 @@ export function SessionLoggerScreen({
   // `TodayScreen.tsx` documents for the same reason.
   const insets = useContext(SafeAreaInsetsContext);
   const { state, retry } = useLoggerSession(sessionLocalId);
+  // Display only (`CLAUDE.md` §0). Read once here and handed down, rather
+  // than by every surface that prints a weight: `me.get` is one query-cache
+  // entry, so this costs nothing beyond the call itself.
+  const unit = useWeightUnit();
 
   // Task 03. Built here rather than inside `ExercisePager` so the pager
   // stays controlled: the position has to survive an app kill, so it lives
@@ -107,6 +113,20 @@ export function SessionLoggerScreen({
   // review is not a workout, and each of the three is wrong about it in a
   // different, invisible way.
   const isLogging = state.kind === 'session' && state.session.isInProgress;
+
+  const payload = state.kind === 'session' ? state.session.payload : null;
+
+  // `personal-records/03`. Subscribed HERE rather than in `SetEntrySlot`
+  // because the pager keeps three slots alive and swaps them on every page
+  // turn — three subscriptions would be three chances to double-fire, and a
+  // turn between a send and its delivery could drop the confirmation
+  // outright. One per session, for the life of the screen.
+  //
+  // `isLogging` is the suppression rule: once the session is no longer
+  // in progress a late confirmation is DROPPED rather than deferred. The
+  // record is still on the client's progress screen; a pill over a finished
+  // workout is a notification about the past.
+  usePRCelebration({ sessionLocalId, payload, unit, enabled: isLogging });
 
   // Task 08. Mounted here because the claim belongs to the screen that is
   // open, not to the tap that opened it: `useStartSession` takes the claim,
@@ -184,8 +204,9 @@ export function SessionLoggerScreen({
           pages,
           currentIndex: position.index,
           onIndexChange: position.setIndex,
-          payload: state.kind === 'session' ? state.session.payload : null,
+          payload,
           sessionLocalId,
+          celebratesRecords: isLogging,
         })}
       </View>
       {/* Task 07, and a sibling of the body rather than part of it: the
@@ -213,6 +234,13 @@ interface BodyHandlers {
   /** Task 04's live prescription mirror. `null` whenever there is no session to read. */
   payload: LocalSessionPayload | null;
   sessionLocalId: string;
+  /**
+   * `personal-records/03`. True while the session is still in progress; the
+   * CURRENT page is the one that actually draws the pill, so this is ANDed
+   * with `isCurrent` below. Both halves are needed: a finished session shows
+   * no pill at all, and an off-screen page must not draw a second one.
+   */
+  celebratesRecords: boolean;
 }
 
 function renderBody(state: LoggerSessionState, handlers: BodyHandlers) {
@@ -262,7 +290,7 @@ function renderBody(state: LoggerSessionState, handlers: BodyHandlers) {
           pages={handlers.pages}
           currentIndex={handlers.currentIndex}
           onIndexChange={handlers.onIndexChange}
-          renderPage={(page) => (
+          renderPage={(page, isCurrent) => (
             // The page's own composition: task 04's target line at its
             // natural height, then `set-entry`'s slot taking the rest.
             // `flex: 1` here is what makes the composer bottom-pinned — the
@@ -277,6 +305,7 @@ function renderBody(state: LoggerSessionState, handlers: BodyHandlers) {
                 page={page}
                 payload={handlers.payload}
                 sessionLocalId={handlers.sessionLocalId}
+                celebratesRecords={isCurrent && handlers.celebratesRecords}
               />
             </View>
           )}
