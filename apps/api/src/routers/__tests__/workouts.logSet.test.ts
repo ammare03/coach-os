@@ -17,7 +17,6 @@ import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainer
 import { uuidv7 } from 'uuidv7';
 
 import { createTestContext } from '../../__tests__/test-context.ts';
-import { epleyOneRepMaxKg } from '../../features/workouts/log-set.ts';
 import { isCatalogedError, type AppErrorCause } from '../../lib/app-error.ts';
 import type { Context, ContextUser } from '../../trpc/context.ts';
 import { appRouter } from '../index.ts';
@@ -549,28 +548,6 @@ describe('workouts.logSet — the volume window (complete.ts decision (g))', () 
   });
 });
 
-describe('epleyOneRepMaxKg', () => {
-  it('is w × (1 + r/30) (CLAUDE.md §26)', () => {
-    expect(epleyOneRepMaxKg(100, 10)).toBeCloseTo(133.333, 3);
-    expect(epleyOneRepMaxKg(100, 5)).toBeCloseTo(116.667, 3);
-  });
-
-  it('returns the lifted weight for a single (`testing` skill §3)', () => {
-    // Not 103.33. There is nothing to extrapolate from a true single, and
-    // applying the formula anyway inflates every one of them by 3.3% —
-    // straight into `personal_records` as a PR the client never hit.
-    expect(epleyOneRepMaxKg(100, 1)).toBe(100);
-  });
-
-  it('has nothing to estimate from without a load or a completed rep', () => {
-    expect(epleyOneRepMaxKg(null, 10)).toBeNull();
-    expect(epleyOneRepMaxKg(0, 10)).toBeNull();
-    expect(epleyOneRepMaxKg(100, 0)).toBeNull();
-  });
-
-  it('declines rather than overflowing numeric(6,2)', () => {
-    // A value Postgres would reject with a 22003 is not an estimate worth
-    // failing the client's set over.
-    expect(epleyOneRepMaxKg(9_999.99, 30_000)).toBeNull();
-  });
-});
+// The Epley unit tests moved to `packages/utils/src/one-rep-max.test.ts`
+// with the formula itself. They needed no Postgres and should not wait on
+// a container to run.
