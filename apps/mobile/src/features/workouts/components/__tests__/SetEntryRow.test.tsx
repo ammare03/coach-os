@@ -217,6 +217,13 @@ describe('SetEntryRow — the 205px contract', () => {
     expect(composerHeightPx()).toBe(205);
   });
 
+  it('mounts no flags line in create mode, which is what holds it at 205', () => {
+    renderComposer({ onWarmupChange: jest.fn(), onFailureChange: jest.fn() });
+
+    expect(screen.queryByTestId('set-entry-flags-line')).toBeNull();
+    expect(composerHeightPx()).toBe(205);
+  });
+
   it('grows to 229px only for an occupant of the seam below the band', () => {
     // Stands in for task 02's nearest-weight line, whose own `marginTop`
     // and `minHeight` are the entire +24 — the seam declares no size.
@@ -225,6 +232,80 @@ describe('SetEntryRow — the 205px contract', () => {
     });
 
     expect(composerHeightPx('nearest')).toBe(229);
+  });
+});
+
+describe('SetEntryRow — mode="edit"', () => {
+  // The editor is the same card, in the list, over the row it corrects. It
+  // adds exactly two things to the create anatomy (design spec) and must
+  // differ from it everywhere a client or a screen reader could confuse the
+  // two.
+
+  function renderEditor(overrides: Partial<Parameters<typeof SetEntryRow>[0]> = {}) {
+    return renderComposer({
+      mode: 'edit',
+      setNumber: 2,
+      weight: 82.5,
+      reps: 7,
+      headTrailing: <Text>Cancel</Text>,
+      onWarmupChange: jest.fn(),
+      onFailureChange: jest.fn(),
+      ...overrides,
+    });
+  }
+
+  it('names the set it is correcting instead of the set being composed', () => {
+    renderEditor();
+
+    expect(screen.getByText('Editing set 2')).toBeTruthy();
+    expect(screen.queryByText('Set 2')).toBeNull();
+  });
+
+  it('says Editing warm-up for a warm-up, which carries no number', () => {
+    renderEditor({ isWarmup: true });
+
+    expect(screen.getByText('Editing warm-up')).toBeTruthy();
+    expect(screen.queryByText('Editing set 2')).toBeNull();
+  });
+
+  it('confirms with Save, never Log — nothing new is being logged', () => {
+    renderEditor();
+
+    expect(screen.getByLabelText('Save set 2, 82.5 kilograms for 7 reps')).toBeTruthy();
+    expect(screen.queryByLabelText('Log set 2, 82.5 kilograms for 7 reps')).toBeNull();
+  });
+
+  it('names a warm-up on its Save, since the head says no number', () => {
+    renderEditor({ isWarmup: true });
+
+    expect(screen.getByLabelText('Save warm-up set, 82.5 kilograms for 7 reps')).toBeTruthy();
+  });
+
+  it('moves the flags to their own line and gives the head to the actions', () => {
+    renderEditor();
+
+    expect(screen.getByText('Cancel')).toBeTruthy();
+    expect(within(screen.getByTestId('set-entry-flags-line')).getByText('Warm-up')).toBeTruthy();
+    expect(within(screen.getByTestId('set-entry-head')).queryByText('Warm-up')).toBeNull();
+  });
+
+  it('is 205 plus its one extra band, and the create card is untouched by it', () => {
+    // Edit mode is a DIFFERENT mode, not a violation of the 205px contract:
+    // this card is in the list, not pinned under it, so the confirm the
+    // client returns to between sets has not moved.
+    renderEditor();
+
+    const flagsLine = boxHeightPx('set-entry-flags-line');
+    expect(flagsLine).toBe(39); // 33px chip + a 6px gap
+    expect(composerHeightPx() + flagsLine).toBe(244);
+  });
+
+  it('sizes the flags line with minHeight, so 200% text grows it', () => {
+    renderEditor();
+
+    const rules = flattenStyle(screen.getByTestId('set-entry-flags-line').props.style);
+    expect(rules.some((rule) => rule.minHeight !== undefined)).toBe(true);
+    expect(rules.some((rule) => rule.height !== undefined)).toBe(false);
   });
 });
 

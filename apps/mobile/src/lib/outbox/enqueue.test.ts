@@ -323,3 +323,135 @@ describe('enqueueMutation', () => {
     expect(await readOutbox()).toHaveLength(0);
   });
 });
+
+// `phase-09-workout-logger/set-entry/05` — correcting an already-logged set.
+// The correction is the SAME mutation re-sent under the SAME key, because
+// that is what turns the server's `ON CONFLICT (client_id, client_local_id)`
+// into an update instead of a second set (task 05 Risks).
+describe('enqueueMutation re-sending under an existing key', () => {
+  it('reuses the supplied key verbatim instead of generating a new one', async () => {
+    const original = await enqueueMutation({ procedure: 'workouts.logSet', payload: { reps: 10 } });
+
+    const correction = await enqueueMutation({
+      procedure: 'workouts.logSet',
+      payload: { reps: 12 },
+      reuseClientLocalId: original.clientLocalId,
+    });
+
+    expect(correction.clientLocalId).toBe(original.clientLocalId);
+    const rows = await readOutbox();
+    expect(rows.filter((r) => r.client_local_id === original.clientLocalId)).toHaveLength(2);
+  });
+
+  it('still gives the re-send its own outbox id, so a chain can name it', async () => {
+    const original = await enqueueMutation({ procedure: 'workouts.logSet', payload: {} });
+
+    const correction = await enqueueMutation({
+      procedure: 'workouts.logSet',
+      payload: {},
+      reuseClientLocalId: original.clientLocalId,
+    });
+
+    expect(correction.outboxId).toMatch(UUIDV7);
+    expect(correction.outboxId).not.toBe(original.outboxId);
+  });
+
+  it('chains the re-send behind the row already carrying that key', async () => {
+    // Siblings flush concurrently (`enqueue.ts` rule 4). Two rows keyed the
+    // same are not siblings: if the correction landed first, the original
+    // would upsert the OLD values back over it and the coach would read a
+    // number the client never entered.
+    const original = await enqueueMutation({ procedure: 'workouts.logSet', payload: { reps: 10 } });
+
+    const correction = await enqueueMutation({
+      procedure: 'workouts.logSet',
+      payload: { reps: 12 },
+      reuseClientLocalId: original.clientLocalId,
+    });
+
+    const rows = await readOutbox();
+    expect(rows.find((r) => r.id === correction.outboxId)?.depends_on).toBe(original.outboxId);
+  });
+
+  it('chains a second correction behind the first, not behind the original', async () => {
+    const original = await enqueueMutation({ procedure: 'workouts.logSet', payload: {} });
+    const first = await enqueueMutation({
+      procedure: 'workouts.logSet',
+      payload: {},
+      reuseClientLocalId: original.clientLocalId,
+    });
+
+    const second = await enqueueMutation({
+      procedure: 'workouts.logSet',
+      payload: {},
+      reuseClientLocalId: original.clientLocalId,
+    });
+
+    const rows = await readOutbox();
+    expect(rows.find((r) => r.id === second.outboxId)?.depends_on).toBe(first.outboxId);
+  });
+
+  it("supersedes the caller's dependsOn, because the same-key row already sits behind it", async () => {
+    const parent = await enqueueMutation({ procedure: 'workouts.start', payload: {} });
+    const original = await enqueueMutation({
+      procedure: 'workouts.logSet',
+      payload: {},
+      dependsOn: parent.outboxId,
+    });
+
+    const correction = await enqueueMutation({
+      procedure: 'workouts.logSet',
+      payload: {},
+      dependsOn: parent.outboxId,
+      reuseClientLocalId: original.clientLocalId,
+    });
+
+    const rows = await readOutbox();
+    expect(rows.find((r) => r.id === correction.outboxId)?.depends_on).toBe(original.outboxId);
+  });
+
+  it("falls back to the caller's dependsOn when nothing queued still carries that key", async () => {
+    // The ordinary case for a set logged days ago: its mutation is long
+    // since `'done'` and pruned, or the row came from a prefetch and was
+    // never queued here at all. Nothing to order against, so the session's
+    // own start is the parent, exactly as a fresh log would use.
+    const parent = await enqueueMutation({ procedure: 'workouts.start', payload: {} });
+
+    const correction = await enqueueMutation({
+      procedure: 'workouts.logSet',
+      payload: {},
+      dependsOn: parent.outboxId,
+      reuseClientLocalId: '018f4b1e-0000-7000-8000-0000000000aa',
+    });
+
+    const rows = await readOutbox();
+    const row = rows.find((r) => r.id === correction.outboxId);
+    expect(row?.depends_on).toBe(parent.outboxId);
+    expect(row?.client_local_id).toBe('018f4b1e-0000-7000-8000-0000000000aa');
+  });
+
+  it('refuses a key that is not a uuid rather than queueing a mutation the server will reject', async () => {
+    // `logSetInput.clientLocalId` is `z.string().uuid()`. A malformed key
+    // would fail every attempt until the row hit the ceiling and surfaced
+    // as "couldn't sync" — a loud failure here names the real bug instead.
+    await expect(
+      enqueueMutation({
+        procedure: 'workouts.logSet',
+        payload: {},
+        reuseClientLocalId: 'not-a-uuid',
+      }),
+    ).rejects.toThrow(/reuseClientLocalId/);
+
+    expect(await readOutbox()).toHaveLength(0);
+  });
+
+  it('generates a fresh key when the parameter is absent, unchanged from before', async () => {
+    const first = await enqueueMutation({ procedure: 'workouts.logSet', payload: {} });
+    const second = await enqueueMutation({ procedure: 'workouts.logSet', payload: {} });
+
+    expect(first.clientLocalId).toMatch(UUIDV7);
+    expect(second.clientLocalId).not.toBe(first.clientLocalId);
+    const rows = await readOutbox();
+    expect(rows.every((r) => r.depends_on === null)).toBe(true);
+  });
+});

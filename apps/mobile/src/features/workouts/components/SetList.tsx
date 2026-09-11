@@ -1,8 +1,8 @@
-import { useReducedMotion } from '@coachos/ui/theme';
+import { spacing, useReducedMotion } from '@coachos/ui/theme';
 import type { WeightUnit } from '@coachos/utils';
 import type { ReactNode } from 'react';
-import { useEffect, useRef } from 'react';
-import { ScrollView, StyleSheet } from 'react-native';
+import { useCallback, useEffect, useRef } from 'react';
+import { ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 
 import { SetRow, type LoggedSetView } from './SetRow.tsx';
 
@@ -53,6 +53,21 @@ export interface SetListProps {
    * it so both stay stable callbacks (`frontend-performance` §3).
    */
   renderTrailingLabel?: (set: LoggedSetView) => string | undefined;
+  /**
+   * **Seam — `set-entry/05`.** The set currently open for correction, which
+   * renders `renderEditor` in place of its row. `null` is the ordinary
+   * state, and it is also what makes every other row tappable: one editor at
+   * a time, so no tap can discard an open edit by accident.
+   */
+  editingLocalId?: string | null;
+  /** The editor card, mounted where the row was. Only for `editingLocalId`. */
+  renderEditor?: (set: LoggedSetView) => ReactNode;
+  /**
+   * Tapping a logged row. One stable callback for the whole list rather than
+   * a closure per row — `SetRow` is memoised and a fresh `onEdit` each render
+   * would defeat it for twelve rows, mid-set.
+   */
+  onEditSet?: (set: LoggedSetView) => void;
   testID?: string;
 }
 
@@ -62,17 +77,47 @@ export function SetList({
   enteringLocalId = null,
   renderTrailing,
   renderTrailingLabel,
+  editingLocalId = null,
+  renderEditor,
+  onEditSet,
   testID,
 }: SetListProps) {
   const reducedMotion = useReducedMotion();
   const scroll = useRef<ScrollView>(null);
+  /** The editor we have already scrolled to — so a stepper tap cannot re-scroll. */
+  const scrolledTo = useRef<string | null>(null);
 
   useEffect(() => {
     if (sets.length === 0) return;
+    // Never while an editor is open: the client is looking at a card in the
+    // middle of the list, and yanking to the end would lose it.
+    if (editingLocalId !== null) return;
     // `animated: false` under reduced motion (`accessibility` §6) — the
     // position still changes, only the travel is dropped.
     scroll.current?.scrollToEnd({ animated: !reducedMotion });
-  }, [sets.length, reducedMotion]);
+  }, [sets.length, reducedMotion, editingLocalId]);
+
+  useEffect(() => {
+    // Armed for the next editor the moment this one closes. In an effect,
+    // not in render — a ref read during render is a concurrent-mode hazard.
+    if (editingLocalId === null) scrolledTo.current = null;
+  }, [editingLocalId]);
+
+  // The editor is taller than the ~221px this list gets while the composer
+  // is collapsed, so it is brought to the top of the viewport once, on open
+  // — which is what makes its confirm reachable (design spec, 200% text).
+  const handleEditorLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      if (editingLocalId === null || scrolledTo.current === editingLocalId) return;
+      scrolledTo.current = editingLocalId;
+      scroll.current?.scrollTo({ y: event.nativeEvent.layout.y, animated: !reducedMotion });
+    },
+    [editingLocalId, reducedMotion],
+  );
+
+  // `undefined` while an editor is open drops the `button` role and the
+  // "Double tap to edit" hint from every other row (design frame F).
+  const rowOnEdit = editingLocalId === null ? onEditSet : undefined;
 
   return (
     <ScrollView
@@ -85,17 +130,32 @@ export function SetList({
       keyboardShouldPersistTaps="handled"
       testID={testID}
     >
-      {sets.map((set) => (
-        <SetRow
-          key={set.localId}
-          set={set}
-          unit={unit}
-          isEntering={set.localId === enteringLocalId}
-          trailing={renderTrailing?.(set)}
-          trailingLabel={renderTrailingLabel?.(set)}
-          testID={`set-row-${set.localId}`}
-        />
-      ))}
+      {sets.map((set) =>
+        set.localId === editingLocalId && renderEditor !== undefined ? (
+          // In place, over the row it corrects — the client can still see
+          // which set they are changing, which is the whole reason the
+          // editor is not in the pinned card.
+          <View
+            key={set.localId}
+            style={styles.editor}
+            onLayout={handleEditorLayout}
+            testID={`set-editor-${set.localId}`}
+          >
+            {renderEditor(set)}
+          </View>
+        ) : (
+          <SetRow
+            key={set.localId}
+            set={set}
+            unit={unit}
+            isEntering={set.localId === enteringLocalId}
+            trailing={renderTrailing?.(set)}
+            trailingLabel={renderTrailingLabel?.(set)}
+            onEdit={rowOnEdit}
+            testID={`set-row-${set.localId}`}
+          />
+        ),
+      )}
     </ScrollView>
   );
 }
@@ -110,5 +170,10 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     justifyContent: 'flex-end',
+  },
+  editor: {
+    // The card sits off the hairlines either side of it, so it reads as a
+    // surface over the list rather than a very tall row.
+    marginVertical: spacing(8),
   },
 });

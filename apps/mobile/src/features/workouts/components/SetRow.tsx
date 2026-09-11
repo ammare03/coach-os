@@ -1,16 +1,17 @@
-import { Metric } from '@coachos/ui';
+import { Metric, Pressable } from '@coachos/ui';
 import {
   createThemedStyles,
   duration as durationTokens,
   easing,
   spacing,
+  tapTarget,
   useReducedMotion,
   useTheme,
 } from '@coachos/ui/theme';
 import type { WeightUnit } from '@coachos/utils';
 import { Check } from 'lucide-react-native';
 import type { ReactNode } from 'react';
-import { memo, useEffect } from 'react';
+import { memo, useCallback, useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
@@ -24,7 +25,7 @@ import { labelLastPerformance } from '../lib/target-line-copy.ts';
 // This feature's copy and its spoken forms live in `SetEntryRow.tsx`, the
 // way `SessionFinish.tsx` owns `FINISH_COPY` — one home per surface, so the
 // composer and the row it produces can never word the same set differently.
-import { speakLoad, toDisplayWeight } from './SetEntryRow.tsx';
+import { SET_ENTRY_COPY, speakLoad, toDisplayWeight } from './SetEntryRow.tsx';
 import { SET_FLAG_COPY } from './SetFlagChips.tsx';
 
 // `set-entry/01` — one set the client has already logged, and the moment it
@@ -55,6 +56,14 @@ import { SET_FLAG_COPY } from './SetFlagChips.tsx';
  * `packages/ui` and not exported from its theme barrel.
  */
 export const SET_ROW_MIN_HEIGHT = 40;
+
+/**
+ * `centeredHitSlop(40, tapTarget.MIN)`'s arithmetic, restated because that
+ * helper is internal to `packages/ui` and not exported from its theme barrel.
+ * The row reaches 44pt by slop, never by growing its box — four rows have to
+ * fit a 60px list.
+ */
+const ROW_HIT_SLOP = Math.ceil((tapTarget.MIN - SET_ROW_MIN_HEIGHT) / 2);
 
 const TICK_SIZE = 15;
 
@@ -142,6 +151,22 @@ export interface SetRowProps {
    * mount: a re-render must never replay the entrance.
    */
   isEntering?: boolean;
+  /**
+   * **`set-entry/05` — tap this row to correct it.** Supplied, the row is a
+   * button and carries the `Double tap to edit` hint; omitted, it is the
+   * plain receipt it has always been.
+   *
+   * Omitted is also what the caller passes **while another row is being
+   * edited** (design frame F drops the hint from every other row then): one
+   * editor at a time, and no row offering an affordance that would discard
+   * the open edit.
+   *
+   * Takes the set rather than closing over it, so `SetList` can hand down
+   * one stable callback for every row — a per-row arrow would allocate a new
+   * `onEdit` each render and defeat this component's memo for twelve rows,
+   * mid-set (`frontend-performance` §3).
+   */
+  onEdit?: ((set: LoggedSetView) => void) | undefined;
   testID?: string;
 }
 
@@ -156,6 +181,7 @@ export const SetRow = memo(function SetRow({
   trailing,
   trailingLabel,
   isEntering = false,
+  onEdit,
   testID,
 }: SetRowProps) {
   const theme = useTheme();
@@ -193,18 +219,14 @@ export const SetRow = memo(function SetRow({
 
   const load = labelLoad(set, unit);
   const ink = setRowInk(set);
+  const label = speakSet(set, unit, trailingLabel);
 
-  return (
-    <Animated.View
-      style={[styles.row, themed.row, rowStyle]}
-      // One item, not five fragments (`accessibility` §2). Task 05 adds the
-      // `button` role, the "Double tap to edit" hint and task 06's delete
-      // custom action here; until something can be done to a row, claiming
-      // it is a button would be a lie to a screen reader.
-      accessible
-      accessibilityLabel={speakSet(set, unit, trailingLabel)}
-      testID={testID}
-    >
+  const handlePress = useCallback(() => {
+    onEdit?.(set);
+  }, [onEdit, set]);
+
+  const content = (
+    <>
       <View style={styles.number}>
         <Metric value={ink.glyph} size="numeral" tone={ink.numberTone} />
       </View>
@@ -222,9 +244,38 @@ export const SetRow = memo(function SetRow({
           size={TICK_SIZE}
           color={ink.tick === 'brand' ? theme.colors.brand.DEFAULT : theme.colors.fg.muted}
           strokeWidth={2.8}
-          // `accessible` above merges it in; the label already says "logged".
+          // The row is one accessible element; the label already says "logged".
         />
       </Animated.View>
+    </>
+  );
+
+  // The entrance lives on the outer view and the box on the inner one, so
+  // the row can become a control without the animation having to know.
+  return (
+    <Animated.View style={rowStyle} testID={testID}>
+      {onEdit === undefined ? (
+        // One item, not five fragments (`accessibility` §2). Not a button:
+        // with nothing to do to it, claiming it is one would be a lie to a
+        // screen reader — and that is exactly the state every other row is
+        // in while one of them is open for editing.
+        <View style={[styles.row, themed.row]} accessible accessibilityLabel={label}>
+          {content}
+        </View>
+      ) : (
+        // 44pt by slop, never by growing the box. The hint is the visible
+        // equivalent of the gesture, spoken.
+        <Pressable
+          onPress={handlePress}
+          style={[styles.row, themed.row]}
+          hitSlop={ROW_HIT_SLOP}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          accessibilityHint={SET_ENTRY_COPY.editHint}
+        >
+          {content}
+        </Pressable>
+      )}
     </Animated.View>
   );
 });

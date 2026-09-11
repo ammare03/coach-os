@@ -1,4 +1,4 @@
-import { Text, hapticSetLogged } from '@coachos/ui';
+import { Button, Text, hapticSetLogged } from '@coachos/ui';
 import { spacing, useTheme } from '@coachos/ui/theme';
 import { parseWeight, resolveWeightStep, type WeightUnit } from '@coachos/utils';
 import { and, asc, eq } from 'drizzle-orm';
@@ -12,11 +12,19 @@ import { useWeightUnit } from '../../../hooks/useWeightUnit.ts';
 import type { LocalSessionPayload } from '../../../lib/prefetch/sessions.ts';
 import { useExerciseTarget } from '../hooks/useExerciseTarget.ts';
 import { useLogSet } from '../hooks/useLogSet.ts';
+import { useUpdateSet } from '../hooks/useUpdateSet.ts';
 import type { ExercisePage } from '../lib/exercise-pages.ts';
 
+import { EditingBar } from './EditingBar.tsx';
 import { NearestWeightLine, PlateStack } from './PlateStack.tsx';
 import { PreviousSetLine, speakPreviousSetLine } from './PreviousSetLine.tsx';
-import { SET_ENTRY_COPY, SetEntryRow, speakLoad, toDisplayWeight } from './SetEntryRow.tsx';
+import {
+  SET_ENTRY_COPY,
+  SetEntryRow,
+  cancelEditingLabel,
+  speakLoad,
+  toDisplayWeight,
+} from './SetEntryRow.tsx';
 import { renderSetTrailing, speakSetTrailing } from './SetFlagChips.tsx';
 import { SetList } from './SetList.tsx';
 import type { LoggedSetView } from './SetRow.tsx';
@@ -77,6 +85,37 @@ import type { LoggedSetView } from './SetRow.tsx';
 //
 // Neither affects §8.4: both start `false`, and the clear happens after the
 // confirm, never between the stepper and it.
+//
+// ==================== CORRECTING A SET ALREADY LOGGED ==================
+//
+// `set-entry/05`. Three decisions live here, and each is a way the edit path
+// goes wrong if it is made the other way:
+//
+// **A set cannot be logged while an edit is open, and confirming saves the
+// edit.** The editor is the same card, in the list, over the row it is
+// correcting — and the pinned composer collapses to a 44px `EditingBar` that
+// carries no confirm. So there is exactly one `SetEntryRow` mounted, exactly
+// one meaning for "confirm", and no window in which a new set could claim a
+// number while an old one is being changed. The design's own answer, and it
+// is also the only one that keeps the set-number arithmetic above honest.
+//
+// **Both flag chips stay editable.** A mis-tapped `To failure` is the same
+// class of mistake as a mis-tapped weight, and refusing it would force the
+// client to delete and re-log — the exact thing this task exists to remove.
+// `updateSet` preserves a flag it is not given, so the editor sends both
+// every time rather than relying on that. Changing `is_warmup` after the
+// fact deliberately DOES change what "last time" and PR detection see: the
+// set genuinely was a warm-up, and DB§22's `is_warmup = false` filter should
+// stop counting it. No row is renumbered — a warm-up occupies no set number,
+// so `highestWorkingSetNumber` simply stops seeing it, and every logged row
+// keeps the number it was given.
+//
+// **Cancel restores the stored values, and an edit cannot be lost by
+// accident.** Nothing is written until the confirm: the editor holds its own
+// draft and `updateSet` is called once, from `handleSaveEdit`. The two ways
+// out are Cancel (which discards, and says so) and Save (which writes) — and
+// while the editor is open every other row drops its `button` role and its
+// "Double tap to edit" hint, so no stray tap can close it either.
 
 /** Neither a target nor a history to seed from: the stepper's own floor, not a guess. */
 const REPS_FALLBACK = 1;
@@ -93,6 +132,7 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
   const theme = useTheme();
   const unit = useWeightUnit();
   const { logSet } = useLogSet();
+  const { updateSet } = useUpdateSet();
   const { target, history } = useExerciseTarget({ page, payload, sessionLocalId });
 
   const exerciseId = page.exerciseId;
@@ -101,6 +141,14 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
   const [workingInFlight, setWorkingInFlight] = useState(0);
   const [enteringLocalId, setEnteringLocalId] = useState<string | null>(null);
   const [hasFailed, setHasFailed] = useState(false);
+  const [hasEditFailed, setHasEditFailed] = useState(false);
+  /**
+   * Corrections already applied, by `client_local_id`. Kept beside the rows
+   * rather than folded into them because a corrected set can live in EITHER
+   * source — the seed read or this session's own appends — and one map
+   * covers both without either having to know about the other.
+   */
+  const [edits, setEdits] = useState<ReadonlyMap<string, SetEdit>>(NO_EDITS);
 
   // What this exercise already holds in this session. A client who force-
   // quits mid-workout and comes back must see their sets and must not start
@@ -173,8 +221,13 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
   // exercise's name (`useExerciseTarget` makes the identical argument).
   const seedRows = seeded !== null && seeded.key === readKey ? seeded.rows : EMPTY_ROWS;
   const logged = useMemo(
-    () => [...seedRows, ...sets].sort((a, b) => a.setNumber - b.setNumber),
-    [seedRows, sets],
+    () =>
+      [...seedRows, ...sets]
+        // `applyEdit` returns the row itself when nothing corrected it, so an
+        // uncorrected row keeps its identity and `SetRow`'s memo holds.
+        .map((row) => applyEdit(row, edits))
+        .sort((a, b) => a.setNumber - b.setNumber),
+    [seedRows, sets, edits],
   );
 
   const setNumber = highestWorkingSetNumber(logged) + workingInFlight + 1;
@@ -280,6 +333,146 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
     [draftKey, unit, reps],
   );
 
+  // ── the editor (`set-entry/05`) ───────────────────────────────────────
+  const [editing, setEditing] = useState<EditDraft | null>(null);
+
+  // Derived, never reset in an effect — the same argument the draft and the
+  // flags above make. A page turn or a unit change moves `draftKey` and the
+  // editor closes rather than reopening over a different exercise's row; a
+  // row that has left the list (task 06's delete) takes its editor with it.
+  const editingSet =
+    editing !== null && editing.key === draftKey
+      ? (logged.find((row) => row.localId === editing.localId) ?? null)
+      : null;
+  const editDraft = editingSet === null ? null : editing;
+  const editingLocalId = editDraft?.localId ?? null;
+
+  const handleEditSet = useCallback(
+    (row: LoggedSetView) => {
+      setHasEditFailed(false);
+      // Seeded from the STORED row, in the client's display unit — so
+      // re-opening an editor always shows what is on the device, never a
+      // stale draft from a previous edit.
+      setEditing({
+        key: draftKey,
+        localId: row.localId,
+        setNumber: row.setNumber,
+        weight: toDisplayWeight(row.weightKg, unit) ?? 0,
+        reps: row.reps,
+        isWarmup: row.isWarmup,
+        isFailure: row.isFailure ?? false,
+      });
+      // The card replaces the row in place, which is invisible to a screen
+      // reader otherwise (`accessibility` §2). It says which set is open,
+      // in the same words the head label and the collapsed bar use.
+      AccessibilityInfo.announceForAccessibility(
+        row.isWarmup
+          ? SET_ENTRY_COPY.editingWarmupLabel
+          : SET_ENTRY_COPY.editingSetLabel(row.setNumber),
+      );
+    },
+    [draftKey, unit],
+  );
+
+  /** Discards the draft whole. Nothing was written, so there is nothing to undo. */
+  const handleCancelEdit = useCallback(() => {
+    setEditing(null);
+  }, []);
+
+  const patchEdit = useCallback((patch: Partial<Omit<EditDraft, 'key' | 'localId'>>) => {
+    setEditing((current) => (current === null ? null : { ...current, ...patch }));
+  }, []);
+
+  const handleEditWeightChange = useCallback(
+    (next: number) => {
+      patchEdit({ weight: next });
+    },
+    [patchEdit],
+  );
+  const handleEditRepsChange = useCallback(
+    (next: number) => {
+      patchEdit({ reps: next });
+    },
+    [patchEdit],
+  );
+  const handleEditWarmupChange = useCallback(
+    (next: boolean) => {
+      patchEdit({ isWarmup: next });
+    },
+    [patchEdit],
+  );
+  const handleEditFailureChange = useCallback(
+    (next: boolean) => {
+      patchEdit({ isFailure: next });
+    },
+    [patchEdit],
+  );
+  const handleEditSelectNearest = useCallback(
+    (nextKg: number) => {
+      patchEdit({ weight: toDisplayWeight(nextKg, unit) ?? 0 });
+    },
+    [patchEdit, unit],
+  );
+
+  const handleSaveEdit = useCallback(() => {
+    if (editDraft === null) return;
+    const draft = editDraft;
+
+    // **No haptic.** `hapticSetLogged()` fires on create and only on create
+    // (design spec): a correction logs nothing new, and a second buzz for a
+    // fix would read as a second set (`ui-conventions` §5).
+    //
+    // Same unit edge as `handleConfirm`, and the same reading of 0: below
+    // the stepper's floor there is no external load, which is a bodyweight
+    // set and not a 0kg lift.
+    const weightKg = draft.weight === 0 ? null : parseWeight(draft.weight, unit);
+    const patch: SetEdit = {
+      reps: draft.reps,
+      weightKg,
+      isWarmup: draft.isWarmup,
+      isFailure: draft.isFailure,
+    };
+
+    // Optimistic and synchronous, exactly as a create is: the row reads its
+    // new numbers in the same tick as the tap, and nothing waits on a radio.
+    const previous = edits.get(draft.localId);
+    setEdits((current) => withEdit(current, draft.localId, patch));
+    setEditing(null);
+    setHasEditFailed(false);
+
+    void (async () => {
+      try {
+        await updateSet({
+          // The key is reused, never regenerated — the entire mechanism that
+          // makes the server's `ON CONFLICT` an UPDATE rather than a second
+          // set (task 05 Risks, `offline-sync` §3).
+          setLocalId: draft.localId,
+          reps: patch.reps,
+          weightKg: patch.weightKg,
+          isWarmup: patch.isWarmup,
+          isFailure: patch.isFailure,
+        });
+        AccessibilityInfo.announceForAccessibility(
+          draft.isWarmup
+            ? SET_ENTRY_COPY.warmupUpdatedAnnouncement(
+                speakConfirmed(patch.weightKg, patch.reps, unit),
+              )
+            : SET_ENTRY_COPY.updatedAnnouncement(
+                draft.setNumber,
+                speakConfirmed(patch.weightKg, patch.reps, unit),
+              ),
+        );
+      } catch {
+        // `updateSet` rejects on one thing: the device holds no such row.
+        // The optimistic patch goes back whole — showing a corrected number
+        // the mirror never took would be the worst outcome available here —
+        // and the row stays tappable, which is what "try again" means.
+        setEdits((current) => withEdit(current, draft.localId, previous));
+        setHasEditFailed(true);
+      }
+    })();
+  }, [editDraft, edits, unit, updateSet]);
+
   const handleConfirm = useCallback(() => {
     // First line, before any work: this is what `set_logged.entry_ms`
     // measures against, and it is how §19's budget gets proven in the field
@@ -380,10 +573,20 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
     handleFailureChange,
   ]);
 
+  // One message band, two local-mirror faults. A correction says "save that
+  // change" rather than "log that set", because nothing was logged — and
+  // neither is ever phrased as a network problem, since neither is one
+  // (`ERRORS.md` ER§1.4).
+  const failureMessage = hasFailed
+    ? SET_ENTRY_COPY.failed
+    : hasEditFailed
+      ? SET_ENTRY_COPY.editFailed
+      : null;
+
   useEffect(() => {
-    if (!hasFailed) return;
-    AccessibilityInfo.announceForAccessibility(SET_ENTRY_COPY.failed);
-  }, [hasFailed]);
+    if (failureMessage === null) return;
+    AccessibilityInfo.announceForAccessibility(failureMessage);
+  }, [failureMessage]);
 
   // `set-entry/03`. **Built once per set, not once per render.** `SetRow` is
   // memoised and this list re-renders on every stepper keystroke; a fresh
@@ -431,6 +634,82 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
     [history, unit],
   );
 
+  // The editor, mounted where the row is. Built here rather than inside
+  // `SetList` because everything it needs — the unit edge, the plate block,
+  // this set's own history — is already resolved on this component.
+  const renderEditor = useCallback(
+    (row: LoggedSetView) => {
+      if (editDraft === null) return null;
+      const editWeightKg = parseWeight(editDraft.weight, unit);
+      return (
+        <SetEntryRow
+          mode="edit"
+          setNumber={row.setNumber}
+          weight={editDraft.weight}
+          reps={editDraft.reps}
+          unit={unit}
+          weightStep={weightStep}
+          onWeightChange={handleEditWeightChange}
+          onRepsChange={handleEditRepsChange}
+          onConfirm={handleSaveEdit}
+          isWarmup={editDraft.isWarmup}
+          isFailure={editDraft.isFailure}
+          onWarmupChange={handleEditWarmupChange}
+          onFailureChange={handleEditFailureChange}
+          // Cancel takes the head's trailing seam and the flags move to
+          // their own line. A `View` rather than the button alone so task
+          // 06's Delete set joins it as a sibling.
+          headTrailing={
+            <View style={styles.editActions}>
+              <Button
+                size="sm"
+                variant="secondary"
+                onPress={handleCancelEdit}
+                accessibilityLabel={cancelEditingLabel(row.setNumber, editDraft.isWarmup)}
+                testID="set-entry-cancel-edit"
+              >
+                {SET_ENTRY_COPY.cancelEdit}
+              </Button>
+            </View>
+          }
+          contextLeading={<PlateStack equipment={equipment} weightKg={editWeightKg} unit={unit} />}
+          contextTrailing={
+            <PreviousSetLine
+              history={history}
+              setNumber={row.setNumber}
+              unit={unit}
+              placement="composer"
+              testID="set-entry-edit-previous"
+            />
+          }
+          contextBelow={
+            <NearestWeightLine
+              equipment={equipment}
+              weightKg={editWeightKg}
+              unit={unit}
+              onSelectNearest={handleEditSelectNearest}
+            />
+          }
+          testID="set-entry-editor"
+        />
+      );
+    },
+    [
+      editDraft,
+      unit,
+      weightStep,
+      equipment,
+      history,
+      handleEditWeightChange,
+      handleEditRepsChange,
+      handleSaveEdit,
+      handleEditWarmupChange,
+      handleEditFailureChange,
+      handleCancelEdit,
+      handleEditSelectNearest,
+    ],
+  );
+
   return (
     <View style={styles.slot}>
       <SetList
@@ -439,10 +718,13 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
         enteringLocalId={enteringLocalId}
         renderTrailing={renderTrailing}
         renderTrailingLabel={renderTrailingLabel}
+        editingLocalId={editingLocalId}
+        renderEditor={renderEditor}
+        onEditSet={handleEditSet}
         testID="set-list"
       />
 
-      {hasFailed ? (
+      {failureMessage !== null ? (
         // Above the card, where the client's thumb already is — never a
         // toast (it dismisses itself over this exact control) and never a
         // full error state (the session and every logged set are still on
@@ -452,7 +734,7 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
           style={styles.message}
           accessible
           accessibilityRole="alert"
-          accessibilityLabel={SET_ENTRY_COPY.failed}
+          accessibilityLabel={failureMessage}
           testID="set-entry-error"
         >
           {/* Warm, never `urgent`: red in this product means missed or
@@ -461,61 +743,74 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
               message never rests on hue alone. */}
           <AlertTriangle size={15} color={theme.colors.fg.warm} strokeWidth={2} />
           <Text size="body-sm" tone="warm" style={styles.messageText}>
-            {SET_ENTRY_COPY.failed}
+            {failureMessage}
           </Text>
         </View>
       ) : null}
 
       <View style={styles.composer}>
-        <SetEntryRow
-          mode="create"
-          setNumber={setNumber}
-          weight={weight}
-          reps={reps}
-          unit={unit}
-          weightStep={weightStep}
-          onWeightChange={handleWeightChange}
-          onRepsChange={handleRepsChange}
-          onConfirm={handleConfirm}
-          // The head band's trailing seam. Supplying both handlers is what
-          // mounts the chips; neither sits between the steppers and the
-          // confirm, so the default working set is still two taps (§8.4).
-          isWarmup={isWarmup}
-          isFailure={isFailure}
-          onWarmupChange={handleWarmupChange}
-          onFailureChange={handleFailureChange}
-          // Left of the band; `PreviousSetLine` takes the right.
-          // `PlateStack` draws an empty view rather than nothing when it
-          // does not apply, so that slot keeps its place under
-          // `space-between`.
-          contextLeading={<PlateStack equipment={equipment} weightKg={weightKg} unit={unit} />}
-          // Right of the band, against the set number being composed — so
-          // a client about to log set 4 reads set 4's own history, or
-          // "no set 4 last time" when the previous session stopped at 3.
-          // Renders nothing at all while the read is in flight: the band
-          // keeps its 20px either way, so the confirm does not move.
-          contextTrailing={
-            <PreviousSetLine
-              history={history}
-              setNumber={setNumber}
-              unit={unit}
-              placement="composer"
-              testID="set-entry-previous"
-            />
-          }
-          // Mounted unconditionally — it returns null unless the weight is
-          // off the plate grid, and that is the one case the card is
-          // allowed to grow for (205 → 229, resolved in one tap).
-          contextBelow={
-            <NearestWeightLine
-              equipment={equipment}
-              weightKg={weightKg}
-              unit={unit}
-              onSelectNearest={handleSelectNearest}
-            />
-          }
-          testID="set-entry-row"
-        />
+        {editDraft !== null ? (
+          // **The composer collapses rather than sitting beside the
+          // editor.** Two cards would leave the client no list at all, and
+          // a second confirm would give "confirm" two meanings. What stays
+          // reachable is Cancel, and only Cancel.
+          <EditingBar
+            setNumber={editDraft.setNumber}
+            isWarmup={editDraft.isWarmup}
+            onCancel={handleCancelEdit}
+            testID="editing-bar"
+          />
+        ) : (
+          <SetEntryRow
+            mode="create"
+            setNumber={setNumber}
+            weight={weight}
+            reps={reps}
+            unit={unit}
+            weightStep={weightStep}
+            onWeightChange={handleWeightChange}
+            onRepsChange={handleRepsChange}
+            onConfirm={handleConfirm}
+            // The head band's trailing seam. Supplying both handlers is what
+            // mounts the chips; neither sits between the steppers and the
+            // confirm, so the default working set is still two taps (§8.4).
+            isWarmup={isWarmup}
+            isFailure={isFailure}
+            onWarmupChange={handleWarmupChange}
+            onFailureChange={handleFailureChange}
+            // Left of the band; `PreviousSetLine` takes the right.
+            // `PlateStack` draws an empty view rather than nothing when it
+            // does not apply, so that slot keeps its place under
+            // `space-between`.
+            contextLeading={<PlateStack equipment={equipment} weightKg={weightKg} unit={unit} />}
+            // Right of the band, against the set number being composed — so
+            // a client about to log set 4 reads set 4's own history, or
+            // "no set 4 last time" when the previous session stopped at 3.
+            // Renders nothing at all while the read is in flight: the band
+            // keeps its 20px either way, so the confirm does not move.
+            contextTrailing={
+              <PreviousSetLine
+                history={history}
+                setNumber={setNumber}
+                unit={unit}
+                placement="composer"
+                testID="set-entry-previous"
+              />
+            }
+            // Mounted unconditionally — it returns null unless the weight is
+            // off the plate grid, and that is the one case the card is
+            // allowed to grow for (205 → 229, resolved in one tap).
+            contextBelow={
+              <NearestWeightLine
+                equipment={equipment}
+                weightKg={weightKg}
+                unit={unit}
+                onSelectNearest={handleSelectNearest}
+              />
+            }
+            testID="set-entry-row"
+          />
+        )}
       </View>
     </View>
   );
@@ -523,6 +818,60 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
 
 /** Stable identity, so the `useMemo` below it does not rebuild on every render. */
 const EMPTY_ROWS: readonly LoggedSetView[] = [];
+
+/** One correction, as it applies to a row already on screen. */
+interface SetEdit {
+  reps: number;
+  /** Kilograms, always. `null` is a bodyweight set. */
+  weightKg: number | null;
+  isWarmup: boolean;
+  isFailure: boolean;
+}
+
+/**
+ * The editor's own draft: the set it is open over, and the values being
+ * changed. Deliberately **not** a `SetEdit` — it holds `weight` in the
+ * client's display unit, and the kilogram edge is crossed once, on save.
+ */
+interface EditDraft {
+  /** `draftKey` — a page turn or a unit change closes the editor rather than mislabelling it. */
+  key: string;
+  /** `local_set_logs.client_local_id`. Reused, never regenerated. */
+  localId: string;
+  setNumber: number;
+  weight: number;
+  reps: number;
+  isWarmup: boolean;
+  isFailure: boolean;
+}
+
+const NO_EDITS: ReadonlyMap<string, SetEdit> = new Map();
+
+/** Sets or clears one correction. `undefined` puts the row back as it was. */
+function withEdit(
+  current: ReadonlyMap<string, SetEdit>,
+  localId: string,
+  edit: SetEdit | undefined,
+): ReadonlyMap<string, SetEdit> {
+  const next = new Map(current);
+  if (edit === undefined) next.delete(localId);
+  else next.set(localId, edit);
+  return next;
+}
+
+/**
+ * The row as corrected, or **the row itself** when nothing corrected it —
+ * identity matters, because `SetRow` is memoised and a fresh object per
+ * render would re-render twelve rows on every stepper keystroke.
+ */
+function applyEdit(row: LoggedSetView, edits: ReadonlyMap<string, SetEdit>): LoggedSetView {
+  const edit = edits.get(row.localId);
+  if (edit === undefined) return row;
+  // `setNumber` and `loggedAt` are deliberately NOT touched: an edit
+  // corrects a value, not a time or a position (`useUpdateSet` rules (c)
+  // and (d)).
+  return { ...row, ...edit };
+}
 
 /** The composer's two flags, and the exercise-and-session they belong to. */
 interface DraftFlags {
@@ -582,5 +931,15 @@ const styles = StyleSheet.create({
   messageText: {
     flex: 1,
     minWidth: 0,
+  },
+  editActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacing(6),
+    // Wraps at 200% text rather than squashing the button (`accessibility` §3).
+    flexWrap: 'wrap',
+    rowGap: spacing(6),
+    flexShrink: 1,
   },
 });

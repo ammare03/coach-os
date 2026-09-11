@@ -76,10 +76,48 @@ export const SET_ENTRY_COPY = {
    * the raw error, and never phrased as a network problem — it is not one.
    */
   failed: 'Couldn’t log that set. Try again.',
+
+  // ── `set-entry/05`, the editor ────────────────────────────────────────
+  /** The editor's head label, and the collapsed bar's. Both say the same thing. */
+  editingSetLabel: (setNumber: number) => `Editing set ${String(setNumber)}`,
+  /** A warm-up is never numbered, so it names itself instead (design spec). */
+  editingWarmupLabel: 'Editing warm-up',
+  cancelEdit: 'Cancel',
+  /** Spoken: which set the Cancel abandons, since two Cancels are on screen. */
+  cancelEditLabel: (setNumber: number) => `Cancel editing set ${String(setNumber)}`,
+  cancelEditWarmupLabel: 'Cancel editing warm-up',
+  /** `Save set 2, 82.5 kilograms for 7 reps` — the confirm's sentence in edit mode. */
+  saveLabel: (setNumber: number, load: string) => `Save set ${String(setNumber)}, ${load}`,
+  saveWarmupLabel: (load: string) => `Save warm-up set, ${load}`,
+  /** A logged row's hint. The row is a button; this is what pressing it does. */
+  editHint: 'Double tap to edit',
+  /** The save's counterpart to `loggedAnnouncement` — a correction is not a new set. */
+  updatedAnnouncement: (setNumber: number, load: string) =>
+    `Set ${String(setNumber)} updated, ${load}`,
+  warmupUpdatedAnnouncement: (load: string) => `Warm-up set updated, ${load}`,
+  /**
+   * `updateSet` rejects on the same local-mirror fault `logSet` does, so the
+   * same voice — but it says "save that change", because nothing was logged.
+   */
+  editFailed: 'Couldn’t save that change. Try again.',
 } as const;
 
-/** Task 05 adds `'edit'`; `'create'` is the only mode implemented here. */
 export type SetEntryMode = 'create' | 'edit';
+
+/**
+ * `Editing set 2` · `Editing warm-up` — the editor's head label and the
+ * collapsed bar's, resolved once so the two can never word it differently.
+ */
+export function editingLabel(setNumber: number, isWarmup: boolean): string {
+  return isWarmup ? SET_ENTRY_COPY.editingWarmupLabel : SET_ENTRY_COPY.editingSetLabel(setNumber);
+}
+
+/** The same rule, for the Cancel beside it. */
+export function cancelEditingLabel(setNumber: number, isWarmup: boolean): string {
+  return isWarmup
+    ? SET_ENTRY_COPY.cancelEditWarmupLabel
+    : SET_ENTRY_COPY.cancelEditLabel(setNumber);
+}
 
 const CONFIRM_ICON_SIZE = 20;
 
@@ -92,9 +130,16 @@ const WEIGHT_MAX: Record<WeightUnit, number> = { kg: 500, lb: 1100 };
 
 export interface SetEntryRowProps {
   /**
-   * Declared now so `set-entry/05` adds a branch rather than a signature.
-   * Only `'create'` is implemented; the editor is an in-place expansion of
-   * a logged row, not a second component.
+   * `'edit'` is the same card, in the list, over the row it is correcting —
+   * not a second component. It adds exactly two things to the create
+   * anatomy (design spec): the flags move to a second head line, and the
+   * head's trailing seam carries Cancel instead of them. The head label
+   * becomes `Editing set 2` and the confirm says `Save`, because neither
+   * mode may be mistaken for the other while both are one file.
+   *
+   * **Only one `SetEntryRow` is ever mounted.** The pinned composer
+   * collapses to `EditingBar` while the editor is open, so nothing on
+   * screen can log a new set mid-edit and no `testID` is ever duplicated.
    */
   mode?: SetEntryMode;
   /** 1-based, and already includes anything in flight — see `SetEntrySlot`. */
@@ -186,6 +231,7 @@ export function SetEntryRow({
   // not do. The selected chip is the label instead, and set 1 is the first
   // *working* set, so there was never a number to print.
   const showsSetLabel = mode !== 'edit' && !isWarmup;
+  const isEditing = mode === 'edit';
 
   const flags =
     onWarmupChange === undefined || onFailureChange === undefined ? null : (
@@ -198,6 +244,16 @@ export function SetEntryRow({
       />
     );
 
+  // The editor names itself instead of the set number — it is the one label
+  // that has to survive the chips moving off this line, because with two
+  // Cancels on screen (here and on the collapsed bar) nothing else says
+  // WHICH set is open.
+  //
+  // The 205px contract is a **create-mode** contract: this card is in the
+  // list, over the row it corrects, not pinned under it. The flags line
+  // below is why the two modes may not share a height.
+  const editLabel = isEditing ? editingLabel(setNumber, isWarmup) : null;
+
   return (
     // The wrapper, not the `Card`, carries `flexShrink: 0` — `Card` owns its
     // own surface and takes no style. This is what makes the list above
@@ -207,16 +263,33 @@ export function SetEntryRow({
           the confirm out of the slot. */}
       <Card elevation="raised" density="coach">
         <View style={styles.head} testID="set-entry-head">
-          {showsSetLabel ? (
+          {editLabel !== null ? (
+            // `tone="warm"`, not `muted` — the one visual difference between
+            // a card that is composing and a card that is correcting.
+            <Text size="eyebrow" tone="warm" style={styles.upper} testID="set-entry-editing-label">
+              {editLabel}
+            </Text>
+          ) : showsSetLabel ? (
             <Text size="eyebrow" tone="muted" style={styles.upper}>
               {SET_ENTRY_COPY.setLabel(setNumber)}
             </Text>
           ) : null}
-          {/* One occupant: task 05's actions if it supplied any, else the
-              flags. The band stands either way, and at its own minimum when
-              it holds neither. */}
-          {headTrailing ?? flags}
+          {/* One occupant: the caller's head actions if it supplied any, else
+              the flags. The band stands either way, and at its own minimum
+              when it holds neither. In edit mode the actions take it
+              outright and the flags move to their own line below — 270px
+              carries one occupant, not three. */}
+          {isEditing ? headTrailing : (headTrailing ?? flags)}
         </View>
+
+        {/* **The editor's one extra band**, and the reason edit mode is not
+            205px. Create mode never mounts it: the chips are in the head
+            there, and a line here would move the confirm. */}
+        {isEditing && flags !== null ? (
+          <View style={styles.flagsLine} testID="set-entry-flags-line">
+            {flags}
+          </View>
+        ) : null}
 
         <View style={styles.weight} testID="set-entry-weight-band">
           <NumberStepper
@@ -276,17 +349,34 @@ export function SetEntryRow({
             // A warm-up names itself rather than a number it does not have —
             // and with the visible head label gone, this is where a screen
             // reader learns which kind of set it is about to log.
-            accessibilityLabel={
-              isWarmup
-                ? SET_ENTRY_COPY.confirmWarmupLabel(load)
-                : SET_ENTRY_COPY.confirmLabel(setNumber, load)
-            }
+            //
+            // `Save`, not `Log`, in edit mode: the client is correcting a
+            // set that already exists, and a screen reader hearing "Log set
+            // 2" on a set already logged would reasonably expect a second.
+            accessibilityLabel={resolveConfirmLabel(isEditing, isWarmup, setNumber, load)}
             testID="set-entry-confirm"
           />
         </View>
       </Card>
     </View>
   );
+}
+
+/** The confirm's whole sentence, across both modes and both flag states. */
+function resolveConfirmLabel(
+  isEditing: boolean,
+  isWarmup: boolean,
+  setNumber: number,
+  load: string,
+): string {
+  if (isEditing) {
+    return isWarmup
+      ? SET_ENTRY_COPY.saveWarmupLabel(load)
+      : SET_ENTRY_COPY.saveLabel(setNumber, load);
+  }
+  return isWarmup
+    ? SET_ENTRY_COPY.confirmWarmupLabel(load)
+    : SET_ENTRY_COPY.confirmLabel(setNumber, load);
 }
 
 /** `kilograms` · `pounds` — the spoken unit, never the glyph. */
@@ -345,6 +435,12 @@ const styles = StyleSheet.create({
   },
   upper: {
     textTransform: 'uppercase',
+  },
+  flagsLine: {
+    // Edit mode only. `minHeight` is the chip's own 33, so 200% text grows
+    // the line instead of clipping a pill (`accessibility` §3).
+    marginTop: spacing(6),
+    minHeight: 33,
   },
   weight: {
     marginTop: spacing(8),
