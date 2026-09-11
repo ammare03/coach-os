@@ -13,10 +13,16 @@ import type { LocalSessionPayload } from '../../../lib/prefetch/sessions.ts';
 import { useDeleteSet } from '../hooks/useDeleteSet.ts';
 import { useExerciseTarget } from '../hooks/useExerciseTarget.ts';
 import { useLogSet } from '../hooks/useLogSet.ts';
+import { substitutionNote } from '../hooks/useSwapExercise.ts';
 import { useUpdateSet } from '../hooks/useUpdateSet.ts';
 import type { ExercisePage } from '../lib/exercise-pages.ts';
 import { selectRecordSetIds, usePRCelebrationStore } from '../store/pr-celebration-store.ts';
+import {
+  selectSubstitutions,
+  useSubstitutedExercisesStore,
+} from '../store/substituted-exercises-store.ts';
 
+import { AddSetButton, addSetAnnouncement } from './AddSetButton.tsx';
 import { EditingBar } from './EditingBar.tsx';
 import { NearestWeightLine, PlateStack } from './PlateStack.tsx';
 import { PRCelebration } from './PRCelebration.tsx';
@@ -195,6 +201,10 @@ export function SetEntrySlot({
   // the one carrying the pill: a record confirmed on exercise 1 must still
   // be marked when the client pages back to it.
   const recordLocalIds = usePRCelebrationStore(selectRecordSetIds);
+  // `session-modifications/02`. Subscribed here rather than threaded down
+  // because the note belongs to the write, and the write is this file's —
+  // the same argument the rest timer's duration makes just below.
+  const substitution = useSubstitutedExercisesStore(selectSubstitutions).get(page.key) ?? null;
 
   // The rest timer's duration (`rest-timer/01`), read off the prescription
   // this slot has already resolved rather than looked up again — the target
@@ -644,6 +654,16 @@ export function SetEntrySlot({
     // bodyweight set, not a 0kg lift.
     const weightKg = weight === 0 ? null : parseWeight(weight, unit);
 
+    // `session-modifications/02`. `logged.length` is every set this session
+    // already holds for this exercise — the seed read plus this session's
+    // own appends — so the line lands on the FIRST set against a substitute
+    // and on no other, and survives a force-quit without being written
+    // twice. Warm-ups count: the first set logged is the first set logged.
+    // `substitutionNote` owns the rule that a client's own words are never
+    // overwritten; there are none to protect yet, and it stays the one
+    // place that will be right when there are.
+    const notes = substitutionNote(substitution, logged.length);
+
     void (async () => {
       try {
         const result = await logSet({
@@ -655,6 +675,7 @@ export function SetEntrySlot({
           tapAtMs,
           isWarmup: wasWarmup,
           isFailure: wasFailure,
+          notes,
           targetRestSeconds,
         });
 
@@ -711,7 +732,32 @@ export function SetEntrySlot({
     isFailure,
     handleFailureChange,
     targetRestSeconds,
+    substitution,
+    logged,
   ]);
+
+  // ── going past the plan (`session-modifications/01`) ──────────────────
+  //
+  // **The set number is not computed here, and that is the whole point.**
+  // `setNumber` above is already `max(working) + workingInFlight + 1` — what
+  // is actually logged or pending for this exercise, never `target_sets` —
+  // so a second added set, or one added after a delete, keeps incrementing
+  // for free. Deriving it from the plan at this seam is the one way this
+  // task breaks (task Risks).
+  //
+  // So pressing `Add set` changes exactly one thing: it closes an open
+  // editor. That is not housekeeping — while the editor is open the
+  // composer is collapsed to `EditingBar` and carries no confirm, so it is
+  // the only state in which the next set is out of reach. The announcement
+  // is the rest of it: the composer sits below a scroll view, and a control
+  // that appears to do nothing is the worst outcome a screen-reader user
+  // can be handed (`accessibility` §2).
+  const handleAddSet = useCallback(() => {
+    setEditing(null);
+    AccessibilityInfo.announceForAccessibility(
+      addSetAnnouncement(setNumber, isWarmup, speakLoad(weight === 0 ? null : weight, reps, unit)),
+    );
+  }, [setNumber, isWarmup, weight, reps, unit]);
 
   // One message band, three local-mirror faults. Each names what the client
   // was doing — logging, saving a change, deleting — because that is what
@@ -885,6 +931,17 @@ export function SetEntrySlot({
         hiddenLocalIds={hiddenSetIds}
         recordLocalIds={recordLocalIds}
         onDeleteSet={handleDeleteSet}
+        // Always, at or past the plan — a client may want to add a set
+        // INSTEAD of completing every planned one, not only after
+        // (`session-modifications/01`, Approach step 2).
+        footer={
+          <AddSetButton
+            setNumber={setNumber}
+            isWarmup={isWarmup}
+            onPress={handleAddSet}
+            testID="add-set"
+          />
+        }
         testID="set-list"
       />
 

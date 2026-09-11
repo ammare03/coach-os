@@ -220,6 +220,38 @@ describe('the local write', () => {
     expect(sets[0]?.isWarmup).toBe(false);
     expect(sets[0]?.isFailure).toBe(false);
   });
+
+  it('mirrors the note as well as queuing it', async () => {
+    // `session-modifications/02`. A substitution line that lived only in the
+    // outbox payload would come back gone after a force-quit — the same way
+    // `is_failure` did before the column above existed.
+    await seedInProgress();
+
+    await logSet({ ...ONE_SET, notes: 'Substituted for Barbell back squat.', now: () => TAP });
+
+    const { sets, entries } = await readRows();
+    expect(sets[0]?.notes).toBe('Substituted for Barbell back squat.');
+    expect(deserializeOutboxPayload(entries[0]?.payload_json ?? '')).toMatchObject({
+      notes: 'Substituted for Barbell back squat.',
+    });
+  });
+
+  it('sends notes explicitly as null, so a re-send can clear a stored note', async () => {
+    // `set_logs` is device-wins and the server overwrites only the columns
+    // the payload names, so an omitted key would leave a stale note standing.
+    await seedInProgress();
+
+    await logSet({ ...ONE_SET, now: () => TAP });
+
+    const { sets, entries } = await readRows();
+    expect(sets[0]?.notes).toBeNull();
+    const payload = deserializeOutboxPayload(entries[0]?.payload_json ?? '') as Record<
+      string,
+      unknown
+    >;
+    expect('notes' in payload).toBe(true);
+    expect(payload.notes).toBeNull();
+  });
 });
 
 describe('the queued mutation', () => {

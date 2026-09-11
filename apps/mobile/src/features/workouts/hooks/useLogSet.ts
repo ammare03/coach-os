@@ -124,6 +124,22 @@ export interface LogSetArgs {
   /** Taken to momentary failure. Mirrored locally as well as queued (`set-entry/04`). */
   isFailure?: boolean;
   /**
+   * `set_logs.notes` — free text about this one set, composed by the caller.
+   *
+   * `session-modifications/02` is its first writer: the first set logged
+   * against a swapped-in exercise carries "Substituted for {the coach's
+   * exercise}." so a coach's session review can tell a substitution from a
+   * data error. **This path never composes it and never edits it** — the
+   * prepend rule that protects a client's own words lives in one place,
+   * `hooks/useSwapExercise.ts`'s `substitutionNote`, and this carries
+   * whatever that returns.
+   *
+   * Mirrored locally as well as queued, for `isFailure`'s reason: a note
+   * that lived only in the outbox payload would come back gone after a
+   * force-quit.
+   */
+  notes?: string | null;
+  /**
    * `program_exercises.target_rest_seconds` for this exercise, as the live
    * prescription resolves it — the rest timer's duration, rule (g). `null`
    * or omitted for an ad-hoc session or an exercise the coach set no rest
@@ -208,6 +224,7 @@ export async function logSet(deps: LogSetDeps): Promise<LoggedSet> {
   const weightKg = deps.weightKg ?? null;
   const isWarmup = deps.isWarmup ?? false;
   const isFailure = deps.isFailure ?? false;
+  const notes = deps.notes ?? null;
 
   // Rules (b) and (c). The payload carries no `clientLocalId` — `flush.ts`
   // merges the outbox row's own, which is the only authoritative copy of it.
@@ -224,6 +241,8 @@ export async function logSet(deps: LogSetDeps): Promise<LoggedSet> {
       loggedAt,
       isWarmup,
       isFailure,
+      // Always sent, `null` included — same reason as `weightKg` above.
+      notes,
     },
     ...(session.startOutboxId === null ? {} : { dependsOn: session.startOutboxId }),
   });
@@ -245,6 +264,7 @@ export async function logSet(deps: LogSetDeps): Promise<LoggedSet> {
     // force-quits reloads the session from this row, and a flag that lived
     // only in the outbox payload came back gone (`set-entry/04`).
     isFailure,
+    notes,
     loggedAt: loggedAt.getTime(),
     // The device authored this and the server has not confirmed it, so a
     // refresh must not overwrite it (`offline-sync` §5).

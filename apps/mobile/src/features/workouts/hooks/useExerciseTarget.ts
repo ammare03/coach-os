@@ -88,6 +88,14 @@ export interface ExerciseTargetState {
    * The coach's prescription, resolved live. `null` is not a failure: an
    * ad-hoc session has no `program_day_id` and therefore no block, and an
    * exercise inserted mid-session has none either.
+   *
+   * **This is what the coach AUTHORED.** `session-modifications/04` layers
+   * a live mid-session adjustment on top of it, additively and outside this
+   * file — `useLiveTarget` in `./useLiveTargetOverride.ts`. It is not
+   * folded in here on purpose: this hook's one rule is that the
+   * prescription is read through live on every render, and a consumer that
+   * could not still see the authored value would have no way to show the
+   * client what their coach changed it from.
    */
   target: ExerciseTarget | null;
   history: LastPerformanceState;

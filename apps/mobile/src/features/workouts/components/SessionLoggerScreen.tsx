@@ -1,6 +1,6 @@
 import { NotFoundState, hapticSessionComplete } from '@coachos/ui';
 import { createThemedStyles, density, spacing } from '@coachos/ui/theme';
-import { useCallback, useContext, useMemo } from 'react';
+import { useCallback, useContext, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
@@ -12,7 +12,20 @@ import { useLoggerSession, type LoggerSessionState } from '../hooks/useLoggerSes
 import { usePRCelebration } from '../hooks/usePRCelebration.ts';
 import { useSessionHeartbeat } from '../hooks/useSessionHeartbeat.ts';
 import { useSessionKeepAwake } from '../hooks/useSessionKeepAwake.ts';
+import { useSkipExercise } from '../hooks/useSkipExercise.ts';
+import { useSwapExercise } from '../hooks/useSwapExercise.ts';
+import { resolveAlternatives, type AlternativeExercise } from '../lib/alternatives.ts';
 import { buildExercisePages, type ExercisePage } from '../lib/exercise-pages.ts';
+import {
+  selectSkips,
+  useSkippedExercisesStore,
+  type SkipReason,
+  type SkippedExercise,
+} from '../store/skipped-exercises-store.ts';
+import {
+  selectSubstitutions,
+  useSubstitutedExercisesStore,
+} from '../store/substituted-exercises-store.ts';
 
 import { ExercisePager } from './ExercisePager.tsx';
 import { LoggerHeader } from './LoggerHeader.tsx';
@@ -22,6 +35,8 @@ import { ProgramChangedNotice } from './ProgramChangedNotice.tsx';
 import { RestTimerBar } from './RestTimerBar.tsx';
 import { SessionFinish } from './SessionFinish.tsx';
 import { SetEntrySlot } from './SetEntrySlot.tsx';
+import { SkipExerciseSheet } from './SkipExerciseSheet.tsx';
+import { SwapExerciseSheet } from './SwapExerciseSheet.tsx';
 import { TargetLine } from './TargetLine.tsx';
 
 // `(client)/workout/[sessionId]` — Pattern C, focus mode (`UI-UX.md` §UX2),
@@ -101,9 +116,23 @@ export function SessionLoggerScreen({
   // writes a set log, so every count would be a `0` claiming nothing was
   // logged. `set-entry` owns the counts and their invalidation, and passes
   // them here when it lands (`lib/exercise-pages.ts`).
+  //
+  // `session-modifications/02`'s substitutions are folded in HERE, at the
+  // page model, rather than at each of the four surfaces that would
+  // otherwise need to know (`lib/exercise-pages.ts` says why). Subscribed
+  // at this level for the reason the PR celebration and the skips give
+  // below: the pager keeps three pages alive and swaps them on every turn,
+  // and three subscriptions to one session-scoped fact is three chances to
+  // disagree about it.
+  const substitutions = useSubstitutedExercisesStore(selectSubstitutions);
   const pages = useMemo(
-    () => buildExercisePages(state.kind === 'session' ? state.session.payload : null),
-    [state],
+    () =>
+      buildExercisePages(
+        state.kind === 'session' ? state.session.payload : null,
+        undefined,
+        substitutions,
+      ),
+    [state, substitutions],
   );
   const position = useExercisePosition(sessionLocalId, pages.length);
 
@@ -159,6 +188,92 @@ export function SessionLoggerScreen({
   // leaving the session open.
   const { complete } = useCompleteSession();
 
+  // `session-modifications/03`. Subscribed here rather than inside the pager
+  // for the reason the PR celebration gives above it: the pager keeps three
+  // pages alive and swaps them on every turn, and three subscriptions to one
+  // session-scoped fact is three chances to disagree about it.
+  const skips = useSkippedExercisesStore(selectSkips);
+  const { skip, undo } = useSkipExercise({
+    sessionLocalId,
+    pageCount: pages.length,
+    onAdvance: position.setIndex,
+  });
+
+  // Which page the reason sheet is open for, or `null`. The page rather than
+  // its key: the sheet names the exercise, and the skip record copies the
+  // name the client actually saw.
+  const [skipTarget, setSkipTarget] = useState<ExercisePage | null>(null);
+
+  const handleSkipDismiss = useCallback(() => {
+    setSkipTarget(null);
+  }, []);
+
+  const handleSkipConfirm = useCallback(
+    (reason: SkipReason, note: string) => {
+      if (skipTarget === null) return;
+      // Closed first, so the sheet is already going as the pager moves —
+      // the page turn is the confirmation, and it must not wait on a
+      // dismissal animation (task 03's "advances immediately").
+      setSkipTarget(null);
+      skip({ page: skipTarget, reason, note });
+    },
+    [skip, skipTarget],
+  );
+
+  const handleUndoSkip = useCallback(
+    (page: ExercisePage) => {
+      undo(page.key);
+    },
+    [undo],
+  );
+
+  // `session-modifications/02`. The picker's page, or `null`. The page
+  // rather than its key, exactly as the skip sheet holds one: the sheet
+  // names the exercise and the substitution record copies the name the
+  // client actually saw.
+  const { swap, revert } = useSwapExercise({ sessionLocalId });
+  const [swapTarget, setSwapTarget] = useState<ExercisePage | null>(null);
+
+  // Resolved from the payload the pager is already rendering from — no
+  // fetch, no search, and no path to one (`lib/alternatives.ts`).
+  const swapOptions = useMemo(
+    () => (swapTarget === null ? [] : resolveAlternatives(swapTarget, payload)),
+    [swapTarget, payload],
+  );
+
+  const handleSwapDismiss = useCallback(() => {
+    setSwapTarget(null);
+  }, []);
+
+  const handleSwapSelect = useCallback(
+    (substitute: AlternativeExercise) => {
+      if (swapTarget === null) return;
+      // Closed first, so the page is already showing the substitute as the
+      // sheet goes: the picker IS the decision and must not wait on a
+      // dismissal animation.
+      setSwapTarget(null);
+      swap({ page: swapTarget, substitute });
+    },
+    [swap, swapTarget],
+  );
+
+  const handleSwapRevert = useCallback(() => {
+    if (swapTarget === null) return;
+    setSwapTarget(null);
+    revert(swapTarget.key);
+  }, [revert, swapTarget]);
+
+  // The empty state's one next step. A client with no approved swap and no
+  // working equipment still has task 03's skip, whose first reason is
+  // "Equipment unavailable" — so the two sheets hand off rather than leaving
+  // the client on a dead end (`SwapExerciseSheet` decision (b)).
+  const handleSwapEmptySkip = useCallback(() => {
+    const page = swapTarget;
+    if (page === null) return;
+    setSwapTarget(null);
+    setSkipTarget(page);
+  }, [swapTarget]);
+
   const handleFinish = useCallback(async () => {
     const { localId } = await complete(sessionLocalId);
     // `ui-conventions` §5's one sanctioned `Success`, and the only place in
@@ -207,8 +322,44 @@ export function SessionLoggerScreen({
           payload,
           sessionLocalId,
           celebratesRecords: isLogging,
+          skips,
+          // Gated on the same `isLogging` as the heartbeat and the wake
+          // lock: a finished session opened for review is not a workout, and
+          // offering to skip an exercise in one would write a fact about a
+          // session that is over. The skipped STATES still render — that is
+          // what the review is for.
+          onSkipPress: isLogging ? setSkipTarget : undefined,
+          onUndoSkip: isLogging ? handleUndoSkip : undefined,
+          // Gated on the same `isLogging`, for the same reason: swapping an
+          // exercise in a session that is over would change what a finished
+          // workout claims the client did. A substitution already made still
+          // RENDERS — that is what the review is for.
+          onSwapPress: isLogging ? setSwapTarget : undefined,
         })}
       </View>
+      {/* Outside the body: a sheet is not part of the pager's box, and the
+          page it was opened from is gone by the time it closes. Always
+          mounted so its open/close is a prop rather than a remount. */}
+      <SkipExerciseSheet
+        isOpen={skipTarget !== null}
+        exerciseName={skipTarget?.name ?? ''}
+        onDismiss={handleSkipDismiss}
+        onConfirm={handleSkipConfirm}
+      />
+      {/* Task 02's picker, mounted beside task 03's for the same reasons:
+          a sheet is not part of the pager's box, and the page it was opened
+          from is gone by the time it closes. */}
+      <SwapExerciseSheet
+        isOpen={swapTarget !== null}
+        exerciseName={swapTarget?.substitutedFor?.name ?? swapTarget?.name ?? ''}
+        alternatives={swapOptions}
+        currentSubstituteId={swapTarget?.substitutedFor ? swapTarget.exerciseId : null}
+        revertToName={swapTarget?.substitutedFor?.name ?? null}
+        onDismiss={handleSwapDismiss}
+        onSelect={handleSwapSelect}
+        onRevert={handleSwapRevert}
+        onSkipInstead={handleSwapEmptySkip}
+      />
       {/* Task 07, and a sibling of the body rather than part of it: the
           control ends the SESSION, so it must outlive the pager. An ad-hoc
           session renders `LoggerNoPrescription` above and still needs a way
@@ -241,6 +392,13 @@ interface BodyHandlers {
    * no pill at all, and an off-screen page must not draw a second one.
    */
   celebratesRecords: boolean;
+  /** `session-modifications/03` — what the client skipped, by `ExercisePage.key`. */
+  skips: ReadonlyMap<string, SkippedExercise>;
+  /** Opens the reason sheet. `undefined` once the session is no longer in progress. */
+  onSkipPress: ((page: ExercisePage) => void) | undefined;
+  onUndoSkip: ((page: ExercisePage) => void) | undefined;
+  /** `session-modifications/02` — opens the swap picker. Same gate as the skip. */
+  onSwapPress: ((page: ExercisePage) => void) | undefined;
 }
 
 function renderBody(state: LoggerSessionState, handlers: BodyHandlers) {
@@ -290,6 +448,10 @@ function renderBody(state: LoggerSessionState, handlers: BodyHandlers) {
           pages={handlers.pages}
           currentIndex={handlers.currentIndex}
           onIndexChange={handlers.onIndexChange}
+          skips={handlers.skips}
+          onSkipPress={handlers.onSkipPress}
+          onUndoSkip={handlers.onUndoSkip}
+          onSwapPress={handlers.onSwapPress}
           renderPage={(page, isCurrent) => (
             // The page's own composition: task 04's target line at its
             // natural height, then `set-entry`'s slot taking the rest.

@@ -6,13 +6,16 @@ import { StyleSheet, View } from 'react-native';
 import { useWeightUnit } from '../../../hooks/useWeightUnit.ts';
 import type { LocalSessionPayload } from '../../../lib/prefetch/sessions.ts';
 import { useExerciseTarget } from '../hooks/useExerciseTarget.ts';
+import { useLiveTarget } from '../hooks/useLiveTargetOverride.ts';
 import type { ExercisePage } from '../lib/exercise-pages.ts';
 import {
   labelLastPerformance,
+  labelSupersededTarget,
   labelTarget,
   lastTimePrefix,
   speakTargetLine,
   targetSeparator,
+  LIVE_OVERRIDE_LABEL,
   NO_HISTORY_LABEL,
   TARGET_UNAVAILABLE_LABEL,
 } from '../lib/target-line-copy.ts';
@@ -42,6 +45,29 @@ import {
 // spelled-out label (`lib/target-line-copy.ts`), not five fragments — a
 // screen reader reads `3 × 8–10` as very little otherwise, and this is the
 // one line where a misread puts the wrong weight on a bar.
+//
+// ============ WHERE `session-modifications/04` PLUGGED IN ==============
+//
+// §8.9's live coach adjustment lands here and nowhere else on this screen.
+// The line subscribes to it itself, through `useLiveTarget`, the way
+// `RestTimerBar` subscribes to the rest store — no screen wiring, no prop
+// threaded down from the logger, and nothing for P19 to find and connect.
+//
+// **Three channels, because one would be hue alone** (`DESIGN.md` §8's
+// rule, and `ui-conventions` §8's): the §8 "Live / new" dot, the
+// attribution label, and the superseded value struck through. Desaturate
+// the screen and the change is still obvious — which matters, because the
+// posture §8.9 describes is the phone on the floor three metres away.
+//
+// **Still nothing animates.** §8 pairs that dot with `pulsedot`, and the
+// rule above — §5 forbids motion on a value being read — is the stricter
+// of the two here: this line is read between two working sets to decide
+// what goes on a bar. The change is noticed because the line is different,
+// not because it flickers.
+//
+// **Still no surface.** No card, no tint, no glass: the page is L1 and the
+// set rows are L2, and spending a level here would move the composer,
+// whose confirm control sits at one screen coordinate all session.
 
 export interface TargetLineProps {
   page: ExercisePage;
@@ -53,9 +79,20 @@ export interface TargetLineProps {
 export function TargetLine({ page, payload, sessionLocalId }: TargetLineProps) {
   const unit = useWeightUnit();
   const themed = useThemedStyles();
-  const { target, history } = useExerciseTarget({ page, payload, sessionLocalId });
+  const { target: programTarget, history } = useExerciseTarget({ page, payload, sessionLocalId });
+  // The live layer, subscribed to here rather than threaded down from the
+  // logger — `RestTimerBar` reads its store the same way.
+  const { target, isLiveOverridden } = useLiveTarget(
+    programTarget,
+    page.exerciseId,
+    sessionLocalId,
+  );
 
   const targetLabel = labelTarget(target, unit);
+  // `null` when the adjustment does not reach this line at all — a change
+  // to rest seconds prints the same string, and the same numbers twice with
+  // an arrow between them would read as a bug.
+  const supersededLabel = labelSupersededTarget(programTarget, target, unit);
   const isLoading = history.kind === 'loading';
   const last = history.kind === 'ready' ? history.last : null;
   const unavailable = history.kind === 'error';
@@ -89,7 +126,13 @@ export function TargetLine({ page, payload, sessionLocalId }: TargetLineProps) {
     ? targetLabel === null
       ? 'Loading target'
       : `Target: ${targetLabel}.`
-    : speakTargetLine(target, last, unit, { unavailable });
+    : speakTargetLine(target, last, unit, {
+        unavailable,
+        isLiveOverridden,
+        // The same rule the printed strike uses, so what is heard and what
+        // is seen can never disagree about whether anything changed.
+        supersededTarget: supersededLabel === null ? null : programTarget,
+      });
 
   return (
     <View
@@ -102,13 +145,41 @@ export function TargetLine({ page, payload, sessionLocalId }: TargetLineProps) {
       // which on Android hides this view AND its descendants — the block
       // would read as one item on iOS and as nothing at all on Android.
     >
+      {isLiveOverridden ? (
+        <View style={styles.pair}>
+          {/* `DESIGN.md` §8's "Live / new" dot, rendered as a glyph rather
+              than a sized view: `tone="urgent"` is the palette's own
+              accent-text role, and a glyph grows with dynamic type where a
+              fixed 8px circle would not. Not the adherence ramp — a coach
+              changing a target says nothing about whether the client is on
+              plan. */}
+          <Text size="body-sm" tone="urgent">
+            {LIVE_DOT}
+          </Text>
+          <Text size="label" tone="urgent">
+            {LIVE_OVERRIDE_LABEL}
+          </Text>
+        </View>
+      ) : null}
+      {supersededLabel === null ? null : (
+        <View style={styles.pair}>
+          {/* The third channel, and the only one that survives greyscale
+              on its own. A strike, not a dimming: dimming is what `faint`
+              already means on this line, and it would not read at three
+              metres. */}
+          <Metric value={supersededLabel} size="title" tone="muted" className="line-through" />
+          <Text size="body-sm" tone="faint">
+            {SUPERSEDED_ARROW}
+          </Text>
+        </View>
+      )}
       {targetLabel === null ? null : (
         // The prescription and its separator are ONE flex item, so the `·`
         // travels with the prescription when the row wraps at 200% text: it
         // closes line 1 as "there is more" rather than opening line 2 as a
         // stray bullet. One rule, correct at every scale, no measurement.
         <View style={styles.pair}>
-          <Metric value={targetLabel} size="title" />
+          <Metric value={targetLabel} size="title" tone={isLiveOverridden ? 'bright' : 'default'} />
           <Text size="body-sm" tone="faint">
             {targetSeparator(true, true)}
           </Text>
@@ -118,6 +189,12 @@ export function TargetLine({ page, payload, sessionLocalId }: TargetLineProps) {
     </View>
   );
 }
+
+/** `DESIGN.md` §8's live dot. A glyph, so it scales with the type around it. */
+const LIVE_DOT = '●';
+
+/** Between the superseded value and the one that replaced it. */
+const SUPERSEDED_ARROW = '→';
 
 const styles = StyleSheet.create({
   block: {

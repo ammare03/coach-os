@@ -93,6 +93,15 @@ export interface SetListProps {
    * One stable callback for the list, for `onEditSet`'s reason.
    */
   onDeleteSet?: (set: LoggedSetView) => void;
+  /**
+   * **Seam — `session-modifications/01`'s `AddSetButton`.** The list's
+   * terminus, inside the scroll rather than beside it: the list is
+   * bottom-aligned and scrolls to its end, so "below the last set row" and
+   * "always on screen" are the same position here. A sibling outside would
+   * take its height from the list, which is the only surface in the slot
+   * that has any to give (`SetEntrySlot`'s header).
+   */
+  footer?: ReactNode;
   testID?: string;
 }
 
@@ -112,6 +121,7 @@ export function SetList({
   hiddenLocalIds = NO_HIDDEN,
   recordLocalIds = NO_RECORDS,
   onDeleteSet,
+  footer,
   testID,
 }: SetListProps) {
   const reducedMotion = useReducedMotion();
@@ -203,6 +213,7 @@ export function SetList({
           />
         ),
       )}
+      {footer}
     </ScrollView>
   );
 }
