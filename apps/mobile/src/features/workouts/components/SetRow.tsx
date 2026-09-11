@@ -81,6 +81,16 @@ export interface SetRowProps {
    */
   trailing?: ReactNode;
   /**
+   * **What `trailing` says out loud**, appended to this row's one label.
+   *
+   * The row is a single accessible element, so an occupant of the slot is
+   * merged into it and silent unless its words arrive here — and that is
+   * the wanted shape: a separately focusable line beside every logged set
+   * would put a second stop between the client and the confirm
+   * (`accessibility` §2).
+   */
+  trailingLabel?: string | undefined;
+  /**
    * True for the row that just landed, and only for it. Read once, at
    * mount: a re-render must never replay the entrance.
    */
@@ -97,6 +107,7 @@ export const SetRow = memo(function SetRow({
   set,
   unit,
   trailing,
+  trailingLabel,
   isEntering = false,
   testID,
 }: SetRowProps) {
@@ -143,7 +154,7 @@ export const SetRow = memo(function SetRow({
       // custom action here; until something can be done to a row, claiming
       // it is a button would be a lie to a screen reader.
       accessible
-      accessibilityLabel={speakSet(set, unit)}
+      accessibilityLabel={speakSet(set, unit, trailingLabel)}
       testID={testID}
     >
       <View style={styles.number}>
@@ -181,10 +192,15 @@ function labelLoad(set: LoggedSetView, unit: WeightUnit): string {
   );
 }
 
-/** `Set 3, 82.5 kilograms for 8 reps, logged.` — glyphs expanded to words. */
-function speakSet(set: LoggedSetView, unit: WeightUnit): string {
+/**
+ * `Set 3, 82.5 kilograms for 8 reps, logged.` — glyphs expanded to words,
+ * plus whatever the trailing slot has to say: `… logged. Last time 80
+ * kilograms for 8 reps.`
+ */
+function speakSet(set: LoggedSetView, unit: WeightUnit, trailingLabel?: string): string {
   const load = speakLoad(toDisplayWeight(set.weightKg, unit), set.reps, unit);
-  return `Set ${String(set.setNumber)}, ${load}, logged.`;
+  const sentence = `Set ${String(set.setNumber)}, ${load}, logged.`;
+  return trailingLabel === undefined ? sentence : `${sentence} ${trailingLabel}`;
 }
 
 const RISE = Easing.bezier(easing.rise[0], easing.rise[1], easing.rise[2], easing.rise[3]);

@@ -46,6 +46,13 @@ export interface SetListProps {
    * a layout one.
    */
   renderTrailing?: (set: LoggedSetView) => ReactNode;
+  /**
+   * **The same seam, spoken.** A row is one accessible element, so whatever
+   * `renderTrailing` draws is silent unless its words arrive here — see
+   * `SetRow.trailingLabel`. Kept beside `renderTrailing` rather than inside
+   * it so both stay stable callbacks (`frontend-performance` §3).
+   */
+  renderTrailingLabel?: (set: LoggedSetView) => string | undefined;
   testID?: string;
 }
 
@@ -54,6 +61,7 @@ export function SetList({
   unit,
   enteringLocalId = null,
   renderTrailing,
+  renderTrailingLabel,
   testID,
 }: SetListProps) {
   const reducedMotion = useReducedMotion();
@@ -84,6 +92,7 @@ export function SetList({
           unit={unit}
           isEntering={set.localId === enteringLocalId}
           trailing={renderTrailing?.(set)}
+          trailingLabel={renderTrailingLabel?.(set)}
           testID={`set-row-${set.localId}`}
         />
       ))}

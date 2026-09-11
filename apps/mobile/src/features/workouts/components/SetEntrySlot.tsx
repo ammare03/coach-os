@@ -3,7 +3,7 @@ import { spacing, useTheme } from '@coachos/ui/theme';
 import { parseWeight, resolveWeightStepKg, weightStepFor, type WeightUnit } from '@coachos/utils';
 import { and, asc, eq } from 'drizzle-orm';
 import { AlertTriangle } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, StyleSheet, View } from 'react-native';
 
 import { getLocalDb } from '../../../db/client.ts';
@@ -15,6 +15,7 @@ import { useLogSet } from '../hooks/useLogSet.ts';
 import type { ExercisePage } from '../lib/exercise-pages.ts';
 
 import { NearestWeightLine, PlateStack } from './PlateStack.tsx';
+import { PreviousSetLine, speakPreviousSetLine } from './PreviousSetLine.tsx';
 import { SET_ENTRY_COPY, SetEntryRow, speakLoad, toDisplayWeight } from './SetEntryRow.tsx';
 import { SetList } from './SetList.tsx';
 import type { LoggedSetView } from './SetRow.tsx';
@@ -285,9 +286,54 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
     AccessibilityInfo.announceForAccessibility(SET_ENTRY_COPY.failed);
   }, [hasFailed]);
 
+  // `set-entry/03`. **Built once per set, not once per render.** `SetRow` is
+  // memoised and this list re-renders on every stepper keystroke; a fresh
+  // element here would be a new `trailing` prop each time and would defeat
+  // that memo for twelve rows, mid-set, on the screen least able to afford
+  // it (`frontend-performance` §3). The map recomputes only when a set is
+  // logged or the history read resolves.
+  //
+  // **Task 04 resolves the priority here, not inside `SetRow`**: a flag tag
+  // wins the slot, then this line, then nothing (design spec, "One slot,
+  // two occupants"). Today this is the only occupant.
+  const trailingByLocalId = useMemo(() => {
+    const nodes = new Map<string, ReactNode>();
+    for (const row of logged) {
+      nodes.set(
+        row.localId,
+        <PreviousSetLine
+          history={history}
+          setNumber={row.setNumber}
+          unit={unit}
+          placement="row"
+          testID={`set-row-previous-${row.localId}`}
+        />,
+      );
+    }
+    return nodes;
+  }, [logged, history, unit]);
+
+  const renderTrailing = useCallback(
+    (row: LoggedSetView) => trailingByLocalId.get(row.localId) ?? null,
+    [trailingByLocalId],
+  );
+
+  // A string compares by value, so this one needs no such cache.
+  const renderTrailingLabel = useCallback(
+    (row: LoggedSetView) => speakPreviousSetLine(history, row.setNumber, unit),
+    [history, unit],
+  );
+
   return (
     <View style={styles.slot}>
-      <SetList sets={logged} unit={unit} enteringLocalId={enteringLocalId} testID="set-list" />
+      <SetList
+        sets={logged}
+        unit={unit}
+        enteringLocalId={enteringLocalId}
+        renderTrailing={renderTrailing}
+        renderTrailingLabel={renderTrailingLabel}
+        testID="set-list"
+      />
 
       {hasFailed ? (
         // Above the card, where the client's thumb already is — never a
@@ -324,11 +370,25 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
           onWeightChange={handleWeightChange}
           onRepsChange={handleRepsChange}
           onConfirm={handleConfirm}
-          // Left of the band; `PreviousSetLine` takes the right in task 03.
+          // Left of the band; `PreviousSetLine` takes the right.
           // `PlateStack` draws an empty view rather than nothing when it
           // does not apply, so that slot keeps its place under
           // `space-between`.
           contextLeading={<PlateStack equipment={equipment} weightKg={weightKg} />}
+          // Right of the band, against the set number being composed — so
+          // a client about to log set 4 reads set 4's own history, or
+          // "no set 4 last time" when the previous session stopped at 3.
+          // Renders nothing at all while the read is in flight: the band
+          // keeps its 20px either way, so the confirm does not move.
+          contextTrailing={
+            <PreviousSetLine
+              history={history}
+              setNumber={setNumber}
+              unit={unit}
+              placement="composer"
+              testID="set-entry-previous"
+            />
+          }
           // Mounted unconditionally — it returns null unless the weight is
           // off the plate grid, and that is the one case the card is
           // allowed to grow for (205 → 229, resolved in one tap).

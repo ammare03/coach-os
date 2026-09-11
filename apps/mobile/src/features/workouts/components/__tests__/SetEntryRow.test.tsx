@@ -1,6 +1,10 @@
+import { density, spacing } from '@coachos/ui/theme';
 import { render, screen, within } from '@testing-library/react-native';
-import { Text } from 'react-native';
+import { Text, View } from 'react-native';
 
+import type { LastPerformanceState } from '../../hooks/useExerciseTarget.ts';
+import type { PreviousSet } from '../../lib/last-performance.ts';
+import { PreviousSetLine } from '../PreviousSetLine.tsx';
 import { SET_ENTRY_COPY, SetEntryRow, speakLoad, toDisplayWeight } from '../SetEntryRow.tsx';
 
 // The composer's own contract: what it says, what a screen reader hears, and
@@ -97,6 +101,70 @@ describe('SetEntryRow', () => {
   });
 });
 
+describe('SetEntryRow — the 205px contract', () => {
+  // The one property the whole design rests on: the confirm sits at the same
+  // screen coordinate for the entire session. Every variant below must come
+  // to the same number, and the ONE sanctioned exception is task 02's
+  // nearest-weight line, which takes the card to 229 and resolves in one tap.
+
+  it('is 205px with both context slots empty', () => {
+    renderComposer();
+
+    expect(composerHeightPx()).toBe(205);
+  });
+
+  it('is still 205px with this set’s previous performance in the band', () => {
+    renderComposer({
+      setNumber: 3,
+      contextTrailing: (
+        <PreviousSetLine history={readyWithSet(3)} setNumber={3} unit="kg" placement="composer" />
+      ),
+    });
+
+    expect(screen.getByText('80kg × 8')).toBeTruthy();
+    expect(composerHeightPx()).toBe(205);
+  });
+
+  it('is still 205px when the previous session had no such set', () => {
+    // The longest string this slot can hold, and it still may not move the
+    // confirm — it wraps inside a band that is `minHeight`, never `height`.
+    renderComposer({
+      setNumber: 4,
+      contextTrailing: (
+        <PreviousSetLine history={readyWithSet(3)} setNumber={4} unit="kg" placement="composer" />
+      ),
+    });
+
+    expect(screen.getByText('no set 4 last time')).toBeTruthy();
+    expect(composerHeightPx()).toBe(205);
+  });
+
+  it('is still 205px while the history read is in flight', () => {
+    renderComposer({
+      contextTrailing: (
+        <PreviousSetLine
+          history={{ kind: 'loading' }}
+          setNumber={3}
+          unit="kg"
+          placement="composer"
+        />
+      ),
+    });
+
+    expect(composerHeightPx()).toBe(205);
+  });
+
+  it('grows to 229px only for an occupant of the seam below the band', () => {
+    // Stands in for task 02's nearest-weight line, whose own `marginTop`
+    // and `minHeight` are the entire +24 — the seam declares no size.
+    renderComposer({
+      contextBelow: <View testID="nearest" style={{ marginTop: spacing(4), minHeight: 20 }} />,
+    });
+
+    expect(composerHeightPx('nearest')).toBe(229);
+  });
+});
+
 describe('speakLoad', () => {
   it('reads a bodyweight set as reps alone rather than as zero kilograms', () => {
     expect(speakLoad(null, 12, 'kg')).toBe('12 reps');
@@ -134,6 +202,57 @@ describe('SET_ENTRY_COPY', () => {
     );
   });
 });
+
+/** A previous session whose newest — and only — working set is `setNumber`, at 80kg × 8. */
+function readyWithSet(setNumber: number): LastPerformanceState {
+  const set: PreviousSet = {
+    setNumber,
+    weightKg: 80,
+    reps: 8,
+    loggedAt: new Date('2026-09-04T10:00:00Z'),
+  };
+  return {
+    kind: 'ready',
+    last: set,
+    previous: { last: set, bySetNumber: new Map([[setNumber, set]]) },
+  };
+}
+
+/** The four bands the card is made of, top to bottom. */
+const BANDS = [
+  'set-entry-head',
+  'set-entry-weight-band',
+  'set-entry-context',
+  'set-entry-action',
+] as const;
+
+/**
+ * The composer's height, summed from what it actually declares — every band
+ * contributes its `minHeight` plus its `marginTop`, inside the card's own
+ * padding. `belowTestID` names an occupant of the seam under the band, which
+ * is the only thing permitted to change the answer.
+ */
+function composerHeightPx(belowTestID?: string): number {
+  let total = density.coach.cardPadding * 2;
+  for (const id of BANDS) total += boxHeightPx(id);
+  if (belowTestID !== undefined) total += boxHeightPx(belowTestID);
+  return total;
+}
+
+function boxHeightPx(testID: string): number {
+  const rules = flattenStyle(screen.getByTestId(testID).props.style);
+  return lastNumber(rules, 'minHeight') + lastNumber(rules, 'marginTop');
+}
+
+/** Last rule wins, the way `StyleSheet.flatten` resolves an array. */
+function lastNumber(rules: Record<string, unknown>[], key: string): number {
+  let value = 0;
+  for (const rule of rules) {
+    const candidate = rule[key];
+    if (typeof candidate === 'number') value = candidate;
+  }
+  return value;
+}
 
 /** A style prop is an object, an array, or nested arrays — normalise before asserting. */
 function flattenStyle(style: unknown): Record<string, unknown>[] {
