@@ -67,10 +67,19 @@ import { ExerciseRail } from './ExerciseRail.tsx';
 // exercises alternated rather than one completed then the other. Both are
 // ordinary, which is why the rail reaches any exercise directly.
 //
-// **`session-runtime/06` will audit this file** for the position write
-// being synchronous. It is not written here at all — see the note above —
-// and the write itself is in `hooks/useExercisePosition.ts`, un-debounced
-// and un-batched, with a comment saying so.
+// **`session-runtime/06` audited this file** for the position write being
+// synchronous. It is not written here at all — see the note above — and the
+// write itself is in `hooks/useExercisePosition.ts`, un-debounced and
+// un-batched, with a comment saying so. Confirmed: nothing on this path
+// batches, debounces, or holds a page turn in memory.
+//
+// That audit did leave one thing load-bearing here. `clampPageIndex` on the
+// `currentIndex` prop below is now the LAST clamp a restored position gets,
+// and it is the one that runs against a live `pages.length`. The hook
+// deliberately no longer clamps at restore time: the count is `0` while the
+// session read is still in flight, and clamping against it sent every
+// recovered position to the first exercise. Removing the clamp below would
+// put that bug back, one layer down.
 
 // §5 defines five durations and seven curves and NO spring, so the settle is
 // a timing on the state band with the fill curve — §5 assigns `fill` to

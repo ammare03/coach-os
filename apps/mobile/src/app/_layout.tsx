@@ -15,6 +15,7 @@ import { PendingDeepLinkReplay } from '../features/navigation/deep-links/Pending
 import { SchemaVersionResetDialog } from '../features/offline/SchemaVersionResetDialog.tsx';
 import { useSchemaVersionGate } from '../features/offline/useSchemaVersionGate.ts';
 import { GuardianConsentRedirect } from '../features/onboarding/GuardianConsentRedirect.tsx';
+import { SessionRecoveryRedirect } from '../features/workouts/components/SessionRecoveryRedirect.tsx';
 import { AnalyticsProvider } from '../lib/analytics/index.ts';
 import { ensureFlushOnRegain } from '../lib/connectivity/flush-on-regain.ts';
 import { ensurePrefetchOnForeground } from '../lib/prefetch/scheduler.ts';
@@ -237,6 +238,22 @@ export default function RootLayout() {
                         body). `phase-05-app-shell/router-skeleton/`
                         revisits this once a screen actually needs one. */}
                     <Stack screenOptions={{ headerShown: false }} />
+                    {/* `session-runtime/06`. Renders nothing; it re-enters a
+                        session the client was mid-way through when the OS
+                        killed the app. Deliberately BEFORE the replay below:
+                        sibling effects flush in tree order, so an explicit
+                        deep link gets the last word over an automatic
+                        resume.
+
+                        `isLocalDatabaseReady` is NOT implied by this branch:
+                        `'checking'` renders here too (only
+                        `'confirm-required'` replaces the tree), and a
+                        recovery read that beat `local-database/04`'s check
+                        could resume into a row it is about to drop. The
+                        prop is the gate. */}
+                    <SessionRecoveryRedirect
+                      isLocalDatabaseReady={schemaVersionGate.phase === 'ready'}
+                    />
                     {/* `deep-linking/04`. Renders nothing; it replays a deep
                         link parked at cold start, once the gate has resolved.
                         Deliberately AFTER `<Stack>` — sibling effects flush in

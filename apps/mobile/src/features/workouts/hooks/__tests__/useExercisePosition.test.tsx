@@ -135,6 +135,33 @@ describe('useExercisePosition', () => {
     });
   });
 
+  it('restores a position even though the page count is still 0 when the read starts', async () => {
+    // The real mount sequence, which every other test in this file skips by
+    // passing a constant. `SessionLoggerScreen` renders `loading` first, so
+    // `buildExercisePages(null)` is empty and `pages.length` is 0 for the
+    // frame this hook's restore effect runs in; the count only becomes 6
+    // once the session read lands. The effect's deps are `[sessionLocalId]`
+    // alone, so it keeps the 0 it captured forever — and clamping the
+    // stored value against it sent every restored position to the first
+    // exercise. That is kill-recovery's entire job, lost silently
+    // (`session-runtime/06`'s audit).
+    const session = nextSession();
+    await writeLoggerPosition(await getLocalDb(), session, 3);
+
+    const { result, rerender } = renderHook(
+      ({ count }: { count: number }) => useExercisePosition(session, count),
+      { initialProps: { count: 0 } },
+    );
+
+    // Synchronously, before the restore can resolve — the session read
+    // landing a frame later is what the pager actually does.
+    rerender({ count: 6 });
+
+    await waitFor(() => {
+      expect(result.current.index).toBe(3);
+    });
+  });
+
   it('clamps a restored position whose exercise the coach has since removed', async () => {
     // Live-reference assignment (`CLAUDE.md` §27): the coach's edit reaches
     // the client immediately, so a stored index can outlive its exercise.

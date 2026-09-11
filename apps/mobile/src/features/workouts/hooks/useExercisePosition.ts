@@ -73,10 +73,23 @@ export function useExercisePosition(
         // and the restore is now describing the past.
         if (!alive || hasMoved.current) return;
 
-        // Clamped against the CURRENT page count: a coach may have removed
-        // an exercise since this position was written, and restoring past
-        // the end would render a blank page.
-        const restored = clampPageIndex(stored ?? 0, pageCount);
+        // **Deliberately NOT clamped here.** `pageCount` is whatever the
+        // render that ran this effect closed over, and that is the FIRST
+        // render — where `useLoggerSession` is still `loading`,
+        // `buildExercisePages(null)` is empty, and the count is therefore
+        // `0`. `clampPageIndex(n, 0)` is `0` for every `n`, so clamping at
+        // this point sent every restored position to the first exercise:
+        // kill-recovery's entire job, lost silently, and invisible to any
+        // test that passes a constant count at mount.
+        // (`session-runtime/06`'s audit; regression test in
+        // `__tests__/useExercisePosition.test.tsx`.)
+        //
+        // The clamp belongs where the count is live, and it is already
+        // there twice — this hook's own return value below, and
+        // `ExercisePager`'s clamp on the prop. A coach who removed an
+        // exercise since this position was written is handled there,
+        // against the count that is actually rendering.
+        const restored = Math.max(Math.trunc(stored ?? 0), 0);
         latest.current = restored;
         // Skipped when it changes nothing — which is the common case, since
         // a session opened for the first time restores to the 0 the pager
@@ -93,10 +106,10 @@ export function useExercisePosition(
     return () => {
       alive = false;
     };
-    // `pageCount` is deliberately NOT a dependency: it is read once to
-    // clamp the restored value, and re-running this on a page-count change
-    // would throw away the client's position mid-session.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // `pageCount` is deliberately absent, and is no longer read in here at
+    // all: re-running the restore when a coach's edit changes the count
+    // would throw the client's position away mid-session, and the count
+    // this effect could see is the stale one anyway (see the restore).
   }, [sessionLocalId]);
 
   const setIndex = useCallback(
