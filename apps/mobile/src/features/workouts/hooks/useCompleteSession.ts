@@ -8,13 +8,14 @@ import { asUuid, trackEvent } from '../../../lib/analytics/index.ts';
 import { useConnectivity } from '../../../lib/connectivity/useConnectivity.ts';
 import { enqueueMutation } from '../../../lib/outbox/enqueue.ts';
 import { readSessionPayload } from '../../../lib/prefetch/sessions.ts';
+import { useRestTimerStore } from '../store/rest-timer-store.ts';
 
 // `phase-09-workout-logger/session-runtime/07` — the in_progress→completed
 // transition, and the last move in a session's lifecycle. The summary screen
 // it hands off to is `session-summary`'s; this file's job ends the moment the
 // local row says `completed` and the server's half is durably queued.
 //
-// Six rules, in the order they matter:
+// Seven rules, in the order they matter:
 //
 // (a) **The local write is synchronous with the tap and independent of the
 //     network.** The same rule `useStartSession` opens with, and the same
@@ -66,6 +67,16 @@ import { readSessionPayload } from '../../../lib/prefetch/sessions.ts';
 //     back the instant it would have got the first time. Without this, the
 //     double-tap every fullscreen button eventually receives would queue two
 //     completions and fire two `workout_completed` events.
+//
+// (g) **Finishing ends the session's rest** (`rest-timer/02`). The last set
+//     of a workout starts a rest like any other, and until task 02 that rest
+//     lived only in memory and simply went away with the screen. It is now
+//     written to `meta` and read back on the next launch, so leaving it
+//     running would restore a countdown for a workout the client finished —
+//     and would let `rest-timer/04`'s alert fire after they had left the
+//     gym. Scoped to this session, so completing one cannot cancel another's
+//     rest. The stored row follows the store (`../lib/rest-timer-persistence.ts`
+//     decision (b)), so there is nothing to delete here.
 
 /** The tRPC path the outbox replays. `apps/api/src/routers/workouts.ts`. */
 export const COMPLETE_PROCEDURE = 'workouts.complete';
@@ -166,6 +177,9 @@ export async function completeSession(deps: CompleteSessionDeps): Promise<Comple
       updatedAt: completedAt.getTime(),
     })
     .where(eq(localWorkoutSessions.clientLocalId, row.clientLocalId));
+
+  // Rule (g). A no-op unless the running rest is this session's.
+  useRestTimerStore.getState().stopRestForSession(row.clientLocalId);
 
   // Fire-and-forget, after the write, never awaited (`analytics-events` §7).
   // Wrapped because the counts below read the payload and the set table, and

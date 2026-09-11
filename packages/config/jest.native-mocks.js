@@ -172,3 +172,25 @@ jest.mock('@shopify/react-native-skia', () => {
 // here rather than per-suite so `apps/mobile` and `packages/ui` share one
 // registration.
 require('react-native-gesture-handler/jestSetup');
+
+// `expo-audio` (`rest-timer/04`) reads its native module at import time —
+// `ExpoAudio.ts` touches `AudioModule.AudioPlayer.prototype`, which throws
+// in Jest's Node environment before any test body runs. That reaches every
+// suite that mounts `SessionRecoveryRedirect`, which registers the rest
+// timer's completion alert, not only the alert's own spec.
+//
+// The double is deliberately inert rather than faithful: the only thing
+// this app asks of the library is "play a half-second tone", and no test
+// asserts a sound. What IS asserted — which waveform, at which moment,
+// with which audio-session options — is asserted in
+// `rest-timer-audio.test.ts`, which registers its own richer mock over
+// this one and inspects the calls.
+jest.mock('expo-audio', () => ({
+  __esModule: true,
+  createAudioPlayer: () => ({
+    play: () => undefined,
+    seekTo: () => Promise.resolve(),
+    remove: () => undefined,
+  }),
+  setAudioModeAsync: () => Promise.resolve(),
+}));

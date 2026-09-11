@@ -1,3 +1,4 @@
+import { useRestTimerStore } from '../../features/workouts/store/rest-timer-store.ts';
 import { clearPersistedQueryCache } from '../../lib/query/persister.ts';
 import { resetLocalDbForTests } from '../client.ts';
 import { ensureLocalDatabaseBelongsTo } from '../user-scope.ts';
@@ -101,6 +102,24 @@ describe('ensureLocalDatabaseBelongsTo', () => {
     expect(mockWipeLocalDatabase).toHaveBeenCalledWith({ force: true });
     expect(mockClearPersistedQueryCache).toHaveBeenCalledTimes(1);
     expect(sqliteFake.__getStoredUserId()).toBe('user-b');
+  });
+
+  it('ends a rest the previous user was taking', async () => {
+    // `rest-timer/05`. The store is module state and the wipe cannot reach
+    // it: the persisted anchor goes with the database file, the in-memory
+    // one does not. Invisible until something renders a countdown, and from
+    // that point it is the next user on a shared device being shown the
+    // previous one's rest (`offline-sync` §8).
+    sqliteFake.__setStoredUserId('user-a');
+    useRestTimerStore.getState().startRest(90, { sessionLocalId: 'local-1' });
+    expect(useRestTimerStore.getState().isRunning).toBe(true);
+
+    await ensureLocalDatabaseBelongsTo('user-b');
+
+    const rest = useRestTimerStore.getState();
+    expect(rest.isRunning).toBe(false);
+    expect(rest.startedAtMs).toBeNull();
+    expect(rest.sessionLocalId).toBeNull();
   });
 
   it.each([

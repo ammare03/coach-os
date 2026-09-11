@@ -6,6 +6,8 @@ import { SessionRecoveryRedirect } from '../SessionRecoveryRedirect.tsx';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
+/** Rule (f)'s restore. Injected everywhere so no test opens the real mirror. */
+const mockRestoreRest = jest.fn<Promise<unknown>, []>(() => Promise.resolve({ kind: 'none' }));
 let mockNavigationKey: string | undefined = 'root';
 
 jest.mock('expo-router', () => ({
@@ -40,6 +42,7 @@ function signIn(overrides: Partial<Parameters<typeof useAuthStore.setState>[0]> 
 beforeEach(() => {
   mockPush.mockClear();
   mockReplace.mockClear();
+  mockRestoreRest.mockClear();
   mockNavigationKey = 'root';
   useAuthStore.setState({ status: 'loading', userId: null, role: null, isOnboarded: false });
 });
@@ -49,7 +52,13 @@ describe('SessionRecoveryRedirect', () => {
     // §8.4's criterion: recovery happens automatically on app start.
     signIn();
 
-    render(<SessionRecoveryRedirect isLocalDatabaseReady check={() => Promise.resolve(RESUME)} />);
+    render(
+      <SessionRecoveryRedirect
+        isLocalDatabaseReady
+        restoreRestTimer={mockRestoreRest}
+        check={() => Promise.resolve(RESUME)}
+      />,
+    );
 
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith({
@@ -66,7 +75,13 @@ describe('SessionRecoveryRedirect', () => {
     signIn();
     const check = jest.fn<Promise<SessionRecovery>, []>(() => Promise.resolve({ kind: 'none' }));
 
-    render(<SessionRecoveryRedirect isLocalDatabaseReady check={check} />);
+    render(
+      <SessionRecoveryRedirect
+        isLocalDatabaseReady
+        restoreRestTimer={mockRestoreRest}
+        check={check}
+      />,
+    );
 
     await waitFor(() => {
       expect(check).toHaveBeenCalled();
@@ -84,6 +99,7 @@ describe('SessionRecoveryRedirect', () => {
     render(
       <SessionRecoveryRedirect
         isLocalDatabaseReady
+        restoreRestTimer={mockRestoreRest}
         check={() =>
           Promise.resolve({ kind: 'stale', sessionLocalId: 'local-9', startedAt: new Date(0) })
         }
@@ -102,11 +118,21 @@ describe('SessionRecoveryRedirect', () => {
     const check = jest.fn<Promise<SessionRecovery>, []>(() => Promise.resolve(RESUME));
 
     const { rerender } = render(
-      <SessionRecoveryRedirect isLocalDatabaseReady={false} check={check} />,
+      <SessionRecoveryRedirect
+        isLocalDatabaseReady={false}
+        restoreRestTimer={mockRestoreRest}
+        check={check}
+      />,
     );
     expect(check).not.toHaveBeenCalled();
 
-    rerender(<SessionRecoveryRedirect isLocalDatabaseReady check={check} />);
+    rerender(
+      <SessionRecoveryRedirect
+        isLocalDatabaseReady
+        restoreRestTimer={mockRestoreRest}
+        check={check}
+      />,
+    );
 
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalled();
@@ -118,11 +144,23 @@ describe('SessionRecoveryRedirect', () => {
     mockNavigationKey = undefined;
     const check = jest.fn<Promise<SessionRecovery>, []>(() => Promise.resolve(RESUME));
 
-    const { rerender } = render(<SessionRecoveryRedirect isLocalDatabaseReady check={check} />);
+    const { rerender } = render(
+      <SessionRecoveryRedirect
+        isLocalDatabaseReady
+        restoreRestTimer={mockRestoreRest}
+        check={check}
+      />,
+    );
     expect(check).not.toHaveBeenCalled();
 
     mockNavigationKey = 'root';
-    rerender(<SessionRecoveryRedirect isLocalDatabaseReady check={check} />);
+    rerender(
+      <SessionRecoveryRedirect
+        isLocalDatabaseReady
+        restoreRestTimer={mockRestoreRest}
+        check={check}
+      />,
+    );
 
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalled();
@@ -133,7 +171,13 @@ describe('SessionRecoveryRedirect', () => {
     signIn({ role: 'coach' });
     const check = jest.fn<Promise<SessionRecovery>, []>(() => Promise.resolve(RESUME));
 
-    render(<SessionRecoveryRedirect isLocalDatabaseReady check={check} />);
+    render(
+      <SessionRecoveryRedirect
+        isLocalDatabaseReady
+        restoreRestTimer={mockRestoreRest}
+        check={check}
+      />,
+    );
 
     await waitFor(() => {
       expect(check).not.toHaveBeenCalled();
@@ -145,7 +189,13 @@ describe('SessionRecoveryRedirect', () => {
     signIn({ isOnboarded: false });
     const check = jest.fn<Promise<SessionRecovery>, []>(() => Promise.resolve(RESUME));
 
-    render(<SessionRecoveryRedirect isLocalDatabaseReady check={check} />);
+    render(
+      <SessionRecoveryRedirect
+        isLocalDatabaseReady
+        restoreRestTimer={mockRestoreRest}
+        check={check}
+      />,
+    );
 
     await waitFor(() => {
       expect(check).not.toHaveBeenCalled();
@@ -156,14 +206,32 @@ describe('SessionRecoveryRedirect', () => {
     signIn();
     const check = jest.fn<Promise<SessionRecovery>, []>(() => Promise.resolve(RESUME));
 
-    const { rerender } = render(<SessionRecoveryRedirect isLocalDatabaseReady check={check} />);
+    const { rerender } = render(
+      <SessionRecoveryRedirect
+        isLocalDatabaseReady
+        restoreRestTimer={mockRestoreRest}
+        check={check}
+      />,
+    );
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledTimes(1);
     });
 
-    rerender(<SessionRecoveryRedirect isLocalDatabaseReady check={check} />);
+    rerender(
+      <SessionRecoveryRedirect
+        isLocalDatabaseReady
+        restoreRestTimer={mockRestoreRest}
+        check={check}
+      />,
+    );
     useAuthStore.setState({ isOnboarded: true });
-    rerender(<SessionRecoveryRedirect isLocalDatabaseReady check={check} />);
+    rerender(
+      <SessionRecoveryRedirect
+        isLocalDatabaseReady
+        restoreRestTimer={mockRestoreRest}
+        check={check}
+      />,
+    );
 
     expect(check).toHaveBeenCalledTimes(1);
     expect(mockPush).toHaveBeenCalledTimes(1);
@@ -178,6 +246,7 @@ describe('SessionRecoveryRedirect', () => {
     render(
       <SessionRecoveryRedirect
         isLocalDatabaseReady
+        restoreRestTimer={mockRestoreRest}
         check={() => Promise.reject(new Error('database is locked'))}
       />,
     );
@@ -189,5 +258,66 @@ describe('SessionRecoveryRedirect', () => {
     });
     expect(mockPush).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it('restores the rest timer on the same launch it checks for a session', async () => {
+    // `rest-timer/02` rule (f). A rest survives an app kill through the same
+    // mirror, behind the same schema gate.
+    signIn();
+
+    render(
+      <SessionRecoveryRedirect
+        isLocalDatabaseReady
+        restoreRestTimer={mockRestoreRest}
+        check={() => Promise.resolve(RESUME)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockRestoreRest).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('restores the rest timer even when there is no session to navigate into', async () => {
+    // A rest whose session is stale still has to be read and discarded, or
+    // it comes back on the launch after this one.
+    signIn();
+
+    render(
+      <SessionRecoveryRedirect
+        isLocalDatabaseReady
+        restoreRestTimer={mockRestoreRest}
+        check={() => Promise.resolve({ kind: 'none' })}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockRestoreRest).toHaveBeenCalledTimes(1);
+    });
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('does not touch the mirror for a coach, or before the schema check answers', async () => {
+    signIn({ role: 'coach' });
+    const { rerender } = render(
+      <SessionRecoveryRedirect
+        isLocalDatabaseReady
+        restoreRestTimer={mockRestoreRest}
+        check={() => Promise.resolve(RESUME)}
+      />,
+    );
+
+    signIn();
+    rerender(
+      <SessionRecoveryRedirect
+        isLocalDatabaseReady={false}
+        restoreRestTimer={mockRestoreRest}
+        check={() => Promise.resolve(RESUME)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockRestoreRest).not.toHaveBeenCalled();
+    });
   });
 });

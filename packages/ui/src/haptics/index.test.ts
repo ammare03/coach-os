@@ -27,11 +27,14 @@ beforeEach(() => {
 });
 
 describe('the haptics policy', () => {
-  it('exports exactly the three sanctioned functions and nothing else', () => {
-    // The restriction IS the task (`screen-states/04`). A fourth export —
-    // above all a generic `triggerHaptic(type)` — is how the three-haptic
-    // policy quietly becomes a thirty-haptic one.
+  it('exports exactly the four sanctioned functions and nothing else', () => {
+    // The restriction IS the task (`screen-states/04`). A fifth export —
+    // above all a generic `triggerHaptic(type)` — is how a four-haptic
+    // policy quietly becomes a thirty-haptic one. The list grew from three
+    // to four once, deliberately, for `rest-timer/04`; it does not grow
+    // again without the same conversation.
     expect(Object.keys(haptics).sort()).toEqual([
+      'hapticRestComplete',
       'hapticSessionComplete',
       'hapticSetLogged',
       'hapticValidationFailure',
@@ -68,6 +71,36 @@ describe('hapticSessionComplete', () => {
   });
 });
 
+describe('hapticRestComplete', () => {
+  it('is a Heavy impact', () => {
+    haptics.hapticRestComplete();
+
+    expect(mockImpactAsync).toHaveBeenCalledTimes(1);
+    expect(mockImpactAsync).toHaveBeenCalledWith('heavy');
+  });
+
+  it('is not confusable with a finished session', () => {
+    // The two are the only haptics that mean "something ended", they can
+    // land seconds apart, and a rest ending is a cue to act rather than a
+    // congratulation. Different generator, different envelope: a single
+    // sharp impact against `Success`'s two-part rising pattern.
+    haptics.hapticRestComplete();
+
+    expect(mockNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('is stronger than the set-logged tap', () => {
+    // The set-logged `Light` is felt by a hand already on the phone. This
+    // one has to be felt through a pocket, by someone who put the phone
+    // down — it is the only haptic in the product whose whole job is to
+    // reach a client who is not looking.
+    haptics.hapticSetLogged();
+    haptics.hapticRestComplete();
+
+    expect(mockImpactAsync.mock.calls).toEqual([['light'], ['heavy']]);
+  });
+});
+
 describe('hapticValidationFailure', () => {
   it('is a Warning notification, never an Error one', () => {
     haptics.hapticValidationFailure();
@@ -94,6 +127,7 @@ describe('a device with no taptic engine', () => {
       haptics.hapticSetLogged();
       haptics.hapticSessionComplete();
       haptics.hapticValidationFailure();
+      haptics.hapticRestComplete();
     }).not.toThrow();
 
     // Two turns of the microtask queue: one for the rejection, one for the
@@ -109,5 +143,6 @@ describe('a device with no taptic engine', () => {
     expect(haptics.hapticSetLogged()).toBeUndefined();
     expect(haptics.hapticSessionComplete()).toBeUndefined();
     expect(haptics.hapticValidationFailure()).toBeUndefined();
+    expect(haptics.hapticRestComplete()).toBeUndefined();
   });
 });

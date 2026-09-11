@@ -17,6 +17,7 @@ import { LoggerHeader } from './LoggerHeader.tsx';
 import { LoggerLoadError } from './LoggerLoadError.tsx';
 import { LoggerNoPrescription } from './LoggerNoPrescription.tsx';
 import { ProgramChangedNotice } from './ProgramChangedNotice.tsx';
+import { RestTimerBar } from './RestTimerBar.tsx';
 import { SessionFinish } from './SessionFinish.tsx';
 import { SetEntrySlot } from './SetEntrySlot.tsx';
 import { TargetLine } from './TargetLine.tsx';
@@ -163,6 +164,16 @@ export function SessionLoggerScreen({
           only while the frozen and live prescriptions disagree, and carries
           its own gutter. */}
       <ProgramChangedNotice payload={state.kind === 'session' ? state.session.payload : null} />
+      {/* `rest-timer/05`. ABOVE the body, never between it and the footer —
+          everything below the body is bottom-pinned down to `set-entry`'s
+          composer, so a bar seated under the body would lift its confirm
+          control off the one screen coordinate it holds for the whole
+          session. Above it, the body's top edge moves and `SetList` gives
+          way, which is what that list is for. Self-gating and carrying its
+          own gutter, the same shape as the notice above it. It subscribes
+          to the rest store itself and takes nothing from it through here,
+          so this screen never re-renders on the tick. */}
+      <RestTimerBar now={now} />
       {/* Always mounted, always this shape: the body reserves its box in
           every state, so nothing shifts when the read lands
           (`screen-composition` §4). */}

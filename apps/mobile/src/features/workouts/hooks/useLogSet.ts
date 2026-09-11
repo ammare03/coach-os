@@ -6,6 +6,7 @@ import { localSetLogs, localWorkoutSessions } from '../../../db/schema/local-tra
 import { asUuid, trackEvent } from '../../../lib/analytics/index.ts';
 import { useConnectivity } from '../../../lib/connectivity/useConnectivity.ts';
 import { enqueueMutation } from '../../../lib/outbox/enqueue.ts';
+import { useRestTimerStore } from '../store/rest-timer-store.ts';
 
 // `phase-09-workout-logger/set-entry/01` — the write path under the two-tap
 // set row. `SetEntryRow` owns the taps; this file owns everything that
@@ -76,6 +77,28 @@ import { enqueueMutation } from '../../../lib/outbox/enqueue.ts';
 //     values under `CLAUDE.md` §21.1 and have no business in PostHog, and
 //     the event's own declaration in `lib/analytics/events.ts` has no field
 //     that could carry them.
+//
+// (g) **The rest timer starts here, on the local write** (`rest-timer/01`).
+//     §8.4 has no "start rest" control: confirming a set IS the trigger, so
+//     the trigger belongs on the path the confirm actually takes. It sits
+//     after the two writes and before the analytics for the same reason
+//     rule (a) gives — the rest period is a real-time, device-local fact
+//     and must not inherit the outbox's schedule. Hung off the flush
+//     instead, a client in a basement would rest until they found signal.
+//
+//     It is deliberately in `logSet` rather than in the hook, so a caller
+//     that logs a set without a renderer cannot silently skip it, and it
+//     cannot fail the set: `startRest` is two synchronous store writes and
+//     a `setInterval`, with no failure mode to handle. `rest-timer/02` made
+//     the rest durable without changing that — the SQLite write hangs off a
+//     store subscription (`../lib/rest-timer-persistence.ts` decision (c)),
+//     never off this path.
+//
+//     `targetRestSeconds` is passed in, never read here. The caller already
+//     holds the live prescription (`hooks/useExerciseTarget.ts`), and
+//     resolving it a second time from this path would mean an extra SQLite
+//     read inside §19's <100ms budget and a second answer to a question
+//     `lib/prescription.ts` is the single owner of.
 
 /** The tRPC path the outbox replays. `apps/api/src/routers/workouts.ts`. */
 export const LOG_SET_PROCEDURE = 'workouts.logSet';
@@ -100,6 +123,14 @@ export interface LogSetArgs {
   isWarmup?: boolean;
   /** Taken to momentary failure. Mirrored locally as well as queued (`set-entry/04`). */
   isFailure?: boolean;
+  /**
+   * `program_exercises.target_rest_seconds` for this exercise, as the live
+   * prescription resolves it — the rest timer's duration, rule (g). `null`
+   * or omitted for an ad-hoc session or an exercise the coach set no rest
+   * on, which falls back to `DEFAULT_REST_SECONDS`. Never persisted here:
+   * it belongs to the program, not to the set.
+   */
+  targetRestSeconds?: number | null;
   /**
    * `Date.now()` sampled by the caller at the moment of the confirming tap,
    * for `set_logged.entry_ms` — the field that proves §19's budget in the
@@ -221,6 +252,14 @@ export async function logSet(deps: LogSetDeps): Promise<LoggedSet> {
   });
 
   const entryMs = Date.now() - startedMs;
+
+  // Rule (g). After `entryMs` is taken, so §19's budget measures the two
+  // writes and not this. The session is named so the rest can be persisted
+  // and, on the next launch, re-validated against a workout that may since
+  // have ended (`rest-timer/02`, `../lib/rest-timer-persistence.ts`).
+  useRestTimerStore
+    .getState()
+    .startRest(deps.targetRestSeconds ?? null, { sessionLocalId: session.clientLocalId });
 
   // Rule (f). Fire-and-forget, after the writes, never awaited. Wrapped
   // because by this point the set IS logged: letting an analytics failure

@@ -283,17 +283,20 @@ export {
 export { MEDICAL_DISCLAIMER_COPY, MEDICAL_DISCLAIMER_VERSION } from './MedicalDisclaimer/copy.ts';
 
 // ── Haptics ─────────────────────────────────────────────────────────────
-// Three functions, and deliberately no generic `triggerHaptic`. `CLAUDE.md`
-// §7.5 sanctions exactly three haptics in the product — `Light` on set
-// logged, `Success` on session complete, `Warning` on validation failure —
-// and naming each for its USE CASE rather than its waveform is what makes a
-// fourth kind of feedback visible in review instead of arriving one
-// defensible call site at a time. Nothing outside `src/haptics/index.ts`
-// may import `expo-haptics`.
+// Four functions, and deliberately no generic `triggerHaptic`.
+// `ui-conventions` §5 sanctions exactly four haptics in the product —
+// `Light` on set logged, `Success` on session complete, `Warning` on
+// validation failure, `Heavy` on a rest period ending — and naming each for
+// its USE CASE rather than its waveform is what makes a new kind of
+// feedback visible in review instead of arriving one defensible call site
+// at a time. Nothing outside `src/haptics/index.ts` may import
+// `expo-haptics`, and that file's header carries why the list is four
+// rather than the three it shipped with.
 export {
   hapticSetLogged,
   hapticSessionComplete,
   hapticValidationFailure,
+  hapticRestComplete,
 } from './haptics/index.ts';
 
 // ── Theme ───────────────────────────────────────────────────────────────

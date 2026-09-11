@@ -54,6 +54,7 @@ minimumReleaseAgeExclude:
   - '@tanstack/query-core@5.102.0'
   - '@tanstack/react-query@5.102.0'
   - bullmq@6.3.1
+  - expo-audio@57.0.5
 
 # Metro (React Native's bundler) does not reliably follow pnpm's default
 # symlinked node_modules layout. A flat, hoisted tree avoids resolution

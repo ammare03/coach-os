@@ -9,6 +9,7 @@ import { localSetLogs, localWorkoutSessions } from '../../../../db/schema/local-
 import { deserializeOutboxPayload, enqueueMutation } from '../../../../lib/outbox/enqueue.ts';
 import { resetOutboxFlushStateForTests } from '../../../../lib/outbox/flush.ts';
 import { serialiseSessionPayload } from '../../../../lib/prefetch/sessions.ts';
+import { resetRestTimerForTests, useRestTimerStore } from '../../store/rest-timer-store.ts';
 import { COMPLETE_PROCEDURE, completeSession } from '../useCompleteSession.ts';
 
 // `phase-09-workout-logger/session-runtime/07`. Five things have to be true,
@@ -357,5 +358,37 @@ describe('analytics', () => {
     expect(completed.outboxId).not.toBeNull();
     expect(sessions[0]?.status).toBe('completed');
     expect(entries).toHaveLength(1);
+  });
+});
+
+describe('the rest timer', () => {
+  afterEach(() => {
+    resetRestTimerForTests();
+  });
+
+  it('ends the rest the last set started — rule (g)', async () => {
+    // The rest is durable from `rest-timer/02` on, so one left running
+    // would be restored for a workout the client has already finished.
+    await seedInProgress();
+    useRestTimerStore.getState().startRest(90, { sessionLocalId: LOCAL_KEY, nowMs: 0 });
+
+    await completeSession({ sessionLocalId: LOCAL_KEY, now: () => TAP });
+
+    expect(useRestTimerStore.getState()).toMatchObject({
+      isRunning: false,
+      sessionLocalId: null,
+    });
+  });
+
+  it("leaves another session's rest running", async () => {
+    await seedInProgress();
+    useRestTimerStore.getState().startRest(90, { sessionLocalId: 'another-session', nowMs: 0 });
+
+    await completeSession({ sessionLocalId: LOCAL_KEY, now: () => TAP });
+
+    expect(useRestTimerStore.getState()).toMatchObject({
+      isRunning: true,
+      sessionLocalId: 'another-session',
+    });
   });
 });

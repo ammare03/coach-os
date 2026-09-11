@@ -169,6 +169,13 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
   const { dismissToast } = useToast();
   const { target, history } = useExerciseTarget({ page, payload, sessionLocalId });
 
+  // The rest timer's duration (`rest-timer/01`), read off the prescription
+  // this slot has already resolved rather than looked up again — the target
+  // line and the rest a client is given must describe the same exercise.
+  // Kept as the primitive so the confirm handler's identity does not change
+  // every time a prefetch rewrites the payload.
+  const targetRestSeconds = target?.targetRestSeconds ?? null;
+
   const exerciseId = page.exerciseId;
   const [sets, setSets] = useState<readonly LoggedSetView[]>([]);
   /** Working sets only — a warm-up claims no number, so it reserves none. */
@@ -621,6 +628,7 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
           tapAtMs,
           isWarmup: wasWarmup,
           isFailure: wasFailure,
+          targetRestSeconds,
         });
 
         setSets((current) => [
@@ -675,6 +683,7 @@ export function SetEntrySlot({ page, payload, sessionLocalId }: SetEntrySlotProp
     isWarmup,
     isFailure,
     handleFailureChange,
+    targetRestSeconds,
   ]);
 
   // One message band, three local-mirror faults. Each names what the client
