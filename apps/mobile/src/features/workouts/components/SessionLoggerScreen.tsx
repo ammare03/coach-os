@@ -12,6 +12,7 @@ import { useLoggerSession, type LoggerSessionState } from '../hooks/useLoggerSes
 import { usePRCelebration } from '../hooks/usePRCelebration.ts';
 import { useSessionHeartbeat } from '../hooks/useSessionHeartbeat.ts';
 import { useSessionKeepAwake } from '../hooks/useSessionKeepAwake.ts';
+import { useSessionRecords } from '../hooks/useSessionRecords.ts';
 import { useSkipExercise } from '../hooks/useSkipExercise.ts';
 import { useSwapExercise } from '../hooks/useSwapExercise.ts';
 import { resolveAlternatives, type AlternativeExercise } from '../lib/alternatives.ts';
@@ -156,6 +157,15 @@ export function SessionLoggerScreen({
   // record is still on the client's progress screen; a pill over a finished
   // workout is a notification about the past.
   usePRCelebration({ sessionLocalId, payload, unit, enabled: isLogging });
+
+  // `session-summary/01`'s ledger, and deliberately NOT gated on
+  // `isLogging`. The pill is suppressed once the session is finished; the
+  // RECORD is not, because the summary lists every one of them and a set
+  // logged offline routinely confirms after Finish. Mounted here as well as
+  // on the summary route so a confirmation is heard whichever of the two is
+  // on top when the flush loop delivers it — recording is idempotent on the
+  // set's `client_local_id`, so the overlap costs nothing.
+  useSessionRecords({ sessionLocalId });
 
   // Task 08. Mounted here because the claim belongs to the screen that is
   // open, not to the tap that opened it: `useStartSession` takes the claim,

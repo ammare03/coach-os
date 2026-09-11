@@ -1,4 +1,4 @@
-import { countWorkingSets, totalTargetSets } from '@coachos/utils';
+import { countWorkingSets, sessionDurationSeconds, totalTargetSets } from '@coachos/utils';
 import { eq } from 'drizzle-orm';
 import { useCallback } from 'react';
 
@@ -192,7 +192,7 @@ export async function completeSession(deps: CompleteSessionDeps): Promise<Comple
       // (`ANALYTICS.md` AN§4).
       session_id: asUuid(row.clientLocalId),
       ...(await sessionCounts(db, row.clientLocalId, row.payloadJson)),
-      duration_s: durationSeconds(startedAt, completedAt),
+      duration_s: sessionDurationSeconds(startedAt, completedAt.getTime()),
       was_offline: deps.isConnected === false,
     });
   } catch {
@@ -200,16 +200,6 @@ export async function completeSession(deps: CompleteSessionDeps): Promise<Comple
   }
 
   return { localId: row.clientLocalId, outboxId, completedAt };
-}
-
-/**
- * Whole seconds between the two instants, floored at zero. A phone whose
- * clock moved backwards mid-session reports a finish before its own start,
- * and a negative duration is not one — the server clamps the stored column
- * the same way, so the event and the row agree.
- */
-function durationSeconds(startedAtMs: number, completedAt: Date): number {
-  return Math.max(0, Math.floor((completedAt.getTime() - startedAtMs) / 1_000));
 }
 
 /**

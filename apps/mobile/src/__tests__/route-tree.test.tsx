@@ -193,9 +193,9 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   ['(client)/(tabs)/coach', '/(client)/(tabs)/coach'],
   // `(client)/workout/[sessionId]` was a placeholder here until
   // `phase-09-workout-logger/session-runtime/02` composed the real logger
-  // shell; it moved to SUBSTITUTED for the same reason
+  // shell, and `.../summary` until `session-summary/01` composed the real
+  // summary; both moved to SUBSTITUTED for the same reason
   // `(client)/(tabs)/index` did.
-  ['(client)/workout/[sessionId]/summary', '/(client)/workout/w1/summary'],
   ['(client)/log-food', '/(client)/log-food'],
   ['(client)/scan', '/(client)/scan'],
   ['(client)/record-form-check', '/(client)/record-form-check'],
@@ -284,6 +284,13 @@ const SUBSTITUTED = new Set([
   // renders is covered by
   // `src/features/workouts/components/__tests__/SessionLoggerScreen.test.tsx`.
   '(client)/workout/[sessionId]',
+  // Real as of `phase-09-workout-logger/session-summary/01`. Every FIGURE
+  // on it comes from local SQLite, but the client's weight unit and time
+  // zone come from `me.get` through TanStack Query, so rendering it here
+  // would need the tRPC provider this test deliberately substitutes. What
+  // it renders is covered by
+  // `src/features/workouts/components/__tests__/SessionSummaryScreen.test.tsx`.
+  '(client)/workout/[sessionId]/summary',
 ]);
 
 /**
