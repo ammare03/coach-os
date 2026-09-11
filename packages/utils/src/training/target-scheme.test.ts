@@ -1,6 +1,7 @@
 import {
   formatIntensity,
   formatIntensityShort,
+  formatLoggerTarget,
   formatRepRange,
   formatRestSeconds,
   formatTargetScheme,
@@ -199,5 +200,71 @@ describe('formatTargetScheme', () => {
 
   it('treats an empty tempo string as absent rather than as a segment', () => {
     expect(formatTargetScheme(target({ targetSets: 4, tempo: '' }), 'kg')).toBe('4 sets');
+  });
+});
+
+// `formatLoggerTarget` is the client's half of this module's contract: the
+// same block, the same numbers, punctuated for a 393pt screen read mid-set.
+// `CLAUDE.md` §8.4 writes the example out — "3×8–10 @ RPE 8" — and
+// `phase-07-.../assignment/04` verifies its bulk edit by watching this
+// exact string change, so these are literals rather than shapes.
+describe('formatLoggerTarget', () => {
+  it('renders §8.4’s example', () => {
+    expect(
+      formatLoggerTarget(
+        target({ targetSets: 3, targetRepsMin: 8, targetRepsMax: 10, targetRpe: 8 }),
+        'kg',
+      ),
+    ).toBe('3 × 8–10 @ RPE 8');
+  });
+
+  it('drops tempo and rest, which the builder line carries and the logger does not', () => {
+    const block = target({
+      targetSets: 4,
+      targetRepsMin: 6,
+      targetRepsMax: 8,
+      targetRpe: 8.5,
+      tempo: '3010',
+      targetRestSeconds: 120,
+    });
+
+    // The one assertion that pins the two lines apart. Same volume, same
+    // intensity, same numbers — a different set of parts.
+    expect(formatTargetScheme(block, 'kg')).toBe('4 × 6–8 · RPE 8.5 · 3010 · 2m');
+    expect(formatLoggerTarget(block, 'kg')).toBe('4 × 6–8 @ RPE 8.5');
+  });
+
+  it('renders RIR where a coach prescribed reps in reserve', () => {
+    expect(
+      formatLoggerTarget(
+        target({ targetSets: 3, targetRepsMin: 8, targetRepsMax: 8, targetRir: 2 }),
+        'kg',
+      ),
+    ).toBe('3 × 8 @ RIR 2');
+  });
+
+  it('leaves no dangling @ when the block prescribes no intensity', () => {
+    expect(
+      formatLoggerTarget(target({ targetSets: 4, targetRepsMin: 15, targetRepsMax: 15 }), 'kg'),
+    ).toBe('4 × 15');
+  });
+
+  it('reads a rep-less block as sets, which is a real instruction', () => {
+    expect(formatLoggerTarget(target({ targetSets: 3, targetRpe: 7 }), 'kg')).toBe(
+      '3 sets @ RPE 7',
+    );
+    expect(formatLoggerTarget(target({ targetSets: 1 }), 'kg')).toBe('1 set');
+  });
+
+  it('spells an absolute load in the reader’s unit, from the same stored kilograms', () => {
+    const block = target({
+      targetSets: 3,
+      targetRepsMin: 5,
+      targetRepsMax: 5,
+      targetWeightKg: 100,
+    });
+
+    expect(formatLoggerTarget(block, 'kg')).toBe('3 × 5 @ 100kg');
+    expect(formatLoggerTarget(block, 'lb')).toBe('3 × 5 @ 220lb');
   });
 });

@@ -18,7 +18,6 @@ import ClientLogFoodScreen from '../app/(client)/log-food.tsx';
 import ClientRecordFormCheckScreen from '../app/(client)/record-form-check.tsx';
 import ClientScanScreen from '../app/(client)/scan.tsx';
 import ClientWorkoutSummaryScreen from '../app/(client)/workout/[sessionId]/summary.tsx';
-import ClientWorkoutScreen from '../app/(client)/workout/[sessionId].tsx';
 import CoachTabsLayout from '../app/(coach)/(tabs)/_layout.tsx';
 import CoachClientsScreen from '../app/(coach)/(tabs)/clients.tsx';
 import CoachInboxScreen from '../app/(coach)/(tabs)/inbox.tsx';
@@ -53,6 +52,19 @@ function CoachProgramsScreen() {
  */
 function ClientTodayScreen() {
   return <RouteStub route="(client)/(tabs)/index" />;
+}
+
+/**
+ * Real as of `phase-09-workout-logger/session-runtime/02`, and stubbed for
+ * exactly the reason above: the logger shell reads one session out of the
+ * local SQLite mirror asynchronously, so what it renders on this tree's
+ * first frame is a header and an empty body, not the route key this file
+ * navigates by. What it actually renders is
+ * `features/workouts/components/__tests__/SessionLoggerScreen.test.tsx`'s
+ * job; that the ROUTE composes it is `route-tree.test.tsx`'s.
+ */
+function ClientWorkoutScreen() {
+  return <RouteStub route="(client)/workout/[sessionId]" />;
 }
 
 // `phase-05-app-shell/navigation-primitives/01`, as a test rather than a

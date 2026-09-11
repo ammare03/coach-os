@@ -76,6 +76,16 @@ export const NON_RESOURCE_ID_FIELDS: Record<string, string> = {
   // The offline-outbox idempotency key (DB§14) — a value the client
   // generates, not an id that resolves to a row anyone owns.
   clientLocalId: 'Idempotency key, not a row reference.',
+  // `workouts.complete` (`session-runtime/07`). The SESSION's own
+  // `client_local_id` rather than the mutation's — a second key, same kind
+  // of value. It does name a row, but only ever one inside the caller's own
+  // `client_id` scope: the UPDATE pins `client_id` to
+  // `ctx.user.clientProfileId`, so the key alone resolves to nothing
+  // (`../../features/workouts/complete.ts` decision (b)). Completion has to
+  // take this instead of a server id because an ad-hoc session started and
+  // finished offline has no server id yet.
+  sessionClientLocalId:
+    "The client's own session key, resolved only within ctx.user.clientProfileId — not a cross-boundary row reference.",
   // `me.exportStatus` (`account-lifecycle/10`) — a `platform.export_requests`
   // row belonging to the caller's own account, never a coach/client
   // cross-boundary resource. Scoped by a plain `userId` equality check in

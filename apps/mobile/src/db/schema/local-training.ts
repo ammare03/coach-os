@@ -14,6 +14,14 @@ export const localWorkoutSessions = sqliteTable('local_workout_sessions', {
   startedAt: integer('started_at'), // epoch ms
   completedAt: integer('completed_at'), // epoch ms
   payloadJson: text('payload_json').notNull(), // full denormalised session, for rendering
+  // The `outbox.id` of the mutation that started this session — the
+  // `depends_on` parent every set log, and the completion, must chain to
+  // (DB§14.2, `lib/outbox/enqueue.ts` rule 2). On the row rather than in
+  // memory because a client force-quits mid-workout: sets logged after the
+  // restart still need it, and a chain broken at that seam sends sets for a
+  // session the server has never heard of. Null for a session nothing has
+  // started yet, and for a row an older build wrote.
+  startOutboxId: text('start_outbox_id'),
   syncState: text('sync_state', { enum: ['synced', 'pending', 'conflict'] })
     .notNull()
     .default('synced'),
@@ -85,6 +93,7 @@ export const LOCAL_TRAINING_SCHEMA_SQL: string[] = [
     started_at INTEGER,
     completed_at INTEGER,
     payload_json TEXT NOT NULL,
+    start_outbox_id TEXT,
     sync_state TEXT NOT NULL DEFAULT 'synced',
     updated_at INTEGER NOT NULL
   )`,

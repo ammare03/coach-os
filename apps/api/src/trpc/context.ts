@@ -56,6 +56,21 @@ export interface RequestMeta {
 // the type level.
 export interface Context {
   user: ContextUser | null;
+  // The `did` claim off the access token — `devices.id`, minted server-side
+  // at sign-in and never accepted from a request body
+  // (`../lib/auth/access-token.ts`). `null` on an unauthenticated request,
+  // and on a token whose claim is empty (`../features/auth/rotate-refresh-token.ts`
+  // can emit `''` for a refresh family whose device row was deleted).
+  //
+  // Added by `phase-09-workout-logger/session-runtime/08`: DB§14.5's session
+  // claim writes `workout_sessions.active_device_id`, and that value has to
+  // be an identity the caller cannot choose. Taken from the wire, one device
+  // could name another device's id and quietly steal — or falsely hold — a
+  // claim on the client's own session. It is deliberately NOT on
+  // `ContextUser`: it identifies the connection, not the person, and a
+  // resolver reading `ctx.user.deviceId` would read as a property of the
+  // account.
+  deviceId: string | null;
   db: DbClient;
   redis: Redis;
   requestId: string;
@@ -163,10 +178,12 @@ export function createContextFactory(verifier: AuthVerifier = defaultAuthVerifie
     const request = readRequestMeta(req);
 
     let user: ContextUser | null = null;
+    let deviceId: string | null = null;
     const token = parseBearerToken(req.headers.get('authorization'));
     if (token) {
       const claims = await verifier(token);
       if (claims && claims.expiresAt > new Date()) {
+        deviceId = claims.deviceId === '' ? null : claims.deviceId;
         // The session cache (DB§15, 15 min TTL) is a read-through
         // optimisation P03 populates. Redis is ephemeral by definition — a
         // miss, a malformed entry, or an outage must all fall through to
@@ -177,7 +194,15 @@ export function createContextFactory(verifier: AuthVerifier = defaultAuthVerifie
       }
     }
 
-    return { user, db, redis, requestId, request, ownershipCache: createOwnershipCache() };
+    return {
+      user,
+      deviceId,
+      db,
+      redis,
+      requestId,
+      request,
+      ownershipCache: createOwnershipCache(),
+    };
   };
 }
 

@@ -24,6 +24,22 @@ export function useProgramDay(programDayId: string, enabled = true) {
   return api.programs.days.get.useQuery({ programDayId }, { enabled });
 }
 
+/**
+ * Who is inside this day right now (`session-runtime/09` step 5).
+ *
+ * `enabled: false` by default and refetched on demand: the answer only
+ * matters at the instant a coach saves, and a day screen left open would
+ * otherwise poll a question nobody asked. `staleTime: 0` so the refetch
+ * after a save is a real request rather than a cache hit from the last one
+ * — a client who finished in between must drop off the warning.
+ */
+export function useMidSessionClients(programDayId: string) {
+  return api.programs.days.midSessionClients.useQuery(
+    { programDayId },
+    { enabled: false, staleTime: 0, gcTime: 0 },
+  );
+}
+
 export type ProgramDayDetail = NonNullable<ReturnType<typeof useProgramDay>['data']>;
 export type ProgramDayExercise = ProgramDayDetail['exercises'][number];
 export type ProgramDaySlot = ProgramDayDetail['siblingDays'][number];

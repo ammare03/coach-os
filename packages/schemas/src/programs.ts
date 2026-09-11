@@ -519,6 +519,15 @@ export type ReorderProgramExercisesInput = z.infer<typeof reorderProgramExercise
 export const getProgramDayInput = strictObject({ programDayId: id });
 export type GetProgramDayInput = z.infer<typeof getProgramDayInput>;
 
+/**
+ * `programs.days.midSessionClients` — who is inside this day right now
+ * (`session-runtime/09`). Same single id as `get`, and deliberately a
+ * separate procedure rather than a field on it: the editor asks after a
+ * save, which is the moment the answer changes what the coach believes.
+ */
+export const midSessionClientsInput = strictObject({ programDayId: id });
+export type MidSessionClientsInput = z.infer<typeof midSessionClientsInput>;
+
 // ---------------------------------------------------------------------------
 // Supersets — `programs.exercises.setSupersetGroup` (`program-builder/04`)
 // ---------------------------------------------------------------------------

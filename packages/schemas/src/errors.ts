@@ -35,6 +35,15 @@ export const APP_ERROR_CODES = [
   'INVITE_REVOKED',
   'RECORDING_CONSENT_REQUIRED',
   'SYNC_CONFLICT',
+  // `phase-09-workout-logger/session-runtime/08` — ERRORS.md ER§1.4.
+  // DB§14.5's session claim: another device of this same client is
+  // actively logging the session, and the caller asked to take it without
+  // saying it meant to. Distinct from SYNC_CONFLICT, which means "refetch,
+  // a write raced you" — nothing has diverged here, and the recovery is a
+  // decision only the person holding the phone can make ("Continue here"
+  // re-calls with `transfer`). Never thrown by `workouts.start`: an
+  // outbox-replayed start must never be refused for a claim reason.
+  'SESSION_CLAIMED_ELSEWHERE',
   'VALIDATION_FAILED',
   // infrastructure codes — 02
   'AUTH_REQUIRED',
@@ -249,6 +258,7 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   INVITE_REVOKED: 'BAD_REQUEST',
   RECORDING_CONSENT_REQUIRED: 'FORBIDDEN',
   SYNC_CONFLICT: 'CONFLICT',
+  SESSION_CLAIMED_ELSEWHERE: 'CONFLICT',
   VALIDATION_FAILED: 'BAD_REQUEST',
   AUTH_REQUIRED: 'UNAUTHORIZED',
   ROLE_REQUIRED: 'FORBIDDEN',
@@ -317,6 +327,12 @@ export interface AppErrorPayloads {
   INVITE_REVOKED: EmptyErrorPayload;
   RECORDING_CONSENT_REQUIRED: EmptyErrorPayload;
   SYNC_CONFLICT: { entity: string };
+  // Nothing about the holding device crosses the wire — not its id, not
+  // its name, not when it claimed. The client's only decision is whether
+  // to continue here, and ERRORS.md ER§1.4's copy asks exactly that
+  // without any of it. A device id would also be a stable identifier for
+  // hardware the client may no longer own.
+  SESSION_CLAIMED_ELSEWHERE: EmptyErrorPayload;
   VALIDATION_FAILED: { fields: Record<string, string> };
   AUTH_REQUIRED: EmptyErrorPayload;
   ROLE_REQUIRED: { requiredRole: string };

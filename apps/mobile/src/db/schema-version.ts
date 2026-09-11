@@ -18,7 +18,7 @@ import { wipeLocalDatabase } from './wipe.ts';
  * the ONE thing a future schema change must remember to update; everything
  * else in this file reacts to it automatically.
  */
-export const EXPECTED_SCHEMA_VERSION = 1;
+export const EXPECTED_SCHEMA_VERSION = 2;
 
 const SCHEMA_VERSION_META_KEY = 'schema_version';
 

@@ -8,11 +8,15 @@
 // Follows the pairing discipline `src/aggregates/README.md` documents for
 // `recomputePersonalRecords`, which runs once per (client, exercise) after
 // its set_logs are inserted — the same call site production code will use.
-// `recomputeSessionVolume` is NOT called here (F6, pre-phase-09 audit): it
-// now throws rather than writing a placeholder '0' (see that file's own
-// comment), so `total_volume_kg` is left `null` below — genuinely missing
-// until phase-09-workout-logger/session-runtime/07 computes the real sum,
-// rather than a zero that would read as an unusually light session.
+// `recomputeSessionVolume` is still NOT called here, and now for a
+// different reason than F6's. It is real as of session-runtime/07, but it
+// writes through an UPDATE, and `derived-data/01`'s `touch_updated_at()`
+// trigger stamps every UPDATE with real `now()` — which is precisely the
+// non-determinism `../seed.ts`'s header rules out. `total_volume_kg` is
+// left `null` below: genuinely missing, rather than a zero that would read
+// as an unusually light session. A seed that needs the real totals should
+// compute them in a second pass that also pins `updated_at`, not by
+// reintroducing a wall-clock write here.
 import { recomputePersonalRecords } from '../aggregates/recompute-personal-records.ts';
 import type { Transaction } from '../aggregates/types.ts';
 import { setLogs, workoutSessions } from '../schema/training.ts';
@@ -127,8 +131,8 @@ export async function seedTrainingHistory(
           clientNotes: !isSkipped && dayIndex === 0 ? faker.lorem.sentence() : null,
           status: isSkipped ? 'skipped' : 'completed',
           skipReason: isSkipped ? 'Family emergency, rescheduled the following day.' : null,
-          // null, not '0' — recomputeSessionVolume throws until
-          // session-runtime/07 replaces it (F6, see the import comment above).
+          // null, not '0' — the seed does not run the real recompute, for
+          // the determinism reason in the import comment above.
           totalVolumeKg: null,
           clientLocalId: sessionKey,
           programSnapshot: {

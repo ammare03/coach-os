@@ -73,11 +73,10 @@ export interface StartedAdHocSession {
    * or the server is asked to log a set against a session it has never heard
    * of (DB§14.2, `lib/outbox/enqueue.ts` rule 1).
    *
-   * ⚠️ It is returned rather than stored: `local_workout_sessions` has no
-   * column for it, so it survives only as long as this app process does.
-   * `session-runtime/01` owns persisting it (that task's third acceptance
-   * criterion), because `workouts.start` needs exactly the same thing for
-   * assigned sessions and a column added here would be half of its answer.
+   * Also stored, on `local_workout_sessions.start_outbox_id`, so it
+   * survives an app kill — `session-runtime/01` added that column for both
+   * this path and `workouts.start`, since a chain broken at the restart
+   * seam sends sets for a session the server has never heard of.
    */
   outboxId: string;
   /** The instant captured at the tap — `started_at`, and the row's `updated_at`. */
@@ -152,6 +151,9 @@ export async function startAdHocSession(deps: StartAdHocSessionDeps): Promise<St
     // assignment and no program day.
     assignmentId: null,
     programDayId: null,
+    // ...and therefore nothing to freeze either (`session-runtime/09`).
+    // The logger falls back to the live copy, which is also empty.
+    programSnapshot: null,
     name: null,
     scheduledDate,
     status: 'in_progress',
@@ -178,6 +180,9 @@ export async function startAdHocSession(deps: StartAdHocSessionDeps): Promise<St
     startedAt: startedAt.getTime(),
     completedAt: null,
     payloadJson: serialiseSessionPayload(emptyAdHocPayload(session)),
+    // The `dependsOn` parent of every set logged in this session
+    // (`session-runtime/01` rule (c)).
+    startOutboxId: outboxId,
     // `offline-sync` §5: the device authored this and the server has not
     // confirmed it, so a refresh must not overwrite it
     // (`lib/prefetch/sessions.ts` rule (c) skips a row that is not

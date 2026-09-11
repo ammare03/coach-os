@@ -44,6 +44,7 @@ function buildRow(overrides: Partial<Row> = {}): Row {
       session: buildSession(),
       exercises: [buildExercise()],
     }),
+    startOutboxId: null,
     syncState: 'synced',
     updatedAt: 1,
     ...overrides,

@@ -69,6 +69,7 @@ function buildContext(): Context {
     redis,
     requestId: uuidv7(),
     request: { ip: null, trustedIp: null, userAgent: null, receivedAt: new Date() },
+    deviceId: null,
     ownershipCache: createOwnershipCache(),
   };
 }

@@ -18,6 +18,8 @@ import { formatWeight, type WeightUnit } from '../units/weight.ts';
 const MULTIPLY = '×';
 const SEPARATOR = ' · ';
 const EN_DASH = '–';
+/** `@`, the logger line's own joint — `CLAUDE.md` §8.4 writes `3×8–10 @ RPE 8`. */
+const AT = '@';
 
 /**
  * Rest under two minutes reads in seconds (`90s`), at or over it in
@@ -139,18 +141,46 @@ export function formatRestSeconds(seconds: number | null): string | null {
  * hardest kind of wrong to notice.
  */
 export function formatTargetScheme(target: ExerciseTarget, unit: WeightUnit): string {
-  const reps = formatRepRange(target.targetRepsMin, target.targetRepsMax);
-  const volume =
-    reps === null
-      ? `${target.targetSets} ${target.targetSets === 1 ? 'set' : 'sets'}`
-      : `${target.targetSets} ${MULTIPLY} ${reps}`;
-
   return [
-    volume,
+    formatVolume(target),
     formatIntensity(target, unit),
     target.tempo,
     formatRestSeconds(target.targetRestSeconds),
   ]
     .filter((part): part is string => part !== null && part !== '')
     .join(SEPARATOR);
+}
+
+/**
+ * `4 × 6–8`, or `4 sets` when the block prescribes no reps. Shared by the
+ * builder's scheme line and the logger's target line so the two can never
+ * disagree about how a block's volume is spelled.
+ */
+function formatVolume(target: ExerciseTarget): string {
+  const reps = formatRepRange(target.targetRepsMin, target.targetRepsMax);
+  if (reps === null) return `${target.targetSets} ${target.targetSets === 1 ? 'set' : 'sets'}`;
+  return `${target.targetSets} ${MULTIPLY} ${reps}`;
+}
+
+/**
+ * The logger's line: `3 × 8–10 @ RPE 8` — `CLAUDE.md` §8.4's example, which
+ * is what a client reads mid-set (`session-runtime/04`).
+ *
+ * **Not `formatTargetScheme`, deliberately.** That one is the coach's
+ * builder line and carries tempo and rest as two more `·` segments. On the
+ * logger the block sits above the set rows on a 393pt screen, next to a
+ * "last time" half, and has to survive 200% text — so it keeps only the
+ * two parts §8.4 names and joins them with `@` rather than a third `·`,
+ * which is what stops the line reading as a flat list of four equal facts.
+ * Tempo and rest belong to `set-entry` and the rest timer, where they are
+ * acted on rather than read.
+ *
+ * Both lines are built from the same `formatVolume` / `formatIntensity`, so
+ * a coach and their client still read identical numbers (this module's
+ * header rule) — only the punctuation between them differs.
+ */
+export function formatLoggerTarget(target: ExerciseTarget, unit: WeightUnit): string {
+  const volume = formatVolume(target);
+  const intensity = formatIntensity(target, unit);
+  return intensity === null ? volume : `${volume} ${AT} ${intensity}`;
 }
