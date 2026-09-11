@@ -2,6 +2,7 @@ import { router, useRootNavigationState } from 'expo-router';
 import { useEffect, useRef } from 'react';
 
 import { useAuthStore } from '../../auth/store.ts';
+import { ensureRestTimerLiveActivity } from '../lib/rest-timer-live-activity.ts';
 import { ensureRestTimerPersistence } from '../lib/rest-timer-persistence.ts';
 import {
   checkForInProgressSession,
@@ -113,6 +114,10 @@ export function SessionRecoveryRedirect({
     // read and resolved when there is no session to navigate into. Both
     // calls are idempotent and swallow their own failures.
     ensureRestTimerForegroundSync();
+    // The backgrounded countdown (`rest-timer/03`). Registered here for the
+    // same reason as its neighbours: this is the one place that already
+    // knows the mirror is readable and the client is a client.
+    ensureRestTimerLiveActivity();
     void (restoreRestTimer ?? ensureRestTimerPersistence)();
 
     // No cancellation flag, deliberately. This is a one-shot navigation with
