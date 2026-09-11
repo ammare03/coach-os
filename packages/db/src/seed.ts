@@ -38,10 +38,11 @@
 //      history.ts used to call `recomputeSessionVolume` after each
 //      session's own INSERT, and `derived-data/01`'s `touch_updated_at()`
 //      trigger stamped that UPDATE with real `now()`. F6 (pre-phase-09
-//      audit) removed the call (that stub now throws rather than writing a
-//      placeholder '0' — see `aggregates/recompute-session-volume.ts`), so
-//      `workout_sessions.updated_at` is fully deterministic again, same as
-//      every other column of every table this seed writes.
+//      audit) removed the call, so `workout_sessions.updated_at` is fully
+//      deterministic again, same as every other column of every table this
+//      seed writes. That function is real now (session-runtime/07), and the
+//      call still must not come back: it writes through an UPDATE, which is
+//      what the trigger stamps — see `seed/training-history.ts`'s own note.
 //
 // The whole seed runs inside ONE transaction: a failure partway through
 // leaves no partial data, so re-running after a fix always starts from a

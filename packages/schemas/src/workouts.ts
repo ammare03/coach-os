@@ -121,6 +121,70 @@ export const startSessionInput = strictObject({
 export type StartSessionInput = z.infer<typeof startSessionInput>;
 
 /**
+ * `workouts.complete` — the `in_progress`→`completed` transition
+ * (`phase-09-workout-logger/session-runtime/07`). The last move in a
+ * session's lifecycle, and the one that computes `total_volume_kg` and
+ * `duration_seconds`.
+ *
+ * **The session is named by its `client_local_id`, not by its server id**,
+ * and that is the one decision worth reading twice. `startSessionInput`
+ * above takes a `workoutSessionId` because an assigned session was
+ * materialised server-side long before the client left signal, so the device
+ * always has one to name. Completion has no such guarantee: an ad-hoc
+ * session is created on the device (`startAdHocSessionInput`), its row is
+ * born in the outbox, and the flush loop writes no server id back — so a
+ * client who starts an empty session in a basement and finishes it there has
+ * no `workout_sessions.id` to send, and a procedure that demanded one would
+ * be unable to complete the session in front of them. Every session row a
+ * client can reach carries a non-null `client_local_id` — deterministic for
+ * a materialised one (DB§14.5 mechanism 1), device-generated for an ad-hoc
+ * one — so that is the key that always exists on both sides.
+ *
+ * Naming the row by that key does **not** make this an upsert. The server
+ * resolves it with an UPDATE scoped by `client_id`, which cannot insert; the
+ * duplicate `startSessionInput` warns about comes from `ON CONFLICT` taking
+ * its INSERT branch for a null stored key, and there is no INSERT branch
+ * here to take.
+ *
+ * Two things it deliberately does not take:
+ *
+ * - **No `durationSeconds`.** It is `completed_at - started_at`, computed by
+ *   the server from two timestamps already on the row. A client's local
+ *   clock is not the source of truth for a number the coach may review later,
+ *   and there is nothing a caller could supply that the server cannot derive
+ *   more honestly.
+ * - **No `totalVolumeKg`.** Same rule, stronger: volume is a sum over the
+ *   session's own `set_logs`, computed inside the completing transaction
+ *   (DB§8.2). A device that had not finished syncing its sets would report a
+ *   number the rows contradict.
+ */
+export const completeSessionInput = strictObject({
+  /**
+   * `workout_sessions.client_local_id` — the session's own key, which is
+   * also `local_workout_sessions.client_local_id` on the device. **Not** the
+   * mutation's key below: the two are different values with different jobs,
+   * and a single `clientLocalId` field would silently become whichever one
+   * the flush loop merged in last.
+   */
+  sessionClientLocalId: clientLocalId,
+  /**
+   * The mutation's own idempotency key, merged into the payload by the flush
+   * loop, which is why `strictObject` has to name it. The server does not key
+   * on it — idempotency here is the transition's own, exactly as it is for
+   * `startSessionInput`: a session already `completed` is returned untouched.
+   */
+  clientLocalId,
+  /**
+   * The instant the client tapped Finish, captured on device and replayed
+   * verbatim by the outbox — never `new Date()` at flush time, which is
+   * `offline-sync` §10's "everything timestamped at reconnect". A client who
+   * finishes at 19:00 in a basement and syncs at 21:00 finished at 19:00.
+   */
+  completedAt: z.date(),
+});
+export type CompleteSessionInput = z.infer<typeof completeSessionInput>;
+
+/**
  * `workouts.claim` — DB§14.5 mechanism 3, taken at the moment the client
  * taps Start and **before** the logger opens
  * (`phase-09-workout-logger/session-runtime/08`).

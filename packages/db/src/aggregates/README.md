@@ -36,18 +36,36 @@ call to `recomputeDailySummary`, in the same transaction, is a bug — not a sty
 | `recomputePersonalRecords(tx, clientId, exerciseId)` | `training.personal_records`                 | Any `training.set_logs` insert                               |
 | `recomputeSessionVolume(tx, workoutSessionId)`       | `training.workout_sessions.total_volume_kg` | Marking a `training.workout_sessions` row completed          |
 
-## Current state: stubs, not real logic
+## Current state: one implemented, three still stubs
 
-Every function above is a placeholder today. **None of them contains real business logic**, and
-none of them writes a fabricated value — all four either read-only or throw. Do not build on top
-of a stub's current output (there isn't one); replace the function body entirely.
+**`recomputeSessionVolume` is real** as of `phase-09-workout-logger/session-runtime/07-completion`,
+which is the task that owns the volume formula and the `workouts.complete` procedure that calls it.
+It sums `reps × weight_kg` across non-warm-up, non-deleted sets, in one SQL statement, and stores
+`NULL` — never `0` — when no working set carries both. See the file's own header for why the rule
+exists in SQL here and in TypeScript in `packages/utils`' `sessionVolumeKg`, and where the two are
+pinned against each other (`apps/api/src/routers/__tests__/workouts.complete.test.ts`).
+
+The other three are placeholders. **None of them contains real business logic**, and none writes a
+fabricated value — all three are either read-only or throw. Do not build on top of a stub's current
+output (there isn't one); replace the function body entirely.
 
 Owning phases, so there's no ambiguity about who implements the real version:
 
 - `recomputeDailySummary` → `phase-13-nutrition/nutrition-summary/01` (the adherence formula)
 - `recomputeStorageUsage` → `phase-11-media-pipeline/retention-and-quota/03` (byte counting + quota)
 - `recomputePersonalRecords` → `phase-09-workout-logger/personal-records/01` (Epley 1RM + PR rules)
-- `recomputeSessionVolume` → `phase-09-workout-logger/session-runtime/07-completion` (volume formula)
+- ~~`recomputeSessionVolume`~~ → **done**, `session-runtime/07`
+
+### The one pairing `recomputeSessionVolume` still needs
+
+Its row in the table above says "marking a `workout_sessions` row completed", and
+`workouts.complete` honours it. But a `set_logs` insert for an **already-completed** session also
+changes the total, and the completion has usually long since run by then — the completion mutation
+chains to the session's start in the outbox, not to its sets, so a straggler set can land after it
+(`apps/api/src/features/workouts/complete.ts` decision (f)). `workouts.complete` narrows the window
+by recomputing on replay too; closing it is `phase-09-workout-logger/set-entry`'s job, by pairing
+its own insert with this function in the same transaction, exactly as this README's table asks of
+every other write path.
 
 F6 (pre-phase-09 audit): three of the four used to upsert an inert-looking zero (`'0'`, `0/0`, a
 zeroed row) — correct scaffolding for proving the transactional shape, but a real _lie_ once a

@@ -10,6 +10,13 @@ export type { DbClient, DbClientOptions } from './client.ts';
 // parameters.
 export type { Transaction } from './aggregates/types.ts';
 
+// DB§8.2's transactional aggregate helpers, as `apps/api` reaches them —
+// the barrel is this package's public surface, so a resolver never imports
+// `src/aggregates/*` directly. Only the implemented one is re-exported:
+// the other three still throw (see `aggregates/README.md`), and exporting a
+// helper nothing may call would read as an invitation to call it.
+export { recomputeSessionVolume } from './aggregates/recompute-session-volume.ts';
+
 export * as schema from './schema/index.ts';
 
 // The inferred row types `types.ts` documents itself as the import path

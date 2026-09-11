@@ -1,6 +1,7 @@
 import { workouts as workoutsSchemas } from '@coachos/schemas';
 
 import { claimSession, heartbeatSession } from '../features/workouts/claim.ts';
+import { completeSession } from '../features/workouts/complete.ts';
 import { startAdHocSession } from '../features/workouts/start-ad-hoc.ts';
 import { startSession } from '../features/workouts/start.ts';
 import { listUpcomingWorkouts } from '../features/workouts/upcoming.ts';
@@ -55,6 +56,27 @@ export const workoutsRouter = router({
       // identity the caller cannot choose (`../features/workouts/claim.ts`
       // rule (c)).
       return startSession(ctx.db, ctx.user.clientProfileId, input, ctx.deviceId);
+    }),
+
+  // The last transition in a session's lifecycle (`session-runtime/07`).
+  //
+  // No `ownsResource`, and that is the same reasoning `startAdHoc` above
+  // carries rather than a weakening of it: the only ids in the input are the
+  // client's own keys — the session's `client_local_id` and the mutation's —
+  // and neither resolves to a row another client could own. The client is
+  // `ctx.user.clientProfileId`, never the wire, and the UPDATE pins
+  // `client_id` to it (`../features/workouts/complete.ts` decision (b)), so
+  // the statement cannot reach across the boundary even in principle.
+  // `sessionClientLocalId` is registered in `NON_RESOURCE_ID_FIELDS` with
+  // that reason, so the enumeration test asserts the choice rather than
+  // missing it.
+  complete: clientProcedure
+    .input(workoutsSchemas.completeSessionInput)
+    .mutation(({ ctx, input }) => {
+      if (ctx.user.clientProfileId === null) {
+        throw new Error('workouts.complete: authenticated client has no clientProfileId');
+      }
+      return completeSession(ctx.db, ctx.user.clientProfileId, input);
     }),
 
   // DB§14.5 mechanism 3 (`session-runtime/08`). Called live, at the moment
