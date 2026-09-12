@@ -1,13 +1,16 @@
-import { Text, View } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 
-// Placeholder route (`phase-05-app-shell/router-skeleton/01`). Structure
-// only — it renders its own route path and nothing else, deliberately. The
-// phase that owns this screen designs and builds it; anything added here
-// first would have to be deleted then (P05 README, "Risks").
+import { ClientVideosScreen } from '../../../../features/clients/screens/ClientVideosScreen.tsx';
+
+// Composition only (`CLAUDE.md` §9.2) — the screen owns its states and its
+// cache key; this file owns the route param
+// (`phase-10-coach-review-surfaces/client-detail/04`).
+//
+// No `onBack`, unlike the Overview route: this facet has no state that can
+// fail, so it needs no recovery action that leads off the screen. The back
+// control is `_layout.tsx`'s and survives whatever happens here.
 export default function CoachClientVideosScreen() {
-  return (
-    <View>
-      <Text>(coach)/client/[id]/videos</Text>
-    </View>
-  );
+  const { id } = useLocalSearchParams<{ id: string }>();
+
+  return <ClientVideosScreen clientId={id} />;
 }

@@ -194,7 +194,12 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   // `(coach)/(tabs)/index` did. The six rows below still render their own
   // route key, through the pass-through that stands in for that feature's
   // `_layout`.
-  ['(coach)/client/[id]/videos', '/(coach)/client/c1/videos'],
+  // `(coach)/client/[id]/videos` was a placeholder here until
+  // `client-detail/04` composed the real grid. It reads no query, so — like
+  // `(coach)/(tabs)/more` — it renders in this tree exactly as it does on a
+  // device, and gets its own assertion at the bottom of this file rather
+  // than a substitution that would record a provider dependency it does not
+  // have.
   ['(coach)/client/[id]/checkins', '/(coach)/client/c1/checkins'],
   ['(coach)/client/[id]/chat', '/(coach)/client/c1/chat'],
   ['(coach)/client/[id]/notes', '/(coach)/client/c1/notes'],
@@ -461,7 +466,12 @@ describe('the §9.1 route tree', () => {
 
     // The three non-placeholder routes, each asserted below: the coach More
     // hub, the root redirect, and the catch-all.
-    expect(uncovered).toEqual(['(coach)/(tabs)/more', '+not-found', 'index']);
+    expect(uncovered).toEqual([
+      '(coach)/(tabs)/more',
+      '(coach)/client/[id]/videos',
+      '+not-found',
+      'index',
+    ]);
   });
 
   it.each(PLACEHOLDER_ROUTES)('renders %s at %s', (route, url) => {
@@ -481,6 +491,18 @@ describe('the §9.1 route tree', () => {
     renderRouter(routeContext(), { initialUrl: '/(coach)/(tabs)/more' });
 
     expect(screen.getByTestId('coach-more-hub')).toBeTruthy();
+  });
+
+  // The Videos tab is a real grid as of `client-detail/04`, and it reads no
+  // query — so unlike its five sibling tabs it renders here unsubstituted.
+  // What the grid and its tiles render is
+  // `features/clients/screens/__tests__/ClientVideosScreen.test.tsx`; this
+  // asserts only the tree's half.
+  it('renders the Videos tab at /(coach)/client/[id]/videos', () => {
+    signInAsOwnerOf('/(coach)/client/c1/videos');
+    renderRouter(routeContext(), { initialUrl: '/(coach)/client/c1/videos' });
+
+    expect(screen.getByTestId('client-videos-empty')).toBeTruthy();
   });
 
   it('redirects `/` into the tree rather than leaving it on +not-found', () => {
