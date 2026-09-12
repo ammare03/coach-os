@@ -22,6 +22,21 @@ function CoachProgramsScreen() {
   return <RouteStub route={PROGRAMS_ROUTE} />;
 }
 
+/**
+ * What proves a route resolved, for the screens that no longer render their
+ * own route key. A placeholder prints its path; a real screen renders
+ * itself, so its own `testID` is the proof.
+ *
+ * `(coach)/(tabs)/more` became the real hub in
+ * `phase-09-workout-logger/settings-shell/02`. It is asserted here rather
+ * than stubbed like Programs above: the hub reads no query, so it mounts
+ * happily under this bare `Stack`, and checking the thing itself is worth
+ * more than checking a string.
+ */
+const REAL_SCREEN_TEST_IDS: Readonly<Record<string, string>> = {
+  '(coach)/(tabs)/more': 'coach-more-hub',
+};
+
 // The half of `router-skeleton/03`'s "navigate through all five tabs" that can
 // be checked without a device: the real `(coach)/(tabs)` layout, mounted in the
 // real navigator, with the real dock — not the bar rendered against a fixture.
@@ -61,7 +76,10 @@ describe('the (coach)/(tabs) layout', () => {
   ])('resolves %s to %s, with %s selected in the dock', (url, route, label) => {
     renderCoachTabs(url);
 
-    expect(screen.getByText(route)).toBeTruthy();
+    const testID = REAL_SCREEN_TEST_IDS[route];
+    expect(
+      testID === undefined ? screen.getByText(route) : screen.getByTestId(testID),
+    ).toBeTruthy();
 
     const selected = screen
       .getAllByRole('tab')

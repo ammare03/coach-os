@@ -166,7 +166,13 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   // `program-templates/01` composed the real templates list; it moved to
   // SUBSTITUTED for the same reason `(coach)/exercise-library` did.
   ['(coach)/(tabs)/inbox', '/(coach)/(tabs)/inbox'],
-  ['(coach)/(tabs)/more', '/(coach)/(tabs)/more'],
+  // `(coach)/(tabs)/more` was a placeholder here until
+  // `phase-09-workout-logger/settings-shell/02` composed the real hub. It
+  // no longer renders its own route key, so — like `+not-found` — it gets
+  // its own assertion at the bottom of this file instead of a row here. It
+  // is NOT substituted: the hub reads no query, so it renders in this tree
+  // exactly as it does on a device, and asserting that is worth more than
+  // asserting a string.
   ['(coach)/client/[id]/index', '/(coach)/client/c1'],
   ['(coach)/client/[id]/training', '/(coach)/client/c1/training'],
   ['(coach)/client/[id]/nutrition', '/(coach)/client/c1/nutrition'],
@@ -395,9 +401,9 @@ describe('the §9.1 route tree', () => {
       (route) => !covered.has(route) && !SUBSTITUTED.has(route) && !route.endsWith('_layout'),
     );
 
-    // The two non-placeholder routes, both asserted below: the root
-    // redirect, and the catch-all.
-    expect(uncovered).toEqual(['+not-found', 'index']);
+    // The three non-placeholder routes, each asserted below: the coach More
+    // hub, the root redirect, and the catch-all.
+    expect(uncovered).toEqual(['(coach)/(tabs)/more', '+not-found', 'index']);
   });
 
   it.each(PLACEHOLDER_ROUTES)('renders %s at %s', (route, url) => {
@@ -405,6 +411,18 @@ describe('the §9.1 route tree', () => {
     renderRouter(routeContext(), { initialUrl: url });
 
     expect(screen.getByText(route)).toBeTruthy();
+  });
+
+  // The More tab is a real hub as of `settings-shell/02`, so it renders its
+  // own first row rather than its route key. Which rows exist, where each
+  // one goes, and that none of them is dead is
+  // `features/navigation/coach/__tests__/MoreHub.test.tsx`; this asserts
+  // only the tree's half — that the URL still resolves to the hub.
+  it('renders the More hub at /(coach)/(tabs)/more', () => {
+    signInAsOwnerOf('/(coach)/(tabs)/more');
+    renderRouter(routeContext(), { initialUrl: '/(coach)/(tabs)/more' });
+
+    expect(screen.getByTestId('coach-more-hub')).toBeTruthy();
   });
 
   it('redirects `/` into the tree rather than leaving it on +not-found', () => {

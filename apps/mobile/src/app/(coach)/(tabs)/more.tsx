@@ -1,13 +1,9 @@
-import { CoachTabPlaceholder } from '../../../features/navigation/coach/CoachTabPlaceholder.tsx';
+import { MoreHub } from '../../../features/navigation/coach/MoreHub.tsx';
 
-// Composition only (`CLAUDE.md` §9.2). A genuine placeholder — the phase
-// named below designs and builds this screen, and anything added here first
-// would have to be deleted then (`router-skeleton/03`, Risks).
+// Composition only (`code-conventions` §1). The P05 placeholder is gone:
+// `MoreHub` owns the row map, the density and the dock inset, and every
+// later phase that adds a hub row edits that one array — never this file
+// (`settings-shell/02`).
 export default function CoachMoreScreen() {
-  return (
-    <CoachTabPlaceholder
-      route="(coach)/(tabs)/more"
-      ownedBy="phase-25-white-label-and-teams/ and each setting's own phase"
-    />
-  );
+  return <MoreHub />;
 }

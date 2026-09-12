@@ -1,8 +1,8 @@
-import { Avatar, Pressable, Skeleton, Text } from '@coachos/ui';
+import { Skeleton, Text } from '@coachos/ui';
 import { density, spacing, tapTarget } from '@coachos/ui/theme';
 import { StyleSheet, View } from 'react-native';
 
-import { api } from '../../../lib/trpc.ts';
+import { SettingsAvatarButton } from '../../settings/components/SettingsAvatarButton.tsx';
 import type { TodayHeaderContext } from '../hooks/useTodaySession.ts';
 
 // Frame `I` (`today-card/DESIGN-SPEC.md` §3.10). **The date is the title.
@@ -21,6 +21,13 @@ export interface TodayHeaderProps {
   header: TodayHeaderContext;
   /** True while the card is still resolving and the sub-line has nothing to say yet. */
   isLoading: boolean;
+  /**
+   * The header's trailing-action slot. The client's ONE entry point into
+   * settings (`settings-shell/02`) — deliberately not repeated on Nutrition,
+   * Progress or Coach: a settings control on the Coach tab reads as
+   * "settings for my coach", and four headers spent on a destination
+   * visited once a month is four headers wasted.
+   */
   onOpenSettings: () => void;
 }
 
@@ -29,7 +36,6 @@ const SUBLINE_SKELETON_WIDTH = 168;
 const SUBLINE_SKELETON_HEIGHT = 15;
 
 export function TodayHeader({ header, isLoading, onOpenSettings }: TodayHeaderProps) {
-  const me = api.me.get.useQuery();
   const subLine = composeSubLine(header);
 
   return (
@@ -55,24 +61,12 @@ export function TodayHeader({ header, isLoading, onOpenSettings }: TodayHeaderPr
         ) : null}
       </View>
 
-      <Pressable
-        onPress={onOpenSettings}
-        accessibilityRole="button"
-        accessibilityLabel="Settings"
-        style={styles.avatar}
-      >
-        {/* `Avatar` hides itself from the reading order — the pressable
-            around it carries the label (its own accessibility contract).
-            No `uri`: resolving `users.avatar_asset_id` to a signed URL is
-            `phase-11-media-pipeline`'s, and the initials fallback renders
-            unconditionally underneath one anyway. */}
-        <Avatar
-          name={me.data?.name ?? ''}
-          userId={me.data?.id ?? 'pending'}
-          size="md"
-          recyclingKey={me.data?.id ?? 'pending'}
-        />
-      </Pressable>
+      {/* The trailing-action slot. The button owns its own query, its own
+          label and its own tap floor — this header only says where it sits
+          and where the tap goes (`settings-shell/02`). */}
+      <View style={styles.avatar}>
+        <SettingsAvatarButton onPress={onOpenSettings} />
+      </View>
     </View>
   );
 }
