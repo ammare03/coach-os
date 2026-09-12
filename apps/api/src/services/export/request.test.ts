@@ -102,6 +102,7 @@ function ctxFor(user: typeof schema.users.$inferSelect): ReturnType<typeof Creat
     guardianConsentAt: user.guardianConsentAt,
     coachProfileId: null,
     clientProfileId: null,
+    deletionScheduledFor: null,
     deletedAt: null,
   };
   return createTestContext({ db, user: contextUser });

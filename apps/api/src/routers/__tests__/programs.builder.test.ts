@@ -90,6 +90,7 @@ async function insertCoach(): Promise<Coach> {
     guardianConsentAt: user.guardianConsentAt,
     coachProfileId: profile.id,
     clientProfileId: null,
+    deletionScheduledFor: null,
     deletedAt: null,
   };
   return { profileId: profile.id, ctx: createTestContext({ db, user: contextUser }) };

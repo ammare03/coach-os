@@ -105,6 +105,7 @@ function coachAUser(): ContextUser {
     guardianConsentAt: null,
     coachProfileId: fixture.coachA.profileId,
     clientProfileId: null,
+    deletionScheduledFor: null,
     deletedAt: null,
   };
 }
@@ -120,6 +121,7 @@ function clientA1User(): ContextUser {
     guardianConsentAt: null,
     coachProfileId: null,
     clientProfileId: fixture.clientA1.profileId,
+    deletionScheduledFor: null,
     deletedAt: null,
   };
 }
@@ -350,5 +352,75 @@ describe('authorization enumeration', () => {
     }
 
     expect(redundant).toEqual([]);
+  });
+});
+
+// `phase-09-workout-logger/account-actions/02` — the §18.3 case for
+// `../trpc/middleware/pending-deletion.ts`. It belongs here, next to the
+// other enumeration, because it is the same question this file already
+// asks of every procedure ("what does the middleware chain actually let
+// through?") applied to a second axis: not *whose* rows the caller may
+// touch, but whether the caller's own account is winding down.
+//
+// The unit test (`../trpc/middleware/__tests__/pending-deletion.test.ts`)
+// proves the gate's behaviour against a scratch router. This proves it
+// against `appRouter` itself — the real procedures, the real chain — which
+// is the only place the reachability guarantee actually has to hold.
+describe('pending deletion (§18.3, account-actions/02)', () => {
+  const SCHEDULED_PURGE_AT = new Date('2026-09-19T00:00:00Z');
+
+  function deletingCoach(): ContextUser {
+    return { ...coachAUser(), deletionScheduledFor: SCHEDULED_PURGE_AT };
+  }
+
+  function deletingClient(): ContextUser {
+    return { ...clientA1User(), deletionScheduledFor: SCHEDULED_PURGE_AT };
+  }
+
+  it.each([
+    ['coach.clients.list', 'coach', undefined],
+    ['clientApp.coach', 'client', undefined],
+  ])(
+    '%s returns ACCOUNT_PENDING_DELETION while the grace period is open',
+    async (dottedPath, role, input) => {
+      const user = role === 'coach' ? deletingCoach() : deletingClient();
+
+      const outcome = await withRolledBackTx((tx) =>
+        callProcedure(callerFor(tx, user), dottedPath, input).then(
+          () => null,
+          (error: unknown) => error,
+        ),
+      );
+
+      expect(outcome).toMatchObject({
+        code: 'FORBIDDEN',
+        cause: { appCode: 'ACCOUNT_PENDING_DELETION' },
+      });
+    },
+  );
+
+  // The three exits the blocking screen offers, plus the export path §21.3
+  // makes non-negotiable. Each is reachable because of which builder it is
+  // written on and for no other reason — there is no allowlist anywhere
+  // that names them, which is exactly why this assertion exists.
+  it.each([
+    ['me.get', undefined],
+    ['me.cancelDeletion', undefined],
+    ['me.exportHistory', { limit: 20 }],
+  ])('%s stays reachable while the grace period is open', async (dottedPath, input) => {
+    await expect(
+      withRolledBackTx((tx) => callProcedure(callerFor(tx, deletingCoach()), dottedPath, input)),
+    ).resolves.toBeDefined();
+  });
+
+  // The same procedures, called by the same users with nothing pending,
+  // succeed — so the assertions above are proving the gate rather than some
+  // unrelated refusal the fixture would have produced anyway.
+  it('does not refuse the same coach procedure when nothing is pending', async () => {
+    await expect(
+      withRolledBackTx((tx) =>
+        callProcedure(callerFor(tx, coachAUser()), 'coach.clients.list', undefined),
+      ),
+    ).resolves.toBeDefined();
   });
 });

@@ -149,6 +149,7 @@ async function insertClient(coachProfileId: string | null): Promise<ClientFixtur
     guardianConsentAt: user.guardianConsentAt,
     coachProfileId: null,
     clientProfileId: profile.id,
+    deletionScheduledFor: null,
     deletedAt: null,
   };
 
@@ -683,6 +684,7 @@ describe('support.clearSessionClaim', () => {
         guardianConsentAt: user.guardianConsentAt,
         coachProfileId: profile.id,
         clientProfileId: null,
+        deletionScheduledFor: null,
         deletedAt: null,
       },
     });

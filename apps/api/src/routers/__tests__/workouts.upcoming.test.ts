@@ -92,6 +92,7 @@ async function insertCoach(): Promise<{ profileId: string; userId: string; ctx: 
     guardianConsentAt: user.guardianConsentAt,
     coachProfileId: profile.id,
     clientProfileId: null,
+    deletionScheduledFor: null,
     deletedAt: null,
   };
   return {
@@ -131,6 +132,7 @@ async function insertClient(coachProfileId: string): Promise<ClientFixture> {
     guardianConsentAt: user.guardianConsentAt,
     coachProfileId: null,
     clientProfileId: profile.id,
+    deletionScheduledFor: null,
     deletedAt: null,
   };
   return {

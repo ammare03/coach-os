@@ -97,6 +97,7 @@ async function insertCoach(): Promise<Actor> {
     guardianConsentAt: user.guardianConsentAt,
     coachProfileId: profile.id,
     clientProfileId: null,
+    deletionScheduledFor: null,
     deletedAt: null,
   };
   return { profileId: profile.id, ctx: createTestContext({ db, user: contextUser }) };
@@ -132,6 +133,7 @@ async function insertClient(coachProfileId: string | null, name?: string): Promi
     guardianConsentAt: user.guardianConsentAt,
     coachProfileId: null,
     clientProfileId: profile.id,
+    deletionScheduledFor: null,
     deletedAt: null,
   };
   return { profileId: profile.id, ctx: createTestContext({ db, user: contextUser }) };

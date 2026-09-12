@@ -218,6 +218,15 @@ export const APP_ERROR_CODES = [
   // violation is the second line of defence for the concurrent-request
   // case (`../../apps/api/src/features/assignments/create-assignment.ts`).
   'CLIENT_ALREADY_HAS_ACTIVE_ASSIGNMENT',
+  // `phase-09-workout-logger/account-actions/02` — ERRORS.md ER§1.1. The
+  // caller has an open `identity.deletion_requests` row: they asked to
+  // leave, the 7-day grace has not elapsed, and the account is winding
+  // down. Thrown only by `../../apps/api/src/trpc/middleware/pending-deletion.ts`,
+  // and only for the three coaching builders — `me.*` (the cancel and the
+  // whole export path) and `auth.*` stay reachable by that placement, which
+  // is what makes the state recoverable rather than a lockout (CLAUDE.md
+  // §21.3, §21.4).
+  'ACCOUNT_PENDING_DELETION',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -294,6 +303,7 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   PROGRAM_ALTERNATIVE_IS_ORIGIN: 'BAD_REQUEST',
   PROGRAM_COPY_CROSS_PROGRAM: 'BAD_REQUEST',
   CLIENT_ALREADY_HAS_ACTIVE_ASSIGNMENT: 'CONFLICT',
+  ACCOUNT_PENDING_DELETION: 'FORBIDDEN',
 };
 
 /**
@@ -425,6 +435,12 @@ export interface AppErrorPayloads {
     currentWeek: number;
     durationWeeks: number;
   };
+  // Nothing to carry, deliberately. The purge date is a field of `me.get`
+  // (`deletionScheduledFor`), rendered by the pending screen in the user's
+  // own timezone — a date formatted into an error payload would be a second
+  // statement of the same fact, in the server's timezone, that the client
+  // would then have to reconcile with the first.
+  ACCOUNT_PENDING_DELETION: EmptyErrorPayload;
 }
 
 /**

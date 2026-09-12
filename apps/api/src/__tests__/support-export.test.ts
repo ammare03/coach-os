@@ -92,6 +92,7 @@ function callerFor(user: typeof schema.users.$inferSelect) {
     guardianConsentAt: user.guardianConsentAt,
     coachProfileId: null,
     clientProfileId: null,
+    deletionScheduledFor: null,
     deletedAt: null,
   };
   return appRouter.createCaller(createTestContext({ db, user: contextUser }));

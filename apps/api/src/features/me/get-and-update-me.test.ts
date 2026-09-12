@@ -97,6 +97,11 @@ describe('getMe', () => {
       isMinor: false,
       guardianConsentAt: null,
       guardianEmailMasked: null,
+      // `account-actions/02` — `null` for anyone with no open
+      // `deletion_requests` row, which is everyone by default. The populated
+      // case is covered in `./deletion-request.test.ts`, next to the
+      // procedures that write the row.
+      deletionScheduledFor: null,
     });
     expect(profile).not.toHaveProperty('passwordHash');
   });

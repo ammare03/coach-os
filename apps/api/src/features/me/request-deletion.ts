@@ -2,6 +2,7 @@ import { schema, type DbClient, type DeletionRequest } from '@coachos/db';
 import { eq } from 'drizzle-orm';
 
 import { writeAuditLog } from '../../lib/audit-log.ts';
+import { clearSessionCache } from '../../lib/auth/session-cache.ts';
 import type { Context } from '../../trpc/context.ts';
 
 import { sendDeletionRecoveryEmail } from './send-deletion-recovery-email.ts';
@@ -52,6 +53,15 @@ export async function requestDeletion(
     }
     return existing;
   });
+
+  // Every device, not just this one (`account-actions/02`): the DB§15
+  // session cache has a 15-minute TTL, so without this a second device —
+  // or this one, on its next call — could be served a cached session and
+  // keep coaching for up to a quarter of an hour after the account started
+  // winding down. Awaited rather than fire-and-forget: `safeRedis` already
+  // swallows an outage, so the only thing awaiting costs is certainty that
+  // the clear happened before the response says the request succeeded.
+  await clearSessionCache(userId);
 
   // Sent on every call, not only the first (Approach step 3: "the recovery
   // email is sent regardless as a safety net") — off the response path,

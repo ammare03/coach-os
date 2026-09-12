@@ -10,9 +10,12 @@ import { eq } from 'drizzle-orm';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 
 import type { createTestContext as CreateTestContext } from '../../__tests__/test-context.ts';
+import { clearSessionCache } from '../../lib/auth/session-cache.ts';
 
 import type { cancelDeletion as CancelDeletion } from './cancel-deletion.ts';
 import type { requestDeletion as RequestDeletion } from './request-deletion.ts';
+
+const clearSessionCacheMock = clearSessionCache as jest.MockedFunction<typeof clearSessionCache>;
 
 // Stubbed at the boundary, same pattern as `../invites/create-invite.test.ts`
 // — a real Resend call against the fake test API key would otherwise fire
@@ -21,6 +24,16 @@ import type { requestDeletion as RequestDeletion } from './request-deletion.ts';
 // fire-and-forget (`account-lifecycle/03`).
 jest.mock('../../lib/email/client.ts', () => ({
   sendEmail: jest.fn().mockResolvedValue({ ok: true }),
+}));
+
+// Mocked rather than exercised against a real Redis, because there isn't
+// one in this suite and `safeRedis` swallows the failure of the one that
+// isn't there — meaning a missing `clearSessionCache` call would be
+// indistinguishable from a present one. The module boundary is the only
+// place the call is observable (`account-actions/02`: "a cached session
+// cannot outlive the state change by up to 15 minutes").
+jest.mock('../../lib/auth/session-cache.ts', () => ({
+  clearSessionCache: jest.fn().mockResolvedValue(undefined),
 }));
 
 let pgContainer: StartedTestContainer;
@@ -170,5 +183,88 @@ describe('cancelDeletion', () => {
     const request = await requestDeletion(db, ctx, user.id, user.email, 'UTC');
 
     expect(request.userId).toBe(user.id);
+  });
+});
+
+// `account-actions/02`: DB§15's session cache has a 15-minute TTL, so
+// without an explicit clear a second device keeps being served a cached
+// session — coaching for a quarter of an hour after the account started
+// winding down, or being shown the blocking screen for a quarter of an hour
+// after tapping Restore. Both directions are tested, because only clearing
+// on one of them is the shape of bug that reads as "sometimes it takes a
+// while to work".
+describe('session cache', () => {
+  beforeEach(() => {
+    clearSessionCacheMock.mockClear();
+  });
+
+  it('is cleared for every device when a deletion is requested', async () => {
+    const user = await insertUser();
+    const ctx = createTestContext({ db });
+
+    await requestDeletion(db, ctx, user.id, user.email, 'UTC');
+
+    // One argument, never two: the `deviceId` overload clears one device,
+    // and the device that asked to delete is not the only one that must
+    // stop being served from cache.
+    expect(clearSessionCacheMock).toHaveBeenCalledWith(user.id);
+    expect(clearSessionCacheMock.mock.calls[0]).toHaveLength(1);
+  });
+
+  it('is cleared for every device when a deletion is cancelled', async () => {
+    const user = await insertUser();
+    const ctx = createTestContext({ db });
+    await requestDeletion(db, ctx, user.id, user.email, 'UTC');
+    clearSessionCacheMock.mockClear();
+
+    await cancelDeletion(db, ctx, user.id);
+
+    expect(clearSessionCacheMock).toHaveBeenCalledWith(user.id);
+    expect(clearSessionCacheMock.mock.calls[0]).toHaveLength(1);
+  });
+
+  it('is still cleared when the cancel was a no-op', async () => {
+    // A person who taps Restore twice, or who followed the recovery email
+    // after already restoring in the app, must not have the second tap be
+    // the one that leaves a stale session behind.
+    const user = await insertUser();
+    const ctx = createTestContext({ db });
+
+    await cancelDeletion(db, ctx, user.id);
+
+    expect(clearSessionCacheMock).toHaveBeenCalledWith(user.id);
+  });
+});
+
+// P03's idempotency, re-asserted from this task's angle rather than
+// duplicated: `requestDeletion` above already proves the timestamp does not
+// move, and this proves the thing the pending screen depends on — that the
+// date `me.get` will report is the same date after a repeat call, so a
+// second request (however it were reached) could never extend the window
+// the user was shown.
+describe('repeat requests and the reported purge date', () => {
+  it('reports the same scheduled purge date to me.get after a repeat call', async () => {
+    const user = await insertUser();
+    const ctx = createTestContext({ db });
+
+    const first = await requestDeletion(db, ctx, user.id, user.email, 'UTC');
+    const { getMe } = await import('./get-me.ts');
+    const beforeRepeat = await getMe(db, user.id);
+    await requestDeletion(db, ctx, user.id, user.email, 'UTC');
+    const afterRepeat = await getMe(db, user.id);
+
+    expect(beforeRepeat.deletionScheduledFor?.getTime()).toBe(first.scheduledPurgeAt.getTime());
+    expect(afterRepeat.deletionScheduledFor?.getTime()).toBe(first.scheduledPurgeAt.getTime());
+  });
+
+  it('reports null once the request is cancelled', async () => {
+    const user = await insertUser();
+    const ctx = createTestContext({ db });
+    await requestDeletion(db, ctx, user.id, user.email, 'UTC');
+
+    await cancelDeletion(db, ctx, user.id);
+
+    const { getMe } = await import('./get-me.ts');
+    expect((await getMe(db, user.id)).deletionScheduledFor).toBeNull();
   });
 });

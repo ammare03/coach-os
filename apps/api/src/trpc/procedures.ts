@@ -6,6 +6,7 @@ import { guardianConsentGate } from './middleware/guardian-consent.ts';
 import { coachOrClientRole, hasRole } from './middleware/has-role.ts';
 import { isAuthed } from './middleware/is-authed.ts';
 import { isOperatorMiddleware } from './middleware/is-operator.ts';
+import { pendingDeletionGate } from './middleware/pending-deletion.ts';
 import { RATE_LIMIT_TIERS } from './middleware/rate-limit-config.ts';
 import { authRateLimit, rateLimit } from './middleware/rate-limit.ts';
 import { requestContext } from './middleware/request-context.ts';
@@ -68,8 +69,18 @@ export const protectedProcedure = publicProcedure.use(isAuthed);
 // the second leaks a fact about someone else's account to whoever's session
 // is making the call.
 //
-// The three builders deliberately left ungated, each for a reason that is
-// load-bearing rather than an oversight:
+// `account-actions/02`: all three builders — everything that constitutes
+// *using the product* — additionally pass through `pendingDeletionGate`,
+// after `hasRole` (same leak reasoning as above) and before
+// `guardianConsentGate` (a pending deletion is the state the caller created
+// and can undo, and it is the truer thing to say about an account that is
+// going away). `coachProcedure` carries this one where it does not carry
+// the consent gate: a minor coach is structurally impossible, but a coach
+// deleting their account is the case §21.4 exists for.
+//
+// The builders deliberately left ungated, each for a reason that is
+// load-bearing rather than an oversight (`coachProcedure` is on this list
+// for the consent gate only — it does carry `pendingDeletionGate`):
 //
 // - `publicProcedure` / `authProcedure` — CLAUDE.md §21.5 requires that a
 //   minor without consent can still sign in and be told why, so
@@ -78,19 +89,29 @@ export const protectedProcedure = publicProcedure.use(isAuthed);
 //   `me.get` is what `06`'s pending screen renders from. It also keeps
 //   `me.requestDeletion` / `me.cancelDeletion` reachable: §21.4's three-tap
 //   deletion is a store requirement and must not depend on a parent
-//   clicking a link. **`04`'s `invites.resendGuardianConsent` must
+//   clicking a link. `account-actions/02` depends on exactly the same fact
+//   for `pendingDeletionGate`, and on one more: the four `me.*` export
+//   procedures (`account-lifecycle/10`) sit here too, so a person inside
+//   the grace period keeps the §21.3 right to a copy of their data. Gating
+//   this builder would take away both the Restore and the export from the
+//   only people who need them. **`04`'s `invites.resendGuardianConsent` must
 //   therefore be built on `protectedProcedure`, not `clientProcedure`** — a
 //   resend the blocked account cannot call is the exact bug that turns a
 //   stalled consent into a dead account.
-// - `coachProcedure` — a minor coach is structurally impossible
-//   (`users_minor_is_client`), and `requireProfileId` rejects the role
-//   mismatch first regardless. Gating it would be a redundant check, and a
-//   redundant check invites the next reader to think the constraint is
-//   advisory.
-export const coachProcedure = protectedProcedure.use(hasRole('coach'));
-export const clientProcedure = protectedProcedure.use(hasRole('client')).use(guardianConsentGate);
+// - `coachProcedure` — for `guardianConsentGate` only: a minor coach is
+//   structurally impossible (`users_minor_is_client`), and
+//   `requireProfileId` rejects the role mismatch first regardless. Gating it
+//   would be a redundant check, and a redundant check invites the next
+//   reader to think the constraint is advisory. Nothing equivalent is true
+//   of deletion, which is why `pendingDeletionGate` is on it.
+export const coachProcedure = protectedProcedure.use(hasRole('coach')).use(pendingDeletionGate);
+export const clientProcedure = protectedProcedure
+  .use(hasRole('client'))
+  .use(pendingDeletionGate)
+  .use(guardianConsentGate);
 export const coachOrClientProcedure = protectedProcedure
   .use(coachOrClientRole)
+  .use(pendingDeletionGate)
   .use(guardianConsentGate);
 
 // `account-lifecycle/12` — SUPPORT.md SU§2's admin gate: `users.internal_

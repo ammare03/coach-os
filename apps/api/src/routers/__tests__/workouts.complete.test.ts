@@ -127,6 +127,7 @@ async function insertClient(coachProfileId: string | null): Promise<ClientFixtur
     guardianConsentAt: user.guardianConsentAt,
     coachProfileId: null,
     clientProfileId: profile.id,
+    deletionScheduledFor: null,
     deletedAt: null,
   };
 
