@@ -382,10 +382,26 @@ export const workoutSessions = trainingSchema.table(
     clientDayUnique: uniqueIndex('sessions_client_day_unique')
       .on(t.clientId, t.programDayId, t.scheduledDate)
       .where(sql`${t.programDayId} IS NOT NULL AND ${t.deletedAt} IS NULL`),
+    // DB§7's three named workout_sessions indexes, transcribed verbatim.
+    // Equality columns first, range/sort last (DB§7's composite rule).
+    //
+    // The client's own history, newest first — the client-detail Training
+    // tab and the logger's `(client_id, scheduled_date)` read.
+    clientDateIdx: index('sessions_client_date').on(t.clientId, t.scheduledDate.desc()),
+    // The coach dashboard's needs-review counter. The partial predicate is
+    // what makes it cheap: a coach's reviewed sessions are the overwhelming
+    // majority of their rows and none of them belong in this index.
+    coachUnreviewedIdx: index('sessions_coach_unreviewed')
+      .on(t.coachId, t.completedAt.desc())
+      .where(sql`${t.status} = 'completed' AND ${t.reviewedAt} IS NULL AND ${t.deletedAt} IS NULL`),
+    // A coach's date-ranged read across their whole book (week/month views).
+    coachRangeIdx: index('sessions_coach_range').on(t.coachId, t.scheduledDate),
     // DB§7: every FK is indexed, no exceptions. Both unique indexes above
     // are PARTIAL, so neither one satisfies this rule on its own (matching
     // identity.ts's invites_pending precedent) — every FK here gets its own
-    // plain index.
+    // plain index. `workout_sessions_coach_id_idx` is now a prefix of
+    // `sessions_coach_range` and therefore redundant; dropping it is a
+    // separate, non-additive decision and deliberately not taken here.
     clientIdIdx: index('workout_sessions_client_id_idx').on(t.clientId),
     coachIdIdx: index('workout_sessions_coach_id_idx').on(t.coachId),
     assignmentIdIdx: index('workout_sessions_assignment_id_idx').on(t.assignmentId),

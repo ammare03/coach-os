@@ -232,6 +232,20 @@
       "when": 1789199801525,
       "tag": "0032_cool_starhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789230699645,
+      "tag": "0033_fat_mentor",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1789231705419,
+      "tag": "0034_luxuriant_morgan_stark",
+      "breakpoints": true
     }
   ]
 }

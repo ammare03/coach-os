@@ -113,6 +113,13 @@ export const mediaAssets = coachingSchema.table(
     coachUnreviewedIdx: index('media_coach_unreviewed')
       .on(t.coachId, t.createdAt.desc())
       .where(sql`${t.processingStatus} = 'ready' AND ${t.deletedAt} IS NULL`),
+    // DB§7: every FK is indexed, no exceptions. None of the three indexes
+    // around this one leads with `client_id`, so `v_client_overview`'s
+    // `unreviewed_videos` subquery sequential-scanned every media row once
+    // per client. DB§7 names no shape for it, so it is the minimal correct
+    // one: a plain single-column index, usable by any `client_id = $1`
+    // predicate regardless of what else the caller filters on.
+    clientIdIdx: index('media_assets_client_id_idx').on(t.clientId),
     // What the nightly retention-sweep job scans
     // (phase-11-media-pipeline/retention-and-quota/02).
     expiringIdx: index('media_expiring')
@@ -614,8 +621,13 @@ export const vClientOverview = coachingSchema.view('v_client_overview', {
         AND ws.scheduled_date >= current_date - 7)                       AS sessions_completed_7d,
     (SELECT count(*) FROM training.workout_sessions ws
       WHERE ws.client_id = cp.id AND ws.scheduled_date BETWEEN current_date - 7 AND current_date) AS sessions_scheduled_7d,
+    -- \`deleted_at IS NULL\` is the one addition to DB§9's text: a
+    -- soft-deleted session is not work the coach still owes. This counter
+    -- and \`needsReviewQuery\`'s session branch sit on the same dashboard and
+    -- must never disagree, so the predicate is repeated in both.
     (SELECT count(*) FROM training.workout_sessions ws
-      WHERE ws.client_id = cp.id AND ws.status='completed' AND ws.reviewed_at IS NULL) AS unreviewed_sessions,
+      WHERE ws.client_id = cp.id AND ws.status='completed' AND ws.reviewed_at IS NULL
+        AND ws.deleted_at IS NULL) AS unreviewed_sessions,
     (SELECT count(*) FROM coaching.media_assets ma
       WHERE ma.client_id = cp.id AND ma.processing_status='ready' AND ma.deleted_at IS NULL
         AND NOT EXISTS (SELECT 1 FROM coaching.comments c
