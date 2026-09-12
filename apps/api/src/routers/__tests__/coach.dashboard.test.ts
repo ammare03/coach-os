@@ -293,8 +293,16 @@ async function insertClient(
       .insert(schema.mediaAssets)
       .values({
         ownerUserId: user.id,
-        coachId: coachProfileId,
-        clientId,
+        // **No `coach_id` / `client_id`, and that is the point.** Those
+        // columns are DB§6's denormalised authorisation keys for content
+        // addressed to a coaching relationship — a form check, a progress
+        // photo. A profile picture is the user's own and belongs to
+        // neither, so filing one into a coach's media library is wrong on
+        // its face. It is also load-bearing for the EXPLAIN assertions
+        // below: `media_coach_unreviewed` is keyed on `coach_id`, so 34
+        // avatars carrying one inflate the planner's estimate for the
+        // needs-review anti-join and flip it onto a sequential scan of
+        // `comments`.
         kind: 'image',
         storageKey: `dashboard-test/${label}/${String(plan.index)}/avatar`,
         mimeType: 'image/jpeg',
@@ -491,6 +499,31 @@ async function insertClient(
 }
 
 /**
+ * How many comments each of the ten thousand filler videos carries.
+ *
+ * **This number is load-bearing for the needs-review EXPLAIN assertion, and
+ * it has a ceiling as well as a floor.**
+ *
+ * `needsReviewQuery`'s `NOT EXISTS` can be answered two ways: a nested-loop
+ * anti-join probing `comments_target` once per candidate video, or a hash
+ * anti-join that reads `comments` end to end. Postgres picks on cost, so
+ * the assertion "never a sequential scan" is only meaningful while the
+ * index plan is *decisively* cheaper. At one comment per asset the table
+ * was 10,011 rows / 1.3MB, the two plans cost 395 and 581, and a 1.47x
+ * margin is close enough that a different ANALYZE sample flips it — which
+ * is exactly what happened on CI.
+ *
+ * The floor: enough rows that scanning them is plainly the worse plan.
+ * The ceiling: the table must stay under `min_parallel_table_scan_size`
+ * (8MB). Past that the planner may parallelise the sequential scan, its
+ * cost starts depending on how many CPUs the runner has, and the
+ * assertion becomes environment-dependent again — the failure mode we are
+ * fixing, reintroduced through the back door. Five keeps it at ~50k rows
+ * and ~6.5MB, comfortably inside both bounds.
+ */
+const COMMENTS_PER_FILLER_ASSET = 5;
+
+/**
  * Ten thousand clients belonging to ten other coaches, plus their sessions,
  * check-ins, videos, comments, and daily summaries.
  *
@@ -561,10 +594,16 @@ async function seedOtherCoachesAtScale(): Promise<void> {
       FROM identity.client_profiles cp
       JOIN identity.users u ON u.id = cp.user_id AND u.email LIKE 'filler-client-%'
   `);
+  // Five per filler asset, not one — `COMMENTS_PER_FILLER_ASSET` explains
+  // why the number matters. Every filler asset already carries a comment,
+  // so extra ones move no counter; they exist purely so `comments` is big
+  // enough for the planner's choice about it to be a real one.
   await db.execute(sql`
     INSERT INTO coaching.comments (author_user_id, target_type, target_id, client_id, body)
     SELECT ma.owner_user_id, 'media_asset', ma.id, ma.client_id, 'filler'
-      FROM coaching.media_assets ma WHERE ma.storage_key LIKE 'filler/%'
+      FROM coaching.media_assets ma
+      CROSS JOIN generate_series(1, ${COMMENTS_PER_FILLER_ASSET}) g
+     WHERE ma.storage_key LIKE 'filler/%'
   `);
   await db.execute(sql`
     INSERT INTO nutrition.daily_nutrition_summary (client_id, date, adherence_score, meals_logged)
