@@ -1,5 +1,7 @@
 import { coach as coachSchemas } from '@coachos/schemas';
 
+import { getClientOverview } from '../features/coach/client-overview.ts';
+import { getClientTrainingHistory } from '../features/coach/client-training-history.ts';
 import { getCoachDashboard } from '../features/coach/dashboard.ts';
 import { updateCoachProfile } from '../features/coach/update-profile.ts';
 import { detachClient, notifyRelationshipEnded } from '../services/coach-client-transition.ts';
@@ -37,6 +39,41 @@ export const coachRouter = router({
     // P10 inherits, and a no-input procedure is the one shape the enumeration
     // test cannot probe (pre-phase-09 audit, Q2/S3).
     list: coachProcedure.query(() => []),
+
+    // `phase-10-coach-review-surfaces/client-detail/01` — §8.3's Overview
+    // tab in ONE call, not five. `coach.clients.overview` rather than a new
+    // top-level `client.*` router: this file's own header says P10 is what
+    // fills `coach.clients` in, and the caller is a coach reading one of
+    // their own clients, which is exactly what `coach.clients` means.
+    // (`client.*` in `api-conventions` §1 is the CLIENT app's router —
+    // `clientApp.ts` here — and putting a coach-only read there would put
+    // the two roles' procedures in one namespace.)
+    //
+    // `ownsResource('client', …)` is the whole security story: the resolver
+    // below re-checks nothing, and everything it reads is addressed by the
+    // client id this middleware has already proven the caller owns.
+    overview: coachProcedure
+      .input(coachSchemas.clientOverviewInput)
+      .use(ownsResource('client', (i: { clientId: string }) => i.clientId))
+      .query(({ ctx, input }) =>
+        getClientOverview(ctx.db, ctx.user.coachProfileId, input.clientId),
+      ),
+
+    // `phase-10-coach-review-surfaces/client-detail/02` — §8.3's Training
+    // tab: the session history list, most recent first, keyset-paginated.
+    //
+    // Sits beside `overview` under `coach.clients` for the same reason it
+    // gives, and takes the same one guard: `ownsResource('client', …)` is
+    // the whole security story, and `getClientTrainingHistory` re-checks
+    // nothing.
+    //
+    // Every row is render-complete — duration, volume, PR count, reviewed
+    // state — so nothing on the Training tab fetches per row
+    // (`screen-composition` §2, and this task's own Risks section).
+    trainingHistory: coachProcedure
+      .input(coachSchemas.clientTrainingHistoryInput)
+      .use(ownsResource('client', (i: { clientId: string }) => i.clientId))
+      .query(({ ctx, input }) => getClientTrainingHistory(ctx.db, input.clientId, input)),
 
     release: coachProcedure
       .input(coachSchemas.releaseClientInput)

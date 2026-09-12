@@ -1,13 +1,16 @@
-import { Text, View } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 
-// Placeholder route (`phase-05-app-shell/router-skeleton/01`). Structure
-// only — it renders its own route path and nothing else, deliberately. The
-// phase that owns this screen designs and builds it; anything added here
-// first would have to be deleted then (P05 README, "Risks").
+import { ClientNutritionScreen } from '../../../../features/clients/screens/ClientNutritionScreen.tsx';
+
+// Composition only (`CLAUDE.md` §9.2) — the screen owns its cache key and
+// its one state; this file owns the route param
+// (`phase-10-coach-review-surfaces/client-detail/03`).
+//
+// No `onBack`, unlike the Overview route: this tab has no state that needs a
+// way out. The back control and the facet bar are the shell's, in
+// `_layout.tsx`.
 export default function CoachClientNutritionScreen() {
-  return (
-    <View>
-      <Text>(coach)/client/[id]/nutrition</Text>
-    </View>
-  );
+  const { id } = useLocalSearchParams<{ id: string }>();
+
+  return <ClientNutritionScreen clientId={id} />;
 }

@@ -1,7 +1,7 @@
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 
-import { router as imperativeRouter, Stack } from 'expo-router';
+import { router as imperativeRouter, Slot, Stack } from 'expo-router';
 import { act, renderRouter } from 'expo-router/testing-library';
 import type { ComponentType } from 'react';
 
@@ -59,6 +59,15 @@ function StubScreen() {
 }
 
 /**
+ * Stands in for a substituted NESTED `_layout`. `StubScreen` would render
+ * nothing and take every route beneath it with it; a `Slot` keeps the
+ * children resolving, which is all this file asserts.
+ */
+function PassThroughLayout() {
+  return <Slot />;
+}
+
+/**
  * Screens that pull the design system in; irrelevant to route resolution.
  * The logger also mounts the heartbeat, which needs a tRPC provider this
  * test deliberately does not build — it mounts the real group layouts for
@@ -72,6 +81,13 @@ const SUBSTITUTED = new Set([
   '(auth)/forgot-password',
   '(auth)/invite/[code]',
   '(client)/workout/[sessionId]',
+  // `phase-10-coach-review-surfaces/client-detail/01`: the Overview tab and
+  // the six-facet `Tabs` navigator above it both read
+  // `coach.clients.overview` through TanStack Query. The layout is replaced
+  // by a pass-through rather than by nothing, so `coachos://client/cl-1`
+  // still resolves to a route — which is the only thing this file asserts.
+  '(coach)/client/[id]/_layout',
+  '(coach)/client/[id]/index',
   '_dev/gallery',
   'your-data',
 ]);
@@ -84,7 +100,7 @@ function routeContext(): Record<string, ComponentType> {
     if (route === '_layout') {
       modules[route] = TestRootLayout;
     } else if (SUBSTITUTED.has(route)) {
-      modules[route] = StubScreen;
+      modules[route] = route.endsWith('_layout') ? PassThroughLayout : StubScreen;
     } else {
       const loaded = require(path.join(APP_DIR, file)) as { default: ComponentType };
       modules[route] = loaded.default;
