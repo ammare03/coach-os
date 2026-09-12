@@ -102,8 +102,17 @@ async function setup() {
       .input(z.object({ mediaAssetId: z.string() }))
       .use(ownsResource('mediaAsset', (i: { mediaAssetId: string }) => i.mediaAssetId))
       .query(() => ({ ok: true })),
+    // The one procedure here that must NOT be writable in a real router:
+    // `coachNote` is a `CoachOnlyResourceKind`, so composing it onto a
+    // client-capable builder is a compile error (`owns-resource.types.test.ts`
+    // is where that is asserted as a property). It is written anyway, once,
+    // behind the suppression — because the runtime lock underneath it
+    // (`resolveOwnership`'s `if (!entry.clientOwnedIds) throw ROLE_REQUIRED`)
+    // is a separate defence and still needs a client caller to reach it.
+    // Deleting the suppression is how you'd find out the type lock regressed.
     coachNoteOwned: coachOrClientProcedure
       .input(z.object({ coachNoteId: z.string() }))
+      // @ts-expect-error a coach-only kind may not be guarded on a builder that admits a client
       .use(ownsResource('coachNote', (i: { coachNoteId: string }) => i.coachNoteId))
       .query(() => ({ ok: true })),
   });
