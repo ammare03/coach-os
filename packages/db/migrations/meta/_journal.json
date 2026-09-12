@@ -225,6 +225,13 @@
       "when": 1788864914160,
       "tag": "0031_simple_sabra",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1789199801525,
+      "tag": "0032_cool_starhawk",
+      "breakpoints": true
     }
   ]
 }

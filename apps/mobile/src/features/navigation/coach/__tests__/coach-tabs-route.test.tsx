@@ -4,12 +4,12 @@ import { renderRouter, screen } from 'expo-router/testing-library';
 import CoachTabsLayout from '../../../../app/(coach)/(tabs)/_layout.tsx';
 import CoachClientsScreen from '../../../../app/(coach)/(tabs)/clients.tsx';
 import CoachInboxScreen from '../../../../app/(coach)/(tabs)/inbox.tsx';
-import CoachHomeScreen from '../../../../app/(coach)/(tabs)/index.tsx';
 import CoachMoreScreen from '../../../../app/(coach)/(tabs)/more.tsx';
 import { RouteStub } from '../../../../test-support/route-stub.tsx';
 import { COACH_TABS } from '../coach-tabs.ts';
 
 const PROGRAMS_ROUTE = '(coach)/(tabs)/programs';
+const HOME_ROUTE = '(coach)/(tabs)/index';
 
 /**
  * Real as of `program-templates/01`. This suite is about the dock and the
@@ -20,6 +20,15 @@ const PROGRAMS_ROUTE = '(coach)/(tabs)/programs';
  */
 function CoachProgramsScreen() {
   return <RouteStub route={PROGRAMS_ROUTE} />;
+}
+
+/**
+ * Real as of `coach-dashboard/01`, and stubbed for the same reason: the
+ * dashboard reads `coach.dashboard` through TanStack Query. What it renders
+ * is covered by `src/features/clients/components/__tests__/`.
+ */
+function CoachHomeScreen() {
+  return <RouteStub route={HOME_ROUTE} />;
 }
 
 /**

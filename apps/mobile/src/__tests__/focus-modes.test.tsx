@@ -21,7 +21,6 @@ import ClientWorkoutSummaryScreen from '../app/(client)/workout/[sessionId]/summ
 import CoachTabsLayout from '../app/(coach)/(tabs)/_layout.tsx';
 import CoachClientsScreen from '../app/(coach)/(tabs)/clients.tsx';
 import CoachInboxScreen from '../app/(coach)/(tabs)/inbox.tsx';
-import CoachHomeScreen from '../app/(coach)/(tabs)/index.tsx';
 import CoachMoreScreen from '../app/(coach)/(tabs)/more.tsx';
 import CoachLayout from '../app/(coach)/_layout.tsx';
 import CoachLiveScreen from '../app/(coach)/live/[sessionId].tsx';
@@ -41,6 +40,16 @@ import { RouteStub } from '../test-support/route-stub.tsx';
  */
 function CoachProgramsScreen() {
   return <RouteStub route="(coach)/(tabs)/programs" />;
+}
+
+/**
+ * Real as of `phase-10-coach-review-surfaces/coach-dashboard/01`, and
+ * stubbed for exactly the reason above: the dashboard reads
+ * `coach.dashboard` through TanStack Query. What it actually renders is
+ * `src/features/clients/components/__tests__/`'s job.
+ */
+function CoachHomeScreen() {
+  return <RouteStub route="(coach)/(tabs)/index" />;
 }
 
 /**

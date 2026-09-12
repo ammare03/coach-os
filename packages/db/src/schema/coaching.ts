@@ -33,6 +33,7 @@ import {
   mediaVisibility,
   metricSource,
   photoAngle,
+  trainingGoal,
 } from './enums.ts';
 import { clientProfiles, coachProfiles, users } from './identity.ts';
 import { exercises, setLogs, workoutSessions } from './training.ts';
@@ -594,6 +595,13 @@ export const vClientOverview = coachingSchema.view('v_client_overview', {
   unreviewedVideos: bigint('unreviewed_videos', { mode: 'number' }).notNull(),
   nutritionAdherence7d: numeric('nutrition_adherence_7d'),
   latestWeightKg: numeric('latest_weight_kg'),
+  // Appended by `coach-dashboard/01` for §8.2's client row and
+  // `coach-dashboard/02`'s filter. Appended, never interleaved: the
+  // migration is a `CREATE OR REPLACE VIEW`, which keeps the existing
+  // output columns only if their name, type, and position are unchanged.
+  goal: trainingGoal('goal'),
+  avatarAssetId: uuid('avatar_asset_id'),
+  unreadMessages: bigint('unread_messages', { mode: 'number' }).notNull(),
 }).as(sql`
   SELECT
     cp.id                AS client_id,
@@ -615,7 +623,23 @@ export const vClientOverview = coachingSchema.view('v_client_overview', {
     (SELECT avg(dns.adherence_score) FROM nutrition.daily_nutrition_summary dns
       WHERE dns.client_id = cp.id AND dns.date >= current_date - 7)       AS nutrition_adherence_7d,
     (SELECT bm.weight_kg FROM coaching.body_metrics bm
-      WHERE bm.client_id = cp.id ORDER BY bm.recorded_at DESC LIMIT 1)    AS latest_weight_kg
+      WHERE bm.client_id = cp.id ORDER BY bm.recorded_at DESC LIMIT 1)    AS latest_weight_kg,
+    cp.goal,
+    u.avatar_asset_id,
+    -- Messages the CLIENT sent that the coach has not opened. Direction is
+    -- \`sender_user_id = cp.user_id\` rather than "not the coach", because a
+    -- thread is exactly two people (\`conversations_coach_client_unique\`)
+    -- and the coach's own unread mark is the client's badge, not this one.
+    -- Capped at 100 rows before counting (\`api-conventions\` §6 — never
+    -- \`count(*)\` an unbounded table for a badge); \`Badge\` renders 99+ from
+    -- 100 anyway, so the two caps agree by construction.
+    (SELECT count(*) FROM (
+       SELECT 1 FROM coaching.messages m
+        JOIN coaching.conversations cv ON cv.id = m.conversation_id
+       WHERE cv.coach_id = cp.coach_id AND cv.client_id = cp.id
+         AND m.sender_user_id = cp.user_id
+         AND m.read_at IS NULL AND m.deleted_at IS NULL
+       LIMIT 100) capped)                                                 AS unread_messages
   FROM identity.client_profiles cp
   JOIN identity.users u ON u.id = cp.user_id
   WHERE cp.deleted_at IS NULL

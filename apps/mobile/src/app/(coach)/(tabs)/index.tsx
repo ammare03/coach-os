@@ -1,13 +1,21 @@
-import { CoachTabPlaceholder } from '../../../features/navigation/coach/CoachTabPlaceholder.tsx';
+import { useRouter } from 'expo-router';
 
-// Composition only (`CLAUDE.md` §9.2). A genuine placeholder — the phase
-// named below designs and builds this screen, and anything added here first
-// would have to be deleted then (`router-skeleton/03`, Risks).
+import { CoachDashboardScreen } from '../../../features/clients/screens/CoachDashboardScreen.tsx';
+
+// Composition only (`CLAUDE.md` §9.2) — the screen owns its query and its
+// four states; this file owns where a tap goes
+// (`phase-10-coach-review-surfaces/coach-dashboard/01`).
 export default function CoachHomeScreen() {
+  const router = useRouter();
+
   return (
-    <CoachTabPlaceholder
-      route="(coach)/(tabs)/index"
-      ownedBy="phase-10-coach-review-surfaces/coach-dashboard/"
+    <CoachDashboardScreen
+      onOpenClient={(clientId) => {
+        router.push({ pathname: '/(coach)/client/[id]', params: { id: clientId } });
+      }}
+      onInviteClient={() => {
+        router.push('/(coach)/invite-client');
+      }}
     />
   );
 }
