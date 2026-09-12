@@ -10,6 +10,7 @@ import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { bootstrap } from '../features/auth/bootstrap.ts';
+import { PendingDeletionRedirect } from '../features/auth/PendingDeletionRedirect.tsx';
 import { useAuthStore } from '../features/auth/store.ts';
 import { PendingDeepLinkReplay } from '../features/navigation/deep-links/PendingDeepLinkReplay.tsx';
 import { SchemaVersionResetDialog } from '../features/offline/SchemaVersionResetDialog.tsx';
@@ -280,6 +281,16 @@ export default function RootLayout() {
                         constructed before any navigator exists. Same position as
                         the replay above, and for the same reason. */}
                       <GuardianConsentRedirect />
+                      {/* `account-actions/02`. Renders nothing; it routes an
+                        authenticated session whose `me.get` reports a
+                        `deletionScheduledFor` to the blocking screen, and
+                        installs the `ACCOUNT_PENDING_DELETION` handler that
+                        refreshes that read when the state changes mid-session.
+                        Same position and same reasons as the redirect above —
+                        and, like it, deliberately NOT wrapped around
+                        `<Stack>`, which would remount every provider in this
+                        file (`features/auth/AuthGate.tsx`). */}
+                      <PendingDeletionRedirect />
                     </>
                   )}
                 </BottomSheetModalProvider>

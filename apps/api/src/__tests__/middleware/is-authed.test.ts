@@ -42,6 +42,7 @@ const coachA = {
   guardianConsentAt: null,
   coachProfileId: '00000000-0000-7000-8000-00000000c0a2',
   clientProfileId: null,
+  deletionScheduledFor: null,
   deletedAt: null,
 };
 

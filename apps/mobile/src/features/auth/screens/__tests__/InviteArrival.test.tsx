@@ -68,7 +68,7 @@ beforeEach(() => {
     error: null,
     data: { coachName: 'Marcus Adeyemi' },
   });
-  // `handleWrongSessionSignOut` (`InviteArrival.tsx`) reads the resolved
+  // `useSignOutFlow` (`account-actions/01`) branches on the resolved
   // `WipeResult` — the real hook always resolves, so the fake must too.
   mockSignOut.mockResolvedValue({ outcome: 'wiped' });
 });
@@ -210,4 +210,24 @@ describe('InviteArrival', () => {
 
     expect(mockSignOut).toHaveBeenCalledTimes(1);
   });
+
+  // `account-actions/01` — the branch this screen used to drop on the floor
+  // with a comment reading "intentionally unhandled".
+  it.each([
+    ['coach', null],
+    ['client', { id: 'c1', name: 'P', businessName: null }],
+  ] as const)(
+    'names the unsynced work instead of refusing in silence, as a %s',
+    async (role, coachState) => {
+      signIn(role === 'coach' ? 'coach' : 'client');
+      mockCoachQuery.mockReturnValue({ isPending: false, data: coachState });
+      mockSignOut.mockResolvedValue({ outcome: 'blocked', pendingCount: 2 });
+
+      render(<InviteArrival code={CODE} />);
+      fireEvent.press(screen.getByText('Sign out'));
+
+      expect(await screen.findByText('2 entries haven’t synced yet')).toBeTruthy();
+      expect(screen.getByText('Keep me signed in')).toBeTruthy();
+    },
+  );
 });

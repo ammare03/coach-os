@@ -59,6 +59,7 @@ const coachA: ContextUser = {
   guardianConsentAt: null,
   coachProfileId: uuidv7(),
   clientProfileId: null,
+  deletionScheduledFor: null,
   deletedAt: null,
 };
 

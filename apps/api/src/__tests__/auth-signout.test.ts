@@ -157,6 +157,7 @@ describe('auth.signOutAllDevices', () => {
           guardianConsentAt: null,
           coachProfileId: null,
           clientProfileId: null,
+          deletionScheduledFor: null,
           deletedAt: null,
         },
       }),

@@ -82,6 +82,7 @@ function clientUser(overrides: Pick<ContextUser, 'isMinor' | 'guardianConsentAt'
     locale: 'en',
     coachProfileId: null,
     clientProfileId: '00000000-0000-7000-8000-00000000c112',
+    deletionScheduledFor: null,
     deletedAt: null,
     ...overrides,
   };

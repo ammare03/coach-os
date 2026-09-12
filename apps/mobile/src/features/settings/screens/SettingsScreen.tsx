@@ -1,9 +1,11 @@
 import { ListRow, ListSection, density as densityTokens, type Density } from '@coachos/ui';
 import { useRouter } from 'expo-router';
-import { Download, Info } from 'lucide-react-native';
+import { Download, Info, LogOut, Trash2 } from 'lucide-react-native';
 import { ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { UnsyncedWorkPrompt } from '../../auth/components/UnsyncedWorkPrompt.tsx';
+import { useSignOutFlow } from '../../auth/hooks/useSignOutFlow.ts';
 import { useAuthStore } from '../../auth/store.ts';
 import { AccountHeader } from '../components/AccountHeader.tsx';
 import { AppearanceRow } from '../components/AppearanceRow.tsx';
@@ -36,6 +38,7 @@ export function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const role = useAuthStore((state) => state.role);
+  const signOutFlow = useSignOutFlow();
 
   // `ui-conventions` §1 — density is a prop decided by role, never a forked
   // component. An assistant coach (P25) is a coach for every purpose this
@@ -82,7 +85,7 @@ export function SettingsScreen() {
         Privacy & safety Privacy                               ✓     ✓     P15 preferences-and-quiet-hours/04
                          Blocked people                        ✓     ✓     P26 blocking-and-filtering/03
         Your data        Your data (export)                    ✓     ✓     P03 account-lifecycle/11  ← MOUNTED
-                         Delete account — DIRECTLY BELOW IT    ✓     ✓     settings-shell → account-actions/02
+                         Delete account — DIRECTLY BELOW IT    ✓     ✓     account-actions/02         ← MOUNTED
         Help & about     Medical disclaimer                    ✓     ✓     P06 onboarding-infrastructure/03 ← MOUNTED
                          Terms · Privacy Policy                ✓     ✓     P22 legal-and-compliance/01
                          Help → Send diagnostic info           ✓     ✓     P26 support-tooling/04
@@ -129,6 +132,24 @@ export function SettingsScreen() {
           density={density}
           onPress={() => router.push('/your-data')}
         />
+        {/* `account-actions/02`. The NEXT child of this section, not a row
+            at the foot of the page: `CLAUDE.md` §21.4 puts deletion ≤3 taps
+            from here, and the order — export above deletion — is what makes
+            the copy offered before the exit.
+
+            `destructive`, so `ListRow` draws no chevron. It does navigate,
+            unlike Sign out above; the component's rule is that a
+            destructive row never draws one, and the alternative (a red
+            label wearing a chevron) reads as a navigation row that happens
+            to be red. The screen it opens is what explains itself. */}
+        <ListRow
+          label="Delete account"
+          icon={Trash2}
+          destructive
+          density={density}
+          onPress={() => router.push('/delete-account')}
+          testID="settings-delete-account"
+        />
       </ListSection>
 
       {/* HELP & ABOUT. `CLAUDE.md` §21.3 requires the disclaimer to stay
@@ -144,9 +165,37 @@ export function SettingsScreen() {
         <AppVersionRow density={density} />
       </ListSection>
 
-      {/* FOOTER SLOT — `account-actions/01` puts Sign out here, as the last
-          child of this scroll view. Left genuinely empty rather than
-          stubbed: see rule 3 above. */}
+      {/* FOOTER SLOT — `account-actions/01`. Its own untitled `ListSection`
+          rather than a bare row: the exit gets the same card every other
+          group has, so it reads as the last item of the list instead of a
+          stray control floating under the page.
+
+          `destructive`, so the label and glyph take `DESIGN.md` §1.1's
+          accent-on-dark and the row draws no chevron — it acts, it does not
+          navigate. No confirmation: with an empty outbox this is one tap and
+          the sign-in screen (`ui-conventions` §5's undo-not-confirm rule,
+          and sign-out is neither of its two typed-confirmation exceptions).
+          The only question that can appear is the prompt below, and only
+          when the device still holds work nothing has synced. */}
+      <ListSection density={density}>
+        <ListRow
+          label="Sign out"
+          icon={LogOut}
+          destructive
+          density={density}
+          disabled={signOutFlow.isSigningOut}
+          onPress={signOutFlow.requestSignOut}
+          testID="settings-sign-out"
+        />
+      </ListSection>
+
+      <UnsyncedWorkPrompt
+        pendingCount={signOutFlow.pendingCount}
+        onKeepSignedIn={signOutFlow.keepSignedIn}
+        onDiscard={signOutFlow.discardAndSignOut}
+        isDiscarding={signOutFlow.isSigningOut}
+        testID="settings-unsynced-work"
+      />
     </ScrollView>
   );
 }

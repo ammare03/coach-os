@@ -3,6 +3,7 @@ import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 import { TRPCClientError } from '@trpc/client';
 
 import { handleGuardianConsentError } from '../guardian-consent-handling.ts';
+import { handlePendingDeletionError } from '../pending-deletion-handling.ts';
 import { handleRateLimitError } from '../rate-limit-handling.ts';
 
 import {
@@ -26,8 +27,11 @@ export const queryClient = new QueryClient({
   // cache takes exactly one `onError`: `RATE_LIMITED` surfaces a toast
   // (`03-per-route-config-and-429-handling.md`) and
   // `GUARDIAN_CONSENT_PENDING` routes to the pending screen
-  // (`guardian-consent/06`). Neither claims an error the other wants, and
-  // every other code falls through to the screen's own error state.
+  // (`guardian-consent/06`). `ACCOUNT_PENDING_DELETION` invalidates
+  // `me.get` so the root redirect can route to the blocking screen, and
+  // shows NO toast — it is a state, not an event (`account-actions/02`).
+  // None of the three claims an error another wants, and every other code
+  // falls through to the screen's own error state.
   queryCache: new QueryCache({ onError: handleCentralError }),
   mutationCache: new MutationCache({ onError: handleCentralError }),
   defaultOptions: {
@@ -51,6 +55,7 @@ export const queryClient = new QueryClient({
 function handleCentralError(error: unknown): void {
   handleRateLimitError(error);
   handleGuardianConsentError(error);
+  handlePendingDeletionError(error);
 }
 
 // Retry a network-level failure or a genuine server error; never a 4xx — a

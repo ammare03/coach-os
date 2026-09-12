@@ -32,6 +32,19 @@ export type ContextUser = Pick<
 > & {
   coachProfileId: string | null;
   clientProfileId: string | null;
+  /**
+   * `identity.deletion_requests.scheduled_purge_at`, or `null` when nothing
+   * is pending — the §21.4 grace period, on every request, for
+   * `./middleware/pending-deletion.ts`.
+   *
+   * Not a `Pick`, because it is not a `users` column: it rides the same
+   * query as one more left join (below), for the same reason the profile
+   * ids do. And deliberately not an access-token claim, for the same
+   * reason `guardianConsentAt` isn't — a claim is a cache that can be
+   * fifteen minutes stale, and fifteen stale minutes here means someone
+   * who just tapped Restore still sees the blocking screen.
+   */
+  deletionScheduledFor: Date | null;
   // Always `null` — a soft-deleted user resolves to a `null` user, never a
   // populated one with this field set (see `resolveUser` below).
   deletedAt: null;
@@ -116,6 +129,7 @@ async function resolveUser(claims: { userId: string }): Promise<ContextUser | nu
       deletedAt: schema.users.deletedAt,
       coachProfileId: schema.coachProfiles.id,
       clientProfileId: schema.clientProfiles.id,
+      deletionScheduledFor: schema.deletionRequests.scheduledPurgeAt,
     })
     .from(schema.users)
     .leftJoin(
@@ -129,6 +143,12 @@ async function resolveUser(claims: { userId: string }): Promise<ContextUser | nu
         isNull(schema.clientProfiles.deletedAt),
       ),
     )
+    // One more left join on the row this query already reads, rather than a
+    // second query: `./middleware/pending-deletion.ts` needs this on every
+    // request, and the alternative is doubling the round trips on the single
+    // most-executed query in the product. `deletion_requests.user_id` is the
+    // table's primary key, so this can never fan the row out.
+    .leftJoin(schema.deletionRequests, eq(schema.deletionRequests.userId, schema.users.id))
     .where(eq(schema.users.id, claims.userId))
     .limit(1);
 
@@ -146,6 +166,7 @@ async function resolveUser(claims: { userId: string }): Promise<ContextUser | nu
     guardianConsentAt: row.guardianConsentAt,
     coachProfileId: row.coachProfileId,
     clientProfileId: row.clientProfileId,
+    deletionScheduledFor: row.deletionScheduledFor,
     deletedAt: null,
   };
 }

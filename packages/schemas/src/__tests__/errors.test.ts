@@ -80,6 +80,7 @@ function describeCode(code: AppErrorCode): string {
     case 'PROGRAM_COPY_CROSS_PROGRAM':
     case 'CLIENT_ALREADY_HAS_ACTIVE_ASSIGNMENT':
     case 'SESSION_CLAIMED_ELSEWHERE':
+    case 'ACCOUNT_PENDING_DELETION':
       return code;
     default:
       return assertNever(code);

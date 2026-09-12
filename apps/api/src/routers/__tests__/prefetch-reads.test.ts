@@ -94,6 +94,7 @@ async function insertCoach(): Promise<Actor> {
     guardianConsentAt: user.guardianConsentAt,
     coachProfileId: profile.id,
     clientProfileId: null,
+    deletionScheduledFor: null,
     deletedAt: null,
   };
   return {
@@ -133,6 +134,7 @@ async function insertClient(coachProfileId: string, timezone = 'UTC'): Promise<A
     guardianConsentAt: user.guardianConsentAt,
     coachProfileId: null,
     clientProfileId: profile.id,
+    deletionScheduledFor: null,
     deletedAt: null,
   };
   return {

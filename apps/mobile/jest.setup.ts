@@ -43,10 +43,11 @@ require('@coachos/config/jest.native-mocks');
 // `transformIgnorePatterns` covers. Mocked here rather than widening that
 // pattern: transforming two more ESM packages in node_modules would slow
 // every suite down to spin up an SDK that must not send anything from a test
-// run anyway. `init` is the only member the app calls; `src/lib/sentry.ts`'s
-// own test declares its own copy of this mock so it can assert on the call.
+// run anyway. `init` and `captureException` are the only members the app
+// calls; `src/lib/sentry.ts`'s own test declares its own copy of this mock so
+// it can assert on the call.
 // This mock lives in apps/mobile only — packages/ui imports no Sentry.
-jest.mock('@sentry/react-native', () => ({ init: jest.fn() }));
+jest.mock('@sentry/react-native', () => ({ init: jest.fn(), captureException: jest.fn() }));
 
 // `rest-timer/01`. Logging a set arms a 1Hz interval in the rest-timer
 // store, and any suite that logs one through the real `logSet` inherits it
