@@ -1,7 +1,7 @@
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 
-import { NOT_FOUND_COPY } from '@coachos/ui';
+import { NOT_FOUND_COPY, ToastProvider } from '@coachos/ui';
 import { Slot, Stack } from 'expo-router';
 import { renderRouter, screen } from 'expo-router/testing-library';
 import type { ComponentType } from 'react';
@@ -202,7 +202,10 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   // device, and gets its own assertion at the bottom of this file rather
   // than a substitution that would record a provider dependency it does not
   // have.
-  ['(coach)/client/[id]/notes', '/(coach)/client/c1/notes'],
+  // `(coach)/client/[id]/notes` was a placeholder here until
+  // `coach-notes/02` composed the real tab. It reads a query, but it is NOT
+  // substituted: it renders through the root layout's provider pair and
+  // gets its own assertion at the bottom of this file.
   // `(coach)/session/[id]` was a placeholder here until
   // `phase-10-coach-review-surfaces/session-review/01` composed the real
   // review screen. It no longer renders its own route key, so — like
@@ -264,7 +267,9 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
 function TestRootLayout() {
   return (
     <TRPCTestProvider>
-      <Stack screenOptions={{ headerShown: false }} />
+      <ToastProvider>
+        <Stack screenOptions={{ headerShown: false }} />
+      </ToastProvider>
     </TRPCTestProvider>
   );
 }
@@ -500,6 +505,7 @@ describe('the §9.1 route tree', () => {
     // redirect, and the catch-all.
     expect(uncovered).toEqual([
       '(coach)/(tabs)/more',
+      '(coach)/client/[id]/notes',
       '(coach)/client/[id]/videos',
       '(coach)/session/[id]',
       '+not-found',
@@ -536,6 +542,19 @@ describe('the §9.1 route tree', () => {
     renderRouter(routeContext(), { initialUrl: '/(coach)/client/c1/videos' });
 
     expect(screen.getByTestId('client-videos-empty')).toBeTruthy();
+  });
+
+  // The Notes tab is real as of `coach-notes/02`. What it lists, and that
+  // pinning patches both cache entries, is
+  // `features/clients/screens/__tests__/ClientNotesScreen.test.tsx`; this
+  // asserts only the tree's half — that the URL resolves to the tab, with
+  // its privacy label mounted.
+  it('renders the Notes tab at /(coach)/client/[id]/notes', () => {
+    signInAsOwnerOf('/(coach)/client/c1/notes');
+    renderRouter(routeContext(), { initialUrl: '/(coach)/client/c1/notes' });
+
+    expect(screen.getByTestId('client-notes')).toBeTruthy();
+    expect(screen.getByTestId('privacy-label')).toBeTruthy();
   });
 
   // The session review is a real focus mode as of `session-review/01`, and

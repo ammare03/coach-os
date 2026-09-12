@@ -64,6 +64,7 @@ jest.mock('@gorhom/bottom-sheet', () => {
   const { View } = jest.requireActual('react-native');
   const { createElement } = jest.requireActual('react');
   // `createElement`, not JSX — this is a plain `.js` setup file.
+  /** @param {{ children?: unknown }} props */
   const passthrough = ({ children, ...rest }) => createElement(View, rest, children);
   return {
     __esModule: true,
@@ -97,6 +98,7 @@ jest.mock('@gorhom/bottom-sheet', () => {
 jest.mock('@shopify/react-native-skia', () => {
   const { View } = jest.requireActual('react-native');
   const { createElement } = jest.requireActual('react');
+  /** @param {{ children?: unknown }} props */
   const passthrough = ({ children, ...rest }) => createElement(View, rest, children);
   const nullRender = () => null;
   // `Path` takes paint children (a gradient, a dash effect) but is not a
@@ -105,19 +107,24 @@ jest.mock('@shopify/react-native-skia', () => {
   // handling. Rendering only its children keeps the tree identical to what
   // it was when `Path` was a null render, for every component that passes
   // none.
+  /** @param {{ children?: unknown }} props */
   const childrenOnly = ({ children }) => children ?? null;
 
   const makePath = () => {
     const path = {
+      /** @type {unknown[][]} */
       commands: [],
+      /** @param {unknown[]} args */
       addCircle(...args) {
         path.commands.push(['addCircle', ...args]);
         return path;
       },
+      /** @param {unknown[]} args */
       addArc(...args) {
         path.commands.push(['addArc', ...args]);
         return path;
       },
+      /** @param {unknown[]} args */
       addRect(...args) {
         path.commands.push(['addRect', ...args]);
         return path;
@@ -127,10 +134,12 @@ jest.mock('@shopify/react-native-skia', () => {
       // has to accept them for the real geometry code to run — a missing
       // method here would throw before the domain and gap rules were ever
       // exercised.
+      /** @param {unknown[]} args */
       moveTo(...args) {
         path.commands.push(['moveTo', ...args]);
         return path;
       },
+      /** @param {unknown[]} args */
       lineTo(...args) {
         path.commands.push(['lineTo', ...args]);
         return path;
@@ -158,7 +167,7 @@ jest.mock('@shopify/react-native-skia', () => {
     // a mount error rather than a silent omission.
     LinearGradient: nullRender,
     DashPathEffect: nullRender,
-    vec: (x, y) => ({ x, y }),
+    vec: (/** @type {number} */ x, /** @type {number} */ y) => ({ x, y }),
     Skia: { Path: { Make: makePath } },
   };
 });

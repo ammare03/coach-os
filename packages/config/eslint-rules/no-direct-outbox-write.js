@@ -27,7 +27,9 @@ const LOCAL_SCHEMA_SOURCE = /(^|\/)db\/schema(\/[\w.-]+)*$/;
 const OUTBOX_WRITE =
   /\b(?:insert\s+(?:or\s+(?:rollback|abort|fail|ignore|replace)\s+)?into|replace\s+into|update|delete\s+from)\s+outbox\b/i;
 
+/** @param {unknown} rawSource */
 function isLocalSchemaSource(rawSource) {
+  if (typeof rawSource !== 'string') return false;
   const withoutExtension = rawSource.replace(/\.[cm]?[jt]sx?$/, '');
   return LOCAL_SCHEMA_SOURCE.test(withoutExtension);
 }
@@ -49,6 +51,10 @@ const rule = {
     },
   },
   create(context) {
+    /**
+     * @param {import('eslint').Rule.Node} node
+     * @param {unknown} text
+     */
     function checkSqlText(node, text) {
       if (typeof text === 'string' && OUTBOX_WRITE.test(text)) {
         context.report({ node, messageId: 'outboxWriteSql' });

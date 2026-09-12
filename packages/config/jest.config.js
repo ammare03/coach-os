@@ -33,7 +33,12 @@ module.exports = {
           rewriteRelativeImportExtensions: false,
           allowImportingTsExtensions: true,
           noEmit: false,
+          // ts-jest merges this with the package's tsconfig.json, which
+          // turns `checkJs` on for `pnpm typecheck`. Type-checking the JS
+          // is that script's job, not the transform's — and `checkJs`
+          // without `allowJs` is a hard TS5052 here.
           allowJs: false,
+          checkJs: false,
         },
       },
     ],

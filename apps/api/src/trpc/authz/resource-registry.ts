@@ -29,7 +29,7 @@ export type ResourceKind =
   | 'checkin'
   | 'liveSession';
 
-interface ResourceKindEntry {
+export interface ResourceKindEntry {
   // Ignores `deleted_at` and `client_profiles.status` (step 6/7) —
   // ownership answers *whose*, not *whether it's still there or billable*.
   coachOwnedIds: (
@@ -78,7 +78,13 @@ function idsOf(rows: { id: string }[]): Set<string> {
   return new Set(rows.map((r) => r.id));
 }
 
-export const RESOURCE_REGISTRY: Record<ResourceKind, ResourceKindEntry> = {
+// `satisfies`, not a `Record<ResourceKind, ResourceKindEntry>` annotation:
+// the annotation would widen every `clientOwnedIds: null` below back to
+// `fn | null`, which erases at the type level the one distinction step 8
+// calls structural. `satisfies` keeps the exhaustiveness and excess-key
+// checks the annotation gave while letting `CoachOnlyResourceKind` below be
+// read off this object rather than restated beside it.
+export const RESOURCE_REGISTRY = {
   client: {
     coachOwnedIds: async (db, { coachProfileId }, ids) =>
       idsOf(
@@ -687,4 +693,30 @@ export const RESOURCE_REGISTRY: Record<ResourceKind, ResourceKindEntry> = {
     historySharedOwnedIds: null,
     nutritionSharedOwnedIds: null,
   },
-};
+} satisfies Record<ResourceKind, ResourceKindEntry>;
+
+/**
+ * The kinds with no client-side ownership branch at all — read off the
+ * registry above, never restated. A second, hand-written union is exactly
+ * the thing that drifts from the object it claims to describe, and a stale
+ * one here reads as a guarantee while granting nothing.
+ *
+ * `../middleware/owns-resource.ts` turns this into the compile-time half of
+ * step 8: a kind in this set may only be guarded on a builder that has
+ * already narrowed `ctx.user.role` to `'coach'`. The runtime half —
+ * `resolveOwnership`'s `if (!entry.clientOwnedIds) throw ROLE_REQUIRED` —
+ * stays exactly where it is; this adds a lock, it does not replace one.
+ *
+ * Note what this deliberately does *not* distinguish: `coachNote` and
+ * `invite` are coach-only forever, while `program`/`programWeek`/
+ * `programDay`/`programExercise` are coach-only only until P07 gives them a
+ * client branch through `assignment`. Runtime treats both cases identically
+ * today, so the type does too — and the day P07 writes that branch, this
+ * set narrows by itself.
+ */
+export type CoachOnlyResourceKind = {
+  [K in ResourceKind]: (typeof RESOURCE_REGISTRY)[K]['clientOwnedIds'] extends null ? K : never;
+}[ResourceKind];
+
+/** Every other kind: guardable on a coach, client, or role-agnostic builder. */
+export type SharedResourceKind = Exclude<ResourceKind, CoachOnlyResourceKind>;

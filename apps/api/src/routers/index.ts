@@ -16,6 +16,7 @@ import { meRouter } from './me.ts';
 import { mediaRouter } from './media.ts';
 import { messagesRouter } from './messages.ts';
 import { metricsRouter } from './metrics.ts';
+import { notesRouter } from './notes.ts';
 import { notificationsRouter } from './notifications.ts';
 import { nutritionRouter } from './nutrition.ts';
 import { programsRouter } from './programs.ts';
@@ -55,6 +56,7 @@ export const appRouter = router({
   media: mediaRouter,
   messages: messagesRouter,
   metrics: metricsRouter,
+  notes: notesRouter,
   notifications: notificationsRouter,
   nutrition: nutritionRouter,
   programs: programsRouter,

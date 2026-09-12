@@ -9,9 +9,10 @@
 // below errors and the rare legitimate site uses a targeted disable comment
 // instead — a disable comment is reviewable, a bare `!` is invisible.
 const js = require('@eslint/js');
-const tseslint = require('typescript-eslint');
-const importPlugin = require('eslint-plugin-import');
 const prettierConfig = require('eslint-config-prettier');
+const importPlugin = require('eslint-plugin-import');
+const tseslint = require('typescript-eslint');
+
 const noHandWrittenRowType = require('./eslint-rules/no-hand-written-row-type.js');
 
 const TS_FILES = ['**/*.{ts,tsx,mts,cts}'];
@@ -25,6 +26,7 @@ const TS_FILES = ['**/*.{ts,tsx,mts,cts}'];
 // fires when linting runs with packages/utils itself as the cwd — the
 // normal case), and path-scoped in this file's own exported array as
 // defense-in-depth for a future whole-repo lint run.
+/** @type {import('eslint').Linter.RulesRecord} */
 const utilsPurityRules = {
   'import/no-nodejs-modules': [
     'error',
@@ -84,6 +86,7 @@ const utilsPurityRules = {
 // in this file's own array alone would silently never fire when ESLint's
 // cwd is already that app's directory — the normal case; same reasoning as
 // `utilsPurityRules` above).
+/** @type {import('eslint').Linter.RulesRecord} */
 const noInlineInputSchemaRules = {
   'no-restricted-syntax': [
     'error',
@@ -100,6 +103,7 @@ const noInlineInputSchemaRules = {
 // `cause.code`, which the formatter then has to treat as uncaught. Exported
 // for the same cwd reason `noInlineInputSchemaRules` is — see that
 // comment.
+/** @type {import('eslint').Linter.RulesRecord} */
 const noBareTrpcErrorRules = {
   'no-restricted-syntax': [
     'error',
@@ -117,6 +121,7 @@ const noBareTrpcErrorRules = {
 // this task exists to close. `conventions.test.ts` catches it at runtime by
 // walking the exported tree; this rule catches it at write time. Exported
 // for the same cwd reason `noInlineInputSchemaRules` is.
+/** @type {import('eslint').Linter.RulesRecord} */
 const noBareZodObjectRules = {
   'no-restricted-syntax': [
     'error',
@@ -127,7 +132,7 @@ const noBareZodObjectRules = {
   ],
 };
 
-/** @type {import('eslint').Linter.Config[]} */
+/** @type {import('typescript-eslint').ConfigArray} */
 const config = tseslint.config(
   js.configs.recommended,
   {

@@ -1,7 +1,15 @@
+import type { TRPCMiddlewareBuilder } from '@trpc/server';
+
 import { appError } from '../../lib/app-error.ts';
 import { ownershipCacheKey } from '../authz/ownership-cache.ts';
-import { RESOURCE_REGISTRY, type ResourceKind } from '../authz/resource-registry.ts';
-import type { Context } from '../context.ts';
+import {
+  RESOURCE_REGISTRY,
+  type CoachOnlyResourceKind,
+  type ResourceKind,
+  type ResourceKindEntry,
+  type SharedResourceKind,
+} from '../authz/resource-registry.ts';
+import type { Context, ContextUser } from '../context.ts';
 import { middleware } from '../init.ts';
 
 // The one message every failure of this guard produces (`03-owns-resource.md`
@@ -17,6 +25,40 @@ const WRONG_ROLE_MESSAGE = "You don't have access to that.";
 function toIdArray(raw: string | string[]): string[] {
   return Array.isArray(raw) ? raw : [raw];
 }
+
+/**
+ * What a builder's accumulated context must already be for a coach-only
+ * kind to compose onto it: `ctx.user` non-null with `role` narrowed to
+ * `'coach'` — i.e. the context `hasRole('coach')` produces, and nothing
+ * weaker. `clientProcedure` fails it on `role`; `coachOrClientProcedure`
+ * and `protectedProcedure` fail it because they leave the union
+ * un-narrowed; `publicProcedure` fails it because `user` may be null.
+ *
+ * Written as a *requirement* rather than mirrored off `has-role.ts`'s
+ * output type on purpose — it states the minimum the guard depends on, and
+ * a future change that stopped narrowing `role` would fail every coach-only
+ * call site loudly instead of silently widening this.
+ */
+type CoachNarrowedContext = Omit<Context, 'user'> & {
+  user: Omit<ContextUser, 'role'> & { role: 'coach' };
+};
+
+/**
+ * Exactly the shape `middleware()` returns, with the required context left
+ * open. tRPC checks `.use()`'s argument contravariantly in this first type
+ * parameter, so declaring a narrower context here is what makes the
+ * mismatch a compile error at the call site rather than a `ROLE_REQUIRED`
+ * at runtime. The remaining parameters are the ones `init.ts`'s factory
+ * already fixes: no meta, no context override, and an unconstrained input
+ * (the selector's own annotation is what types the input — see the
+ * `ownsResource` doc below).
+ */
+type OwnershipGuard<TRequiredContext> = TRPCMiddlewareBuilder<
+  TRequiredContext,
+  object,
+  object,
+  unknown
+>;
 
 /**
  * The guard every client-scoped procedure attaches, after `.input()`
@@ -39,11 +81,26 @@ function toIdArray(raw: string | string[]): string[] {
  * Reads `ctx.user` only, never the input, to decide *who* is asking (step
  * 4) — the ids `selector` returns are *what* they're asking about, and the
  * two must never be confused.
+ *
+ * **A `CoachOnlyResourceKind` composes only onto a builder that has already
+ * narrowed `ctx.user.role` to `'coach'`** — step 8's "structurally
+ * unrepresentable", finally expressed in the signature rather than only in
+ * `resolveOwnership`'s throw. The overloads carry it: the coach-only one
+ * demands `CoachNarrowedContext`, the shared one demands nothing beyond
+ * `Context`, and which applies is read off `RESOURCE_REGISTRY` itself.
  */
+export function ownsResource<TInput>(
+  kind: CoachOnlyResourceKind,
+  selector: (input: TInput) => string | string[],
+): OwnershipGuard<CoachNarrowedContext>;
+export function ownsResource<TInput>(
+  kind: SharedResourceKind,
+  selector: (input: TInput) => string | string[],
+): OwnershipGuard<Context>;
 export function ownsResource<TInput>(
   kind: ResourceKind,
   selector: (input: TInput) => string | string[],
-) {
+): OwnershipGuard<Context> {
   return middleware(async ({ ctx, input, next }) => {
     const ids = toIdArray(selector(input as TInput));
     if (ids.length === 0) {
@@ -89,7 +146,11 @@ async function resolveOwnership(ctx: Context, kind: ResourceKind, ids: string[])
     return;
   }
 
-  const entry = RESOURCE_REGISTRY[kind];
+  // Annotated, so this stays the one widened `ResourceKindEntry` the switch
+  // below was written against — `RESOURCE_REGISTRY` is now `satisfies`-typed,
+  // so indexing it with the full union would hand this a union of one entry
+  // shape per kind, for no gain here.
+  const entry: ResourceKindEntry = RESOURCE_REGISTRY[kind];
   let ownedAmongUncached: Set<string>;
 
   switch (ctx.user.role) {

@@ -12,15 +12,13 @@ import { captureServerException } from '../lib/sentry.ts';
  * `observability/02`'s free tier with noise for an ordinary transient
  * failure (a momentary R2 timeout) and defeat the alert's usefulness.
  *
- * A shared function, not a standing listener of its own — no processor
- * exists yet for any of the seven queues (tasks 01–03), so there is no
- * `Worker` here to attach to. Each phase calls this once, right after
- * constructing the `Worker` it registers in `./worker.ts`'s `workers` array:
+ * A shared function, not a standing listener of its own — it needs a
+ * `Worker` to attach to. Never call it directly from `../worker.ts`:
+ * `./worker-registry.ts`'s `registerWorker` is the single seam that does it
+ * for every worker the process runs, so a queue added later cannot miss it.
  *
  * ```ts
- * const worker = new Worker('media-transcode', processor, { connection: queueConnection });
- * attachDeadLetterHandler(worker);
- * workers.push(worker);
+ * registerWorker(new Worker('media-transcode', processor, { connection: queueConnection }));
  * ```
  */
 export function attachDeadLetterHandler(worker: Worker): void {

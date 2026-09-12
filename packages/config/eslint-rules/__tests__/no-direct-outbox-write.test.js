@@ -104,7 +104,7 @@ describe('the exported apps/mobile wiring', () => {
 
   it('is exported at error severity', () => {
     expect(entry).toBeDefined();
-    expect(entry.rules[RULE_ID]).toBe('error');
+    expect(entry.rules?.[RULE_ID]).toBe('error');
   });
 
   it('applies to the TypeScript files the app is written in', () => {

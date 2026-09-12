@@ -11,6 +11,8 @@ const { Linter, RuleTester } = require('eslint');
 const reactNativeConfig = require('../../eslint.react-native.js');
 const rule = require('../no-raw-color.js');
 
+const { findRuleEntry } = require('./find-rule-entry.js');
+
 const ruleTester = new RuleTester();
 
 ruleTester.run('no-raw-color', rule, {
@@ -55,11 +57,11 @@ ruleTester.run('no-raw-color', rule, {
 describe('the eslint.react-native.js wiring', () => {
   const RULE_ID = 'theme/no-raw-color';
   const FILENAME = 'src/components/Card.tsx';
-  const entry = reactNativeConfig.find((config) => config.rules?.[RULE_ID] !== undefined);
+  const entry = findRuleEntry(reactNativeConfig, RULE_ID);
 
   it('registers the rule at error severity', () => {
     expect(entry).toBeDefined();
-    expect(entry.rules[RULE_ID]).toBe('error');
+    expect(entry.rules?.[RULE_ID]).toBe('error');
   });
 
   it('reports a raw hex literal in an ordinary component file', () => {

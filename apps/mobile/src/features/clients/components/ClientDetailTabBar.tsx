@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CLIENT_DETAIL_TABS, useClientIdentity, type ClientDetailTab } from '../api.ts';
 
-// The chrome above §8.3's six tabs: a way back, who this is, and the facet
+// The chrome above §8.3's seven tabs: a way back, who this is, and the facet
 // row. Handed to `<Tabs tabBar={…}>` with `tabBarPosition: 'top'`, so it is
 // the navigator's own bar rather than a header the six screens each redraw
 // — which is what keeps it fixed while a tab scrolls under it, and what
@@ -29,7 +29,8 @@ import { CLIENT_DETAIL_TABS, useClientIdentity, type ClientDetailTab } from '../
 // five or more: a scrollable row, active `600` with a 2px brand underline,
 // inactive `400` muted. Six tabs is squarely the second case, and the
 // primitive would have to grow a scroll mode and drop its sliding pill to
-// cover it.
+// cover it. `coach-notes/02` made it seven, which is why the row scrolls
+// rather than fits.
 
 // The renderer's own prop type, read off `Tabs` rather than deep-imported
 // from `expo-router/build/…` — the same type, and it cannot rot against a
@@ -57,6 +58,7 @@ export const CLIENT_DETAIL_TAB_LABEL: Record<ClientDetailTab, string> = {
   videos: 'Videos',
   checkins: 'Check-ins',
   chat: 'Chat',
+  notes: 'Notes',
 };
 
 export function ClientDetailTabBar({
@@ -118,9 +120,7 @@ export function ClientDetailTabBar({
           // Rendered in `CLIENT_DETAIL_TABS` order, not `state.routes` order
           // — the latter is whatever expo-router resolved off the file
           // system (alphabetically: chat, checkins, index, notes, …), and
-          // facet order is a design decision. `notes` is in the directory
-          // and declared by `_layout.tsx`, and is deliberately not in this
-          // array: `coach-notes` adds it.
+          // facet order is a design decision.
           const routeName = tab === 'overview' ? 'index' : tab;
           const index = state.routes.findIndex((candidate) => candidate.name === routeName);
           const route = state.routes[index];

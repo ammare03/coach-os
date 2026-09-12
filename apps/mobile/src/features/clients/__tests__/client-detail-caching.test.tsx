@@ -93,6 +93,7 @@ describe('clientDetailKeys', () => {
       ['clients', CLIENT_A, 'videos'],
       ['clients', CLIENT_A, 'checkins'],
       ['clients', CLIENT_A, 'chat'],
+      ['clients', CLIENT_A, 'notes'],
     ]);
     // Independent: no two tabs share an entry, so one tab loading, failing,
     // or being invalidated never touches another.
@@ -202,7 +203,7 @@ describe('useClientIdentity', () => {
       avatarAssetId: null,
       coachSince: new Date('2026-03-01T00:00:00.000Z'),
     });
-    // The header above six tabs costs nothing on the tab that already
+    // The header above seven tabs costs nothing on the tab that already
     // fetched.
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });

@@ -22,6 +22,10 @@ const rule = {
     },
   },
   create(context) {
+    /**
+     * @param {import('eslint').Rule.Node} node
+     * @param {unknown} value
+     */
     function check(node, value) {
       if (typeof value === 'string' && COLOR_RE.test(value)) {
         context.report({ node, messageId: 'rawColor', data: { value } });

@@ -26,6 +26,7 @@ import * as meModule from '../me.ts';
 import * as mediaModule from '../media.ts';
 import * as messagesModule from '../messages.ts';
 import * as metricsModule from '../metrics.ts';
+import * as notesModule from '../notes.ts';
 import * as notificationsModule from '../notifications.ts';
 import * as nutritionModule from '../nutrition.ts';
 import * as programsModule from '../programs.ts';
@@ -52,6 +53,7 @@ const FEATURE_MODULES: Record<string, object> = {
   media: mediaModule,
   messages: messagesModule,
   metrics: metricsModule,
+  notes: notesModule,
   notifications: notificationsModule,
   nutrition: nutritionModule,
   programs: programsModule,
