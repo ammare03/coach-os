@@ -1,5 +1,10 @@
 import { PERSONAL_RECORD_TYPES, schema, type DbClient, type PersonalRecordType } from '@coachos/db';
-import { parseSessionClientNotes, parseSetNote } from '@coachos/utils';
+import {
+  parseNumeric,
+  parseSessionClientNotes,
+  parseSetNote,
+  type ExerciseTarget,
+} from '@coachos/utils';
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 
 import { appError } from '../../lib/app-error.ts';
@@ -10,15 +15,21 @@ import { appError } from '../../lib/app-error.ts';
 // into, and the detail of exactly one of its rows.
 //
 // **Five statements at most, none of them per row, and the fifth only when
-// there is a skip to place.** The list one screen back had the same
+// the session was prescribed at all.** The list one screen back had the same
 // discipline for the same reason; here the N+1 trap is per SET rather than
 // per session, and a PR lookup per set row would be one query per line of a
 // 40-set session. One grouped read across every set id answers all of them.
 //
+// The fifth statement answers two questions at once — where a skip belongs
+// (decision (c2)) and what each performed group was asked for (decision
+// (f)) — because both are `program_exercises` rows for the same
+// `program_day_id`. Reading them twice would be two statements for one
+// table scan, so the condition is simply "this session has a program day".
+//
 // Guarded by `ownsResource('workoutSession', …)` at the router, never here
 // (`api-conventions` §3). Nothing below re-checks `coach_id`.
 //
-// Five decisions, in the order they matter:
+// Seven decisions, in the order they matter:
 //
 // (a) **`reviewed_at` is written by a `query`, which `api-conventions` §2
 //     otherwise forbids.** This is the one deliberate exception in the API,
@@ -84,6 +95,49 @@ import { appError } from '../../lib/app-error.ts';
 //     for this screen to disagree with the history row that opened it.
 //     Both columns are `null` rather than `0` when there is nothing to
 //     report — a bodyweight session did not lift nothing (`COPY.md` CO§2).
+//
+// (e) **The client's NAME and IANA ZONE come from `identity.users`, joined
+//     onto this session's own read — not from `v_client_overview`, which is
+//     where `dashboard.ts` and `client-overview.ts` read the name.** That
+//     view's `name` column *is* `users.name` (migration 0032), so the three
+//     surfaces cannot disagree; what the view adds on top is seven
+//     correlated subqueries counting a week of sessions, videos and
+//     messages, none of which this screen draws. Paying for them to learn
+//     one string would make the cheapest statement on the path the most
+//     expensive. `users.timezone` is not in the view at all, and the same
+//     join answers both.
+//
+//     The zone is returned **raw, never as a formatted time**. `startedAt`
+//     rendered without one would render in the COACH's zone, which is
+//     §25.5's exact trap — a coach in Mumbai reading a client in Toronto.
+//     `scheduledDate` is untouched: it is already the client-local
+//     `yyyy-MM-dd` and needs no zone to be correct.
+//
+// (f) **A performed group carries the prescription it was performed
+//     against, as columns, not as a string.** The words are
+//     `packages/utils`' `formatTargetScheme` — the same function the coach's
+//     own program-day screen and the client's logger already print, so all
+//     three read one scheme (`target-scheme.ts`'s header rule). Formatting
+//     here would need the reader's `weight_unit`, which is a display
+//     preference of whoever is looking (DB§5.1.1) and not a property of the
+//     session, so the API returns kilograms and the device spells them.
+//
+//     `target` is **`null` on a substituted group**: the block was written
+//     for the exercise the client replaced, so naming it as this exercise's
+//     target would misreport what was asked for. It is `null` for an ad-hoc
+//     session, which has no `program_day_id` to ask, and `null` for any
+//     performed exercise the day does not prescribe — a client who added a
+//     movement was asked for nothing, which is not the same as being asked
+//     for zero. A **skip carries no target at all**: the row says only that
+//     the exercise did not happen, and a scheme beside it would read as
+//     work.
+//
+//     A day that prescribes one movement twice (a back-off block after the
+//     main one) collapses to one group by decision (c), and the FIRST
+//     block's target is the one it carries — the same "first occurrence
+//     wins" rule `interleaveSkips` already applies to that movement's
+//     position, for the same reason: the earlier block is the one the
+//     coach's instruction for that exercise opens with.
 
 type SessionStatus = (typeof schema.workoutSessions.$inferSelect)['status'];
 
@@ -135,6 +189,16 @@ export interface SessionReviewExerciseGroup {
    * is the only trace a substitution leaves (DB§5.2 has no column for it).
    */
   substitutedFor: string | null;
+  /**
+   * What the program day asked for, in the columns
+   * `packages/utils`' `formatTargetScheme` reads — weights in kilograms,
+   * unformatted, because the unit they are spelled in belongs to whoever is
+   * reading (decision (f)).
+   *
+   * `null` on a substituted group, on an ad-hoc session, and on any
+   * exercise the day does not prescribe.
+   */
+  target: ExerciseTarget | null;
   /** In `set_number` order, which is the order they were performed. */
   sets: SessionReviewSet[];
 }
@@ -164,6 +228,19 @@ export interface SessionReview {
   sessionId: string;
   /** The client this session belongs to — the coach already owns them, by the time this returns. */
   clientId: string;
+  /**
+   * `users.name`, the same column `v_client_overview.name` projects, so the
+   * header here and the row on the dashboard name one person identically
+   * (decision (e)). `NOT NULL`, so never empty.
+   */
+  clientName: string;
+  /**
+   * The CLIENT's IANA zone (`users.timezone`, `NOT NULL`, default `'UTC'`)
+   * — the only thing that makes `startedAt` renderable as a time of day
+   * without silently showing it in the coach's zone (`CLAUDE.md` §25.5).
+   * A zone, never a formatted instant: the device formats.
+   */
+  clientTimezone: string;
   /** `yyyy-MM-dd` — the CLIENT's local training day, never an instant (DB§5.3, `CLAUDE.md` §25.5). */
   scheduledDate: string;
   /** The session's own name, else the program day's, else `null`. */
@@ -231,31 +308,52 @@ export function markReviewedQuery(db: DbClient, sessionId: string, now: Date) {
  * way the session still opens — the same reasoning
  * `client-training-history.ts` gives for the list this screen is the detail
  * of.
+ *
+ * The two INNER joins below it carry decision (e)'s name and zone, so the
+ * header costs no statement of its own.
  */
 export function sessionQuery(db: DbClient, sessionId: string) {
-  return db
-    .select({
-      sessionId: schema.workoutSessions.id,
-      clientId: schema.workoutSessions.clientId,
-      scheduledDate: schema.workoutSessions.scheduledDate,
-      sessionName: schema.workoutSessions.name,
-      programDayName: schema.programDays.name,
-      status: schema.workoutSessions.status,
-      startedAt: schema.workoutSessions.startedAt,
-      completedAt: schema.workoutSessions.completedAt,
-      durationSeconds: schema.workoutSessions.durationSeconds,
-      totalVolumeKg: schema.workoutSessions.totalVolumeKg,
-      perceivedExertion: schema.workoutSessions.perceivedExertion,
-      clientNotes: schema.workoutSessions.clientNotes,
-      skipReason: schema.workoutSessions.skipReason,
-      reviewedAt: schema.workoutSessions.reviewedAt,
-      // Decision (c2)'s only input — the day whose `order_index` places a skip.
-      programDayId: schema.workoutSessions.programDayId,
-    })
-    .from(schema.workoutSessions)
-    .leftJoin(schema.programDays, eq(schema.programDays.id, schema.workoutSessions.programDayId))
-    .where(and(eq(schema.workoutSessions.id, sessionId), isNull(schema.workoutSessions.deletedAt)))
-    .limit(1);
+  return (
+    db
+      .select({
+        sessionId: schema.workoutSessions.id,
+        clientId: schema.workoutSessions.clientId,
+        // Decision (e) — the two identity fields, from the column
+        // `v_client_overview.name` itself projects, without the view's seven
+        // correlated counts.
+        clientName: schema.users.name,
+        clientTimezone: schema.users.timezone,
+        scheduledDate: schema.workoutSessions.scheduledDate,
+        sessionName: schema.workoutSessions.name,
+        programDayName: schema.programDays.name,
+        status: schema.workoutSessions.status,
+        startedAt: schema.workoutSessions.startedAt,
+        completedAt: schema.workoutSessions.completedAt,
+        durationSeconds: schema.workoutSessions.durationSeconds,
+        totalVolumeKg: schema.workoutSessions.totalVolumeKg,
+        perceivedExertion: schema.workoutSessions.perceivedExertion,
+        clientNotes: schema.workoutSessions.clientNotes,
+        skipReason: schema.workoutSessions.skipReason,
+        reviewedAt: schema.workoutSessions.reviewedAt,
+        // Decision (c2)'s only input — the day whose `order_index` places a skip.
+        programDayId: schema.workoutSessions.programDayId,
+      })
+      .from(schema.workoutSessions)
+      .leftJoin(schema.programDays, eq(schema.programDays.id, schema.workoutSessions.programDayId))
+      // INNER on both: `workout_sessions.client_id` and `client_profiles.user_id`
+      // are `NOT NULL` and neither FK can go away under a logged session
+      // (`ON DELETE RESTRICT` / `CASCADE` respectively), so a session that
+      // exists always has the person who trained it.
+      .innerJoin(
+        schema.clientProfiles,
+        eq(schema.clientProfiles.id, schema.workoutSessions.clientId),
+      )
+      .innerJoin(schema.users, eq(schema.users.id, schema.clientProfiles.userId))
+      .where(
+        and(eq(schema.workoutSessions.id, sessionId), isNull(schema.workoutSessions.deletedAt)),
+      )
+      .limit(1)
+  );
 }
 
 /**
@@ -334,12 +432,15 @@ export function personalRecordsQuery(db: DbClient, clientProfileId: string, setL
 }
 
 /**
- * Statement 5, and the only conditional one — the day's prescribed order,
- * read solely to place a skip (decision (c2)).
+ * Statement 5, and the only conditional one — the day's prescription: the
+ * order that places a skip (decision (c2)) and the target scheme each
+ * performed group was asked for (decision (f)).
  *
- * Issued **only** when the session both has skips to place and a
- * `program_day_id` to place them against, so an ordinary session still costs
- * four statements and this one never grows with the number of sets either.
+ * Issued **only** when the session has a `program_day_id`, and then exactly
+ * once however many blocks, skips or sets it has. It answers both questions
+ * because both are the same rows: a second read scoped to the same
+ * `program_day_id` would be a sixth statement for a table this one has
+ * already scanned.
  *
  * The LIVE program day, not `program_snapshot`: `complete.ts` sets the
  * snapshot back to `null` on the statement that completes a session
@@ -353,17 +454,63 @@ export function personalRecordsQuery(db: DbClient, clientProfileId: string, setL
  * INNER on `exercises`: `program_exercises.exercise_id` is `NOT NULL` with
  * `ON DELETE RESTRICT`, so a prescribed block always has its library row.
  */
-export function prescribedOrderQuery(db: DbClient, programDayId: string) {
+export function prescriptionQuery(db: DbClient, programDayId: string) {
   return db
     .select({
       exerciseId: schema.programExercises.exerciseId,
       exerciseName: schema.exercises.name,
       orderIndex: schema.programExercises.orderIndex,
+      targetSets: schema.programExercises.targetSets,
+      targetRepsMin: schema.programExercises.targetRepsMin,
+      targetRepsMax: schema.programExercises.targetRepsMax,
+      targetRpe: schema.programExercises.targetRpe,
+      targetRir: schema.programExercises.targetRir,
+      targetWeightKg: schema.programExercises.targetWeightKg,
+      targetPercent1rm: schema.programExercises.targetPercent1rm,
+      targetRestSeconds: schema.programExercises.targetRestSeconds,
+      tempo: schema.programExercises.tempo,
     })
     .from(schema.programExercises)
     .innerJoin(schema.exercises, eq(schema.exercises.id, schema.programExercises.exerciseId))
     .where(eq(schema.programExercises.programDayId, programDayId))
     .orderBy(asc(schema.programExercises.orderIndex));
+}
+
+/**
+ * The scales `program_blocks.ts` parses the same three columns at, restated
+ * rather than imported so the two files are visibly the same decision — a
+ * coach and their client must read one number, and `numeric(_,1)` parsed at
+ * scale 2 would show `8.00` on one side of the product (`code-conventions`
+ * §3's numeric trap).
+ */
+const INTENSITY_SCALE = 1;
+const WEIGHT_SCALE = 2;
+
+/** One prescribed row turned into the shape `formatTargetScheme` takes, numerics parsed once. */
+function toExerciseTarget(row: {
+  targetSets: number;
+  targetRepsMin: number | null;
+  targetRepsMax: number | null;
+  targetRpe: string | null;
+  targetRir: number | null;
+  targetWeightKg: string | null;
+  targetPercent1rm: string | null;
+  targetRestSeconds: number | null;
+  tempo: string | null;
+}): ExerciseTarget {
+  return {
+    targetSets: row.targetSets,
+    targetRepsMin: row.targetRepsMin,
+    targetRepsMax: row.targetRepsMax,
+    targetRpe: row.targetRpe === null ? null : parseNumeric(row.targetRpe, INTENSITY_SCALE),
+    targetRir: row.targetRir,
+    targetWeightKg:
+      row.targetWeightKg === null ? null : parseNumeric(row.targetWeightKg, WEIGHT_SCALE),
+    targetPercent1rm:
+      row.targetPercent1rm === null ? null : parseNumeric(row.targetPercent1rm, INTENSITY_SCALE),
+    targetRestSeconds: row.targetRestSeconds,
+    tempo: row.tempo,
+  };
 }
 
 /** A `record_type` the CHECK constraint allows but this build has never heard of is dropped, not rendered. */
@@ -375,11 +522,43 @@ const RECORD_TYPE_RANK = new Map<PersonalRecordType, number>(
   PERSONAL_RECORD_TYPES.map((type, index) => [type, index]),
 );
 
-/** One prescribed block, reduced to the three fields decision (c2) needs. */
+/** One prescribed block: decision (c2)'s three positioning fields, plus decision (f)'s scheme. */
 export interface PrescribedBlock {
   exerciseId: string;
   exerciseName: string;
   orderIndex: number;
+  target: ExerciseTarget;
+}
+
+/**
+ * Decision (f) applied to the whole session: every performed group given the
+ * block it was performed against, or left at `null`.
+ *
+ * Mutates in place because `interleaveSkips` is about to fold the same
+ * objects into one ordered list, and a second array of copies is two things
+ * that can disagree.
+ */
+export function attachTargets(
+  performed: SessionReviewExerciseGroup[],
+  prescribed: PrescribedBlock[],
+): void {
+  if (prescribed.length === 0) return;
+
+  const byExerciseId = new Map<string, ExerciseTarget>();
+  for (const block of prescribed) {
+    // First occurrence wins — `prescriptionQuery` returns `order_index`
+    // ascending, and decision (f)'s back-off case names the earlier block.
+    if (!byExerciseId.has(block.exerciseId)) byExerciseId.set(block.exerciseId, block.target);
+  }
+
+  for (const group of performed) {
+    // A swap is the prescribed SLOT filled differently, which is enough to
+    // position a skip (`interleaveSkips`) and not enough to name a target:
+    // the block's reps and load were written for the movement that was
+    // replaced (decision (f)).
+    if (group.substitutedFor !== null) continue;
+    group.target = byExerciseId.get(group.exerciseId) ?? null;
+  }
 }
 
 /**
@@ -481,24 +660,32 @@ export async function getSessionReview(
     throw appError('NOT_YOUR_CLIENT', "We couldn't find that.", {});
   }
 
+  // Statements 4 and 5, together and only when each can change the answer:
+  // the record read needs a set to hang a record on, and the prescription
+  // read needs a day to have prescribed one. Neither depends on the other,
+  // so they cost one round trip rather than two (decision (f)).
+  const [recordRows, prescribed] = await Promise.all([
+    setRows.length > 0
+      ? personalRecordsQuery(
+          db,
+          session.clientId,
+          setRows.map((row) => row.setLogId),
+        )
+      : [],
+    session.programDayId !== null ? prescriptionQuery(db, session.programDayId) : [],
+  ]);
+
   const recordsBySet = new Map<string, PersonalRecordType[]>();
-  if (setRows.length > 0) {
-    const recordRows = await personalRecordsQuery(
-      db,
-      session.clientId,
-      setRows.map((row) => row.setLogId),
-    );
-    for (const row of recordRows) {
-      // `personal_records.set_log_id` is nullable (`ON DELETE SET NULL`), so
-      // the column's type admits null even though `inArray` cannot match one.
-      if (row.setLogId === null || !isRecordType(row.recordType)) continue;
-      const existing = recordsBySet.get(row.setLogId);
-      if (existing) existing.push(row.recordType);
-      else recordsBySet.set(row.setLogId, [row.recordType]);
-    }
-    for (const types of recordsBySet.values()) {
-      types.sort((a, b) => (RECORD_TYPE_RANK.get(a) ?? 0) - (RECORD_TYPE_RANK.get(b) ?? 0));
-    }
+  for (const row of recordRows) {
+    // `personal_records.set_log_id` is nullable (`ON DELETE SET NULL`), so
+    // the column's type admits null even though `inArray` cannot match one.
+    if (row.setLogId === null || !isRecordType(row.recordType)) continue;
+    const existing = recordsBySet.get(row.setLogId);
+    if (existing) existing.push(row.recordType);
+    else recordsBySet.set(row.setLogId, [row.recordType]);
+  }
+  for (const types of recordsBySet.values()) {
+    types.sort((a, b) => (RECORD_TYPE_RANK.get(a) ?? 0) - (RECORD_TYPE_RANK.get(b) ?? 0));
   }
 
   // Insertion order IS performed order — `setsQuery` returned the rows
@@ -515,6 +702,7 @@ export async function getSessionReview(
         exerciseId: row.exerciseId,
         exerciseName: row.exerciseName,
         substitutedFor: null,
+        target: null,
         sets: [],
       };
       groups.set(row.exerciseId, group);
@@ -552,15 +740,19 @@ export async function getSessionReview(
   }));
   const performed = [...groups.values()];
 
-  // Statement 5, and only when it can change the answer — decision (c2).
-  const prescribed =
-    skips.length > 0 && session.programDayId !== null
-      ? await prescribedOrderQuery(db, session.programDayId)
-      : [];
+  const blocks: PrescribedBlock[] = prescribed.map((row) => ({
+    exerciseId: row.exerciseId,
+    exerciseName: row.exerciseName,
+    orderIndex: row.orderIndex,
+    target: toExerciseTarget(row),
+  }));
+  attachTargets(performed, blocks);
 
   return {
     sessionId: session.sessionId,
     clientId: session.clientId,
+    clientName: session.clientName,
+    clientTimezone: session.clientTimezone,
     scheduledDate: session.scheduledDate,
     name: session.sessionName ?? session.programDayName ?? null,
     status: session.status,
@@ -578,6 +770,6 @@ export async function getSessionReview(
     // whichever branch set it. The fallback is unreachable in practice and
     // exists so the contract above ("never `null`") is a type, not a hope.
     reviewedAt: session.reviewedAt ?? now,
-    exercises: interleaveSkips(performed, skips, prescribed),
+    exercises: interleaveSkips(performed, skips, blocks),
   };
 }

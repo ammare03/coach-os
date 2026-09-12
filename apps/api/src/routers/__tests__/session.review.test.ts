@@ -25,10 +25,20 @@
 //      without one to tell apart.
 //   7. **No N+1.** The statement count is asserted, not the result — a
 //      correct response assembled one query per set row is still the bug.
+//   8. **The header's two identity fields.** `clientName` and
+//      `clientTimezone` are joined from `identity.users`, and the name has
+//      to be the SAME string `coach.clients.overview` shows for the same
+//      person — two surfaces reading one column, asserted against each
+//      other rather than against a literal.
+//   9. **The target scheme.** A group carries the block it was performed
+//      against, `null` on a swap, on an ad-hoc session, and on a movement
+//      the day never prescribed. Only a real `program_exercises` row shows
+//      the difference between "prescribed nothing" and "prescribed zero".
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
 import { createDbClient, recomputeSessionVolume, schema, type DbClient } from '@coachos/db';
+import { formatTargetScheme } from '@coachos/utils';
 import { eq } from 'drizzle-orm';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 
@@ -115,6 +125,12 @@ interface SeededSessions {
   prescribed: string;
   /** The same three exercises and the same skip, with no program day to position it against. */
   adHoc: string;
+  /**
+   * A program day's session with NO skip in it — three groups against one
+   * prescription: one prescribed and performed as written, one prescribed
+   * but swapped, one never prescribed at all.
+   */
+  targets: string;
 }
 
 function coachId(): string {
@@ -180,12 +196,30 @@ async function insertExercise(name: string): Promise<string> {
  * prescribed position. Indices start at 10 so they never collide with the
  * block `two-coaches.ts` already puts at index 1.
  */
-async function insertProgramExercise(exerciseId: string, orderIndex: number): Promise<void> {
+async function insertProgramExercise(
+  exerciseId: string,
+  orderIndex: number,
+  target: Partial<{
+    targetSets: number;
+    targetRepsMin: number;
+    targetRepsMax: number;
+    targetRpe: string;
+    targetRir: number;
+    targetRestSeconds: number;
+    tempo: string;
+  }> = {},
+): Promise<void> {
   await db.insert(schema.programExercises).values({
     programDayId: fixture.coachA.programDayId,
     exerciseId,
     orderIndex,
-    targetSets: 3,
+    targetSets: target.targetSets ?? 3,
+    targetRepsMin: target.targetRepsMin ?? null,
+    targetRepsMax: target.targetRepsMax ?? null,
+    targetRpe: target.targetRpe ?? null,
+    targetRir: target.targetRir ?? null,
+    targetRestSeconds: target.targetRestSeconds ?? null,
+    tempo: target.tempo ?? null,
   });
 }
 
@@ -263,6 +297,15 @@ async function insertRecord(values: {
  *   dropped `personal_records.client_id` would reach it.
  */
 async function seedSessions(): Promise<SeededSessions> {
+  // A distinct name and a real zone on THIS client, so a `clientName` read
+  // off the wrong row and a `clientTimezone` defaulted rather than read are
+  // both visible. `clientA2` keeps the fixture's `'UTC'`, which is the
+  // other half of the pair.
+  await db
+    .update(schema.users)
+    .set({ name: 'Priya Fixture', timezone: 'Asia/Kolkata' })
+    .where(eq(schema.users.id, fixture.clientA1.userId));
+
   const alphaId = await insertExercise('Alpha Press');
   const betaId = await insertExercise('Beta Row');
   const gammaId = await insertExercise('Gamma Curl');
@@ -426,9 +469,24 @@ async function seedSessions(): Promise<SeededSessions> {
   // which the ad-hoc session below pins separately so the two cannot be
   // confused for each other.
   const deltaId = await insertExercise('Delta Fly');
-  await insertProgramExercise(alphaId, 10);
+  // Three different schemes, so a target read off the wrong block is a
+  // different string rather than a coincidence: Alpha carries a rep RANGE
+  // and an RPE, Beta a fixed rep count and an RIR, Delta neither.
+  await insertProgramExercise(alphaId, 10, {
+    targetSets: 4,
+    targetRepsMin: 6,
+    targetRepsMax: 8,
+    targetRpe: '8.0',
+  });
   await insertProgramExercise(deltaId, 20);
-  await insertProgramExercise(betaId, 30);
+  await insertProgramExercise(betaId, 30, {
+    targetSets: 3,
+    targetRepsMin: 12,
+    targetRepsMax: 12,
+    targetRir: 2,
+    targetRestSeconds: 90,
+    tempo: '3010',
+  });
 
   const skipNotes = 'Skipped: Delta Fly — out of time';
 
@@ -479,6 +537,44 @@ async function seedSessions(): Promise<SeededSessions> {
     weightKg: '60.00',
   });
 
+  // Decision (f)'s fixture. No skip line at all, so the prescription read
+  // has to fire for the TARGETS or two of these three assertions cannot be
+  // told apart from "the statement never ran".
+  const targets = await insertSession({
+    scheduledDate: '2026-09-03',
+    status: 'completed',
+    name: 'Targets',
+    programDayId: fixture.coachA.programDayId,
+  });
+  await insertSetLog({
+    sessionId: targets,
+    exerciseId: alphaId,
+    setNumber: 1,
+    loggedAt: '2026-09-03T09:05:00Z',
+    reps: 7,
+    weightKg: '100.00',
+  });
+  // Prescribed at index 30, and swapped into — the block's 12 reps at RIR 2
+  // were written for `Omega Press`, not for this.
+  await insertSetLog({
+    sessionId: targets,
+    exerciseId: betaId,
+    setNumber: 1,
+    loggedAt: '2026-09-03T09:20:00Z',
+    reps: 10,
+    weightKg: '60.00',
+    notes: 'Substituted for Omega Press.',
+  });
+  // Never prescribed on this day at all — the client added it.
+  await insertSetLog({
+    sessionId: targets,
+    exerciseId: gammaId,
+    setNumber: 1,
+    loggedAt: '2026-09-03T09:35:00Z',
+    reps: 12,
+    weightKg: '30.00',
+  });
+
   return {
     full,
     alphaId,
@@ -491,6 +587,7 @@ async function seedSessions(): Promise<SeededSessions> {
     softDeleted,
     prescribed,
     adHoc,
+    targets,
   };
 }
 
@@ -773,6 +870,120 @@ describe('session.review — where a skip goes', () => {
   });
 });
 
+describe('session.review — who trained, and when their day was', () => {
+  it("carries the client's own IANA zone, never a time formatted in the coach's", async () => {
+    const result = await review(seeded.full);
+
+    // The zone, raw. A server-formatted instant would be formatted in
+    // whatever zone the API happens to run in, which for a coach in Mumbai
+    // reading a client in Toronto is §25.5's exact trap.
+    expect(result.clientTimezone).toBe('Asia/Kolkata');
+    // And the training day still needs no zone to be right — it is a `date`.
+    expect(result.scheduledDate).toBe('2026-09-10');
+    expect(result.startedAt).toEqual(new Date('2026-09-10T09:00:00Z'));
+  });
+
+  it("returns 'UTC' for a client who never set a zone — not null, not empty", async () => {
+    const result = await review(fixture.clientA2.workoutSessionId);
+
+    // `users.timezone` is NOT NULL DEFAULT 'UTC': an unset preference is
+    // still a zone. A header handed `null` here would silently fall back to
+    // the coach's device.
+    expect(result.clientTimezone).toBe('UTC');
+  });
+
+  it('names the client exactly as the client-detail surfaces name them', async () => {
+    const result = await review(seeded.full);
+    const overview = await callerFor(fixture.coachA).coach.clients.overview({
+      clientId: clientId(),
+    });
+
+    // One column, two screens (`session-review.ts` decision (e)). Asserted
+    // against the other surface rather than only against a literal, because
+    // the failure that matters is the two disagreeing.
+    expect(result.clientName).toBe(overview.name);
+    expect(result.clientName).toBe('Priya Fixture');
+  });
+});
+
+describe('session.review — what each group was asked for', () => {
+  it('carries the prescribed block in the shape formatTargetScheme reads', async () => {
+    const result = await review(seeded.targets);
+    const alpha = groupOf(result, seeded.alphaId);
+
+    expect(alpha.target).toEqual({
+      targetSets: 4,
+      targetRepsMin: 6,
+      targetRepsMax: 8,
+      // `numeric(3,1)` parsed once at the boundary — 8, never '8.0'.
+      targetRpe: 8,
+      targetRir: null,
+      targetWeightKg: null,
+      targetPercent1rm: null,
+      targetRestSeconds: null,
+      tempo: null,
+    });
+
+    if (alpha.target === null) throw new Error('expected a target on the prescribed group');
+    // The design's group head, and the same string the coach's own program
+    // day and the client's logger print from the same function.
+    expect(formatTargetScheme(alpha.target, 'kg')).toBe('4 × 6–8 · RPE 8');
+  });
+
+  it('carries the whole block, tempo and rest included, not just the two parts drawn', async () => {
+    const result = await review(seeded.prescribed);
+    const beta = groupOf(result, seeded.betaId);
+
+    if (beta.target === null) throw new Error('expected a target on the prescribed group');
+    expect(beta.target).toMatchObject({ targetSets: 3, targetRir: 2, tempo: '3010' });
+    expect(formatTargetScheme(beta.target, 'kg')).toBe('3 × 12 · RIR 2 · 3010 · 90s');
+  });
+
+  it('reports no target on a substituted group, rather than the block it replaced', async () => {
+    const result = await review(seeded.targets);
+    const beta = groupOf(result, seeded.betaId);
+
+    // `Beta Row` IS prescribed on this day, at index 30 — and that block's
+    // 12 reps at RIR 2 were written for `Omega Press`. Attributing them
+    // here would misreport what the coach asked for.
+    expect(beta.substitutedFor).toBe('Omega Press');
+    expect(beta.target).toBeNull();
+  });
+
+  it('reports no target for an exercise the day never prescribed', async () => {
+    const result = await review(seeded.targets);
+    const gamma = groupOf(result, seeded.gammaId);
+
+    // The client added this one. Asked for nothing is not asked for zero.
+    expect(gamma.target).toBeNull();
+  });
+
+  it('reports no target at all for an ad-hoc session', async () => {
+    const result = await review(seeded.adHoc);
+
+    // No `program_day_id`, so there is no prescription to read — even
+    // though both exercises are prescribed on some OTHER day.
+    expect(performedOf(result).map((group) => group.target)).toEqual([null, null]);
+  });
+
+  it('gives a skip no target — the row says only that it did not happen', async () => {
+    const result = await review(seeded.prescribed);
+    const [skip] = skipsOf(result);
+
+    expect(skip).toBeDefined();
+    expect(skip).not.toHaveProperty('target');
+  });
+
+  it('still places a skip at its prescribed position when the same read carries targets', async () => {
+    const result = await review(seeded.prescribed);
+
+    // Decision (c2), unchanged by the fifth statement widening — the
+    // prescription is read once and answers both questions.
+    expect(sequenceOf(result)).toEqual(['Alpha Press', 'skipped: Delta Fly', 'Beta Row']);
+    expect(groupOf(result, seeded.alphaId).target).toMatchObject({ targetSets: 4 });
+  });
+});
+
 describe('session.review — personal records', () => {
   it('flags every record a set holds, on that set and no other', async () => {
     const result = await review(seeded.full);
@@ -797,26 +1008,39 @@ describe('session.review — statement count', () => {
 
     await getSessionReview(counted.db, seeded.full);
 
-    // One write, the session, its sets, its records. Seven set rows and
-    // three exercises change none of them.
+    // One write, the session (with the client's name and zone joined onto
+    // it, not fetched beside it), its sets, its records. Seven set rows,
+    // three exercises and two skips change none of them — `full` has no
+    // `program_day_id`, so there is no prescription to read.
     expect(counted.statements()).toBe(4);
   });
 
-  it('reads the prescribed order once, and only when there is a skip to place', async () => {
+  it('reads the prescription once for a session that has a program day', async () => {
     const counted = countingDb(db);
 
     await getSessionReview(counted.db, seeded.prescribed);
 
-    // The four above plus `prescribedOrderQuery`. Two skips and twenty
-    // exercises would still be five.
+    // The four above plus `prescriptionQuery`. Two skips and twenty
+    // prescribed blocks would still be five.
     expect(counted.statements()).toBe(5);
   });
 
-  it('does not read the prescribed order for a session with no skips', async () => {
+  it('reads it once for the targets too, not a second time and not per group', async () => {
     const counted = countingDb(db);
 
-    // `full` has skips but no program day; `bodyweight` has a program day for
-    // neither, and no skips — the read fires on neither.
+    const result = await getSessionReview(counted.db, seeded.targets);
+
+    // No skip in this session at all, so the fifth statement is firing
+    // purely for the target schemes — and three groups still cost one.
+    expect(performedOf(result)).toHaveLength(3);
+    expect(counted.statements()).toBe(5);
+  });
+
+  it('does not read the prescription for a session with no program day', async () => {
+    const counted = countingDb(db);
+
+    // `bodyweight` is ad-hoc: nothing prescribed it, so there is nothing to
+    // position a skip against and nothing to name as a target.
     await getSessionReview(counted.db, seeded.bodyweight);
 
     expect(counted.statements()).toBe(4);
