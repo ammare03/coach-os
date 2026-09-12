@@ -24,6 +24,25 @@ export interface IconButtonProps {
    * `ui-primitives-core/01`). TypeScript rejects a call site that omits it.
    */
   accessibilityLabel: string;
+  /**
+   * Spoken after the label, for a destination the label cannot state —
+   * `session-review/02`'s disc announces that the sheet it opens cannot
+   * post yet, so a screen-reader user is not charged a tap and a dismissal
+   * to learn it (`accessibility` §2). Pure pass-through to `Pressable`.
+   */
+  accessibilityHint?: string | undefined;
+  /**
+   * Overrides {@link HIT_SLOP} when the caller's own geometry sets a higher
+   * floor than `tapTarget.MIN`. `session-review/02`'s 32px comment disc is
+   * the first: `ui-conventions` §5 puts the general floor at 48, and `sm`'s
+   * default slop of 6 reaches only 44.
+   *
+   * Per call site, deliberately — raising `tapTarget.MIN` product-wide is a
+   * design decision, not something a consumer settles on its own. Still
+   * reached by SLOP, never by growing the visible box past the size its
+   * design specifies.
+   */
+  hitSlop?: number | undefined;
   testID?: string;
 }
 
@@ -56,6 +75,8 @@ export function IconButton({
   onPress,
   disabled = false,
   accessibilityLabel,
+  accessibilityHint,
+  hitSlop,
   testID,
 }: IconButtonProps) {
   const theme = useTheme();
@@ -66,9 +87,10 @@ export function IconButton({
     <Pressable
       onPress={disabled ? undefined : onPress}
       disabled={disabled}
-      hitSlop={HIT_SLOP[size]}
+      hitSlop={hitSlop ?? HIT_SLOP[size]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled }}
       testID={testID}
       containerStyle={variant === 'primary' && !disabled ? themed.primaryShadow : undefined}

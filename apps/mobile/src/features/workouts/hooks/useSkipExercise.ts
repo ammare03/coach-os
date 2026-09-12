@@ -1,3 +1,4 @@
+import { composeSkipNoteLines, formatSkipNoteLine, type SkipNote } from '@coachos/utils';
 import { eq } from 'drizzle-orm';
 import { useCallback, useEffect } from 'react';
 
@@ -70,24 +71,43 @@ import {
 /** DB§13's `meta` key this file owns. `rest_timer` and `schema_version` are the neighbours. */
 export const SKIPPED_EXERCISES_META_KEY = 'session_skips';
 
-/** What one skip says in `workout_sessions.client_notes`. */
+/**
+ * This store's shape, in the vocabulary `@coachos/utils` owns.
+ *
+ * The reason LABEL crosses, never the `SkipReason` key — the four reasons
+ * and their wording are this app's copy decision, and the line the coach
+ * reads back is the client's own words (`session-notes.ts` decision (c)).
+ */
+function toSkipNote(skip: SkippedExercise): SkipNote {
+  return {
+    exerciseName: skip.exerciseName,
+    reasonLabel: SKIP_REASON_LABEL[skip.reason],
+    note: skip.note,
+  };
+}
+
+/**
+ * What one skip says in `workout_sessions.client_notes`.
+ *
+ * The wording itself moved to `@coachos/utils`' `session-notes.ts` when the
+ * coach's session-review screen became its second consumer
+ * (`phase-10-coach-review-surfaces/session-review/01`) — a format whose
+ * writer and reader sit in two packages drifts by one space and takes a
+ * client's skip with it.
+ */
 export function skipNoteLine(skip: SkippedExercise): string {
-  const reason = SKIP_REASON_LABEL[skip.reason].toLowerCase();
-  const said = skip.note === null ? '' : ` (${skip.note})`;
-  return `Skipped: ${skip.exerciseName} — ${reason}${said}`;
+  return formatSkipNoteLine(toSkipNote(skip));
 }
 
 /**
  * Every skip as the `client_notes` text, in the order they were taken.
  *
  * Decision (b)'s seam. Returns `''` for a session with no skips, so a caller
- * can concatenate unconditionally.
+ * can concatenate unconditionally. The `atMs` sort stays here: the ordering
+ * is a fact about this store's entries, not about the line format.
  */
 export function composeSkipNotes(skips: Iterable<SkippedExercise>): string {
-  return [...skips]
-    .sort((a, b) => a.atMs - b.atMs)
-    .map(skipNoteLine)
-    .join('\n');
+  return composeSkipNoteLines([...skips].sort((a, b) => a.atMs - b.atMs).map(toSkipNote));
 }
 
 interface StoredSkips {

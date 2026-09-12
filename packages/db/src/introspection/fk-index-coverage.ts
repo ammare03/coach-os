@@ -81,10 +81,6 @@ export const UNINDEXED_FOREIGN_KEYS: readonly UnindexedForeignKey[] = [
     reason: 'phase-19-live-sessions/live-workout-mode owns this join.',
   },
   {
-    constraint: 'media_assets_client_id_client_profiles_id_fk',
-    reason: 'phase-11-media-pipeline owns the per-client media list.',
-  },
-  {
     constraint: 'media_assets_exercise_id_exercises_id_fk',
     reason: 'phase-07-exercise-and-program-authoring owns the per-exercise form-check lookup.',
   },

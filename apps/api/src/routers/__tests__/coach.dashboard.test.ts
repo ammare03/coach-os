@@ -379,6 +379,24 @@ async function insertClient(
         };
       }),
     );
+
+    // A fourth negative control, matching the three the video branch already
+    // has: a completed, never-reviewed, SOFT-DELETED session. Neither
+    // `needsReviewQuery`'s session branch nor `v_client_overview`'s
+    // `unreviewed_sessions` may count it — a coach must not be sent to review
+    // something that no longer exists. Dated a month back deliberately, so it
+    // falls outside both of the view's seven-day windows and this control
+    // moves only the counter it is aimed at.
+    await db.insert(schema.workoutSessions).values({
+      clientId,
+      coachId: coachProfileId,
+      scheduledDate: dayOffset(30),
+      status: 'completed',
+      startedAt: new Date(),
+      completedAt: new Date(),
+      reviewedAt: null,
+      deletedAt: new Date(),
+    });
   }
 
   if (plan.nutritionScore !== null) {
@@ -802,6 +820,19 @@ describe('coach.dashboard — counters', () => {
     expect(result.needsReview).toBe(expectedNeedsReview(coachB.plans));
   });
 
+  it('never counts a soft-deleted session as needing review', async () => {
+    // Every client with sessions at all carries one completed, unreviewed,
+    // soft-deleted session. Both of coachB's do, so a counter that ignored
+    // `deleted_at` would report 8 here rather than 6.
+    const withSessions = coachB.plans.filter((plan) => plan.scheduledSessions > 0);
+    expect(withSessions.length).toBeGreaterThan(0);
+
+    const result = await callDashboard(coachB);
+
+    expect(result.needsReview).toBe(expectedNeedsReview(coachB.plans));
+    expect(result.needsReview).toBe(6);
+  });
+
   it('caps needs-review at the DB§22 inbox limit rather than counting an unbounded table', async () => {
     const uncapped = coachA.plans.reduce(
       (total, plan) =>
@@ -868,6 +899,21 @@ describe('coach.dashboard — client rows', () => {
     expect(green.nutritionAdherence).toBe(95);
     expect(green.overallAdherence).toBeCloseTo(98, 6);
     expect(typeof green.sessionsScheduled7d).toBe('number');
+  });
+
+  it("carries v_client_overview's unreviewed-session count, excluding soft-deleted sessions", async () => {
+    const result = await callDashboard(coachA);
+    const byId = new Map(result.clients.map((row) => [row.clientId, row]));
+
+    // The same soft-deleted session the needs-review counter must ignore is
+    // seeded for every client with sessions, and the view has to ignore it
+    // too — the two counters sit on one screen and must agree.
+    for (const plan of expectedRoster(coachA.plans)) {
+      expect(byId.get(plan.profileId)?.unreviewedSessions).toBe(plan.unreviewedSessions);
+    }
+    // Not vacuous: the seed produced both kinds of client.
+    expect(result.clients.some((row) => row.unreviewedSessions > 0)).toBe(true);
+    expect(result.clients.some((row) => row.unreviewedSessions === 0)).toBe(true);
   });
 
   it("carries each client's goal, including the null a client who was never asked has", async () => {
@@ -1095,20 +1141,18 @@ describe('coach.dashboard — query plans at 100-client scale', () => {
   it('sequentially scans only what v_client_overview leaves no index for', async () => {
     const nodes = await explain(clientOverviewQuery(db, coachA.profileId));
 
-    // Both are properties of DB§9's view text, not of this query, and both
-    // need a migration this task does not own:
+    // `comments_target` is PARTIAL on `deleted_at IS NULL`, and the view's
+    // `NOT EXISTS` does not repeat that predicate, so Postgres cannot use
+    // it. `needsReviewQuery` does repeat it, which is why the same shape is
+    // an index scan there and a sequential scan here. That is UNFORGET A10,
+    // a property of DB§9's view text and deliberately still open.
     //
-    // - `media_assets` has NO index on `client_id` at all, despite DB§7's
-    //   "every FK is indexed, no exceptions" — the three indexes it carries
-    //   lead with `owner_user_id`, `coach_id`, and `expires_at`.
-    // - `comments_target` is PARTIAL on `deleted_at IS NULL`, and the view's
-    //   `NOT EXISTS` does not repeat that predicate, so Postgres cannot use
-    //   it. `needsReviewQuery` does repeat it, which is why the same shape
-    //   is an index scan there and a sequential scan here.
+    // `media_assets` left this list when `0033_fat_mentor` added the
+    // `client_id` FK index (A9) it had been missing.
     //
     // Pinned by name so a third sequentially-scanned table fails this test
-    // rather than arriving unnoticed, and so fixing either one is visible.
-    expect(sequentiallyScanned(nodes)).toEqual(['comments', 'media_assets', 'users']);
+    // rather than arriving unnoticed, and so fixing A10 is visible.
+    expect(sequentiallyScanned(nodes)).toEqual(['comments', 'users']);
   });
 
   it('reads the needs-review inbox through an index, never a sequential scan', async () => {

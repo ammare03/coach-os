@@ -13,6 +13,7 @@ export * from './plate-math.ts';
 export * from './seat-limit.ts';
 export * from './training/duration.ts';
 export * from './training/session-estimate.ts';
+export * from './training/session-notes.ts';
 export * from './training/target-scheme.ts';
 export * from './training/volume.ts';
 export * from './units/weight.ts';

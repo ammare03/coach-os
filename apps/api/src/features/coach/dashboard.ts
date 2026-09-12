@@ -121,11 +121,8 @@ export function clientOverviewQuery(db: DbClient, coachProfileId: string) {
  * pure cost. Which fifty rows the *list* shows is `coach-dashboard/01`'s
  * problem, and it runs DB§22 in full.
  *
- * The `deleted_at IS NULL` clause inside the video branch's `NOT EXISTS` is
- * the one addition to DB§22's text, and it is load-bearing twice over: a
- * soft-deleted comment is not a review, and `comments_target` is a partial
- * index on exactly that predicate, so without repeating it Postgres cannot
- * use the index at all.
+ * The two `deleted_at IS NULL` clauses are the only additions to DB§22's
+ * text, and each is load-bearing twice over — see the note on each branch.
  */
 export function needsReviewQuery(coachProfileId: string): SQL {
   return sql`
@@ -135,6 +132,12 @@ export function needsReviewQuery(coachProfileId: string): SQL {
         WHERE ws.coach_id = ${coachProfileId}
           AND ws.status = 'completed'
           AND ws.reviewed_at IS NULL
+          -- Load-bearing twice over, exactly as on the video branch below: a
+          -- soft-deleted session is not work the coach still owes, and
+          -- \`sessions_coach_unreviewed\` is a partial index on precisely this
+          -- three-part predicate, so without repeating it Postgres cannot use
+          -- the index at all. Do not "simplify" it away.
+          AND ws.deleted_at IS NULL
       UNION ALL
       SELECT ma.id
         FROM coaching.media_assets ma
@@ -145,6 +148,10 @@ export function needsReviewQuery(coachProfileId: string): SQL {
             SELECT 1 FROM coaching.comments c
              WHERE c.target_type = 'media_asset'
                AND c.target_id = ma.id
+               -- Load-bearing twice over: a soft-deleted comment is not a
+               -- review, and \`comments_target\` is a partial index on exactly
+               -- this predicate, so without repeating it Postgres cannot use
+               -- the index at all.
                AND c.deleted_at IS NULL
           )
       UNION ALL

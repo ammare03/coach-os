@@ -27,7 +27,9 @@ import CoachLiveScreen from '../app/(coach)/live/[sessionId].tsx';
 import CoachSessionScreen from '../app/(coach)/session/[id].tsx';
 import CoachVideoScreen from '../app/(coach)/video/[id].tsx';
 import { useAuthStore } from '../features/auth/store.ts';
+import { SESSION_REVIEW_COPY } from '../features/clients/components/SessionReviewHeader.tsx';
 import { RouteStub } from '../test-support/route-stub.tsx';
+import { TRPCTestProvider } from '../test-support/trpc-test-provider.tsx';
 
 /**
  * Real as of `program-templates/01`. This file is about focus-mode return
@@ -125,6 +127,21 @@ function optionsFor(Layout: ComponentType, name: string): unknown {
   return found.options;
 }
 
+/**
+ * The root of both trees below. Bare apart from the provider pair — which
+ * is there so a focus route composing a REAL screen (`session/[id]`, as of
+ * `session-review/01`) resolves rather than throwing on its first data hook.
+ * Faked at the transport, never at the hook: a focus mode that only rendered
+ * because its hook was stubbed would not be evidence it renders.
+ */
+function TestRootLayout() {
+  return (
+    <TRPCTestProvider>
+      <Stack screenOptions={{ headerShown: false }} />
+    </TRPCTestProvider>
+  );
+}
+
 function renderCoachGroup(initialUrl: string) {
   useAuthStore.setState({
     status: 'authenticated',
@@ -134,7 +151,7 @@ function renderCoachGroup(initialUrl: string) {
   });
   return renderRouter(
     {
-      _layout: () => <Stack screenOptions={{ headerShown: false }} />,
+      _layout: TestRootLayout,
       '(coach)/_layout': CoachLayout,
       '(coach)/(tabs)/_layout': CoachTabsLayout,
       '(coach)/(tabs)/index': CoachHomeScreen,
@@ -159,7 +176,7 @@ function renderClientGroup(initialUrl: string) {
   });
   return renderRouter(
     {
-      _layout: () => <Stack screenOptions={{ headerShown: false }} />,
+      _layout: TestRootLayout,
       '(client)/_layout': ClientLayout,
       '(client)/(tabs)/_layout': ClientTabsLayout,
       '(client)/(tabs)/index': ClientTodayScreen,
@@ -202,17 +219,22 @@ afterEach(() => {
 });
 
 describe('a coach focus mode', () => {
+  // Third element: proof the focus route itself resolved and rendered. The
+  // two remaining P05 placeholders still render their own route key;
+  // `session/[id]` is a real screen as of `session-review/01`, so it is
+  // identified by the one control a focus mode guarantees in every state
+  // including both failures — its single exit (`screen-composition` §3).
   it.each([
-    ['session/[id]', '/session/s1'],
-    ['video/[id]', '/video/v1'],
-    ['live/[sessionId]', '/live/l1'],
-  ])('renders %s with no dock', (route, href) => {
+    ['session/[id]', '/session/s1', () => screen.getByLabelText(SESSION_REVIEW_COPY.closeSpoken)],
+    ['video/[id]', '/video/v1', () => screen.getByText('(coach)/video/[id]')],
+    ['live/[sessionId]', '/live/l1', () => screen.getByText('(coach)/live/[sessionId]')],
+  ])('renders %s with no dock', (_route, href, findScreen) => {
     renderCoachGroup('/(coach)/(tabs)');
     expect(screen.getByTestId('coach-tab-bar')).toBeVisible();
 
     testRouter.push(href);
 
-    expect(screen.getByText(`(coach)/${route}`)).toBeTruthy();
+    expect(findScreen()).toBeTruthy();
     expectDockHidden('coach-tab-bar');
   });
 

@@ -203,3 +203,66 @@ export function useClientTrainingHistory(clientId: string) {
 export type SessionHistoryItem = NonNullable<
   ReturnType<typeof useClientTrainingHistory>['data']
 >['pages'][number]['items'][number];
+
+// ── session-review/01 ───────────────────────────────────────────────────
+//
+// The full-session read behind a Training-tab row. It lives in this module
+// rather than a second one for `clientDetailKeys`' own reason: one feature,
+// one tRPC call surface, so a key and an invalidation rule have exactly one
+// home.
+
+/**
+ * `['sessions', sessionId]` — `code-conventions` §5's own key for one
+ * session, and deliberately not a nested `['clients', id, 'training', …]`.
+ *
+ * A session is reachable without its client: a push notification deep-links
+ * straight here, and the id in the route is the only thing known at that
+ * point. Keying it under the client would make the cache entry unreachable
+ * until the client's id was fetched, which is the waterfall this screen is
+ * built to avoid.
+ */
+export const sessionReviewKeys = {
+  all: () => ['sessions'] as const,
+  detail: (sessionId: string) => ['sessions', sessionId] as const,
+};
+
+/**
+ * §8.4's coach-side close: the whole session in one round trip — every set,
+ * grouped by exercise in performed order, PR flags per set, skips
+ * interleaved where the program put them.
+ *
+ * **`refetchOnWindowFocus` is OFF, and it is not a preference.**
+ * `session.review` is the API's one sanctioned query-that-writes: reading
+ * it sets `reviewed_at` (`features/coach/session-review.ts` decision (a)).
+ * TanStack's default refires a stale query on every app foreground, so
+ * leaving the default on would turn "the coach glanced at this once" into a
+ * write every time the phone came out of a pocket. The write is idempotent
+ * (`UPDATE … WHERE reviewed_at IS NULL`), so nothing would be corrupted —
+ * but it would be a request per foreground for a screen that already has
+ * its answer, on a device this product assumes is on bad signal.
+ *
+ * The read stays fresh the way the rest of the coach's review block does:
+ * `CLIENT_DETAIL_STALE_TIME_MS`, and an explicit retry from the error
+ * state.
+ */
+export function useSessionReview(sessionId: string) {
+  const utils = api.useUtils();
+
+  return useQuery({
+    queryKey: sessionReviewKeys.detail(sessionId),
+    queryFn: () => utils.client.session.review.query({ sessionId }),
+    staleTime: CLIENT_DETAIL_STALE_TIME_MS,
+    gcTime: QUERY_CACHE_MAX_AGE_MS,
+    // See this function's doc comment — a query that writes must not be
+    // re-issued by an app foreground.
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** The whole session payload, inferred — never restated (`code-conventions` §3). */
+export type SessionReview = NonNullable<ReturnType<typeof useSessionReview>['data']>;
+/** One row of the session: an exercise that was performed, or one that was skipped. */
+export type SessionReviewEntry = SessionReview['exercises'][number];
+export type SessionReviewExerciseGroup = Extract<SessionReviewEntry, { kind: 'performed' }>;
+export type SessionReviewSkippedExercise = Extract<SessionReviewEntry, { kind: 'skipped' }>;
+export type SessionReviewSet = SessionReviewExerciseGroup['sets'][number];

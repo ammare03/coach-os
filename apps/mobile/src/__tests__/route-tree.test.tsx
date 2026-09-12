@@ -7,6 +7,8 @@ import { renderRouter, screen } from 'expo-router/testing-library';
 import type { ComponentType } from 'react';
 
 import { useAuthStore } from '../features/auth/store.ts';
+import { SESSION_REVIEW_COPY } from '../features/clients/components/SessionReviewHeader.tsx';
+import { TRPCTestProvider } from '../test-support/trpc-test-provider.tsx';
 
 // The verification section of `phase-05-app-shell/router-skeleton/01`, as a
 // test rather than a manual pass through expo-router's dev URL bar. It
@@ -201,7 +203,14 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   // than a substitution that would record a provider dependency it does not
   // have.
   ['(coach)/client/[id]/notes', '/(coach)/client/c1/notes'],
-  ['(coach)/session/[id]', '/(coach)/session/s1'],
+  // `(coach)/session/[id]` was a placeholder here until
+  // `phase-10-coach-review-surfaces/session-review/01` composed the real
+  // review screen. It no longer renders its own route key, so — like
+  // `(coach)/(tabs)/more` and `(coach)/client/[id]/videos` — it gets its own
+  // assertion at the bottom of this file instead of a row here. It is NOT
+  // substituted: a focus mode that only resolved because it was stubbed out
+  // is not evidence the focus mode resolves, and `focus-modes.test.tsx`
+  // depends on this route being real.
   ['(coach)/video/[id]', '/(coach)/video/v1'],
   ['(coach)/checkin/[id]', '/(coach)/checkin/k1'],
   // `(coach)/program/[id]/index` was a placeholder here until
@@ -243,8 +252,21 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   // assertion at the bottom of this file instead of a row here.
 ];
 
+/**
+ * Not the real `_layout` — that is `providers-and-gates`' to test, and
+ * mounting it here would test it rather than the tree. Just the `<Stack>`,
+ * plus the provider pair a screen needs to read anything: as each phase
+ * composes a real screen over a P05 placeholder, a route that resolves is a
+ * route that mounts a data hook, and without a provider that throws before
+ * the tree can be asserted on at all. See the provider's own comment for why
+ * that beats a longer `SUBSTITUTED` list.
+ */
 function TestRootLayout() {
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <TRPCTestProvider>
+      <Stack screenOptions={{ headerShown: false }} />
+    </TRPCTestProvider>
+  );
 }
 
 function SubstitutedScreen() {
@@ -473,11 +495,13 @@ describe('the §9.1 route tree', () => {
       (route) => !covered.has(route) && !SUBSTITUTED.has(route) && !route.endsWith('_layout'),
     );
 
-    // The three non-placeholder routes, each asserted below: the coach More
-    // hub, the root redirect, and the catch-all.
+    // The non-placeholder routes, each asserted below: the coach More hub,
+    // the client Videos tab, the session review focus mode, the root
+    // redirect, and the catch-all.
     expect(uncovered).toEqual([
       '(coach)/(tabs)/more',
       '(coach)/client/[id]/videos',
+      '(coach)/session/[id]',
       '+not-found',
       'index',
     ]);
@@ -512,6 +536,22 @@ describe('the §9.1 route tree', () => {
     renderRouter(routeContext(), { initialUrl: '/(coach)/client/c1/videos' });
 
     expect(screen.getByTestId('client-videos-empty')).toBeTruthy();
+  });
+
+  // The session review is a real focus mode as of `session-review/01`, and
+  // unlike its query-reading peers it is NOT substituted — it renders here
+  // through the root layout's provider pair, against a transport with no
+  // fixture for `session.review`, so what it shows is its own error state.
+  // Which is the point: a focus mode's one exit must exist in every state
+  // including both failures (`screen-composition` §3), so the exit is both
+  // the proof the route resolved and the assertion worth making. What the
+  // screen renders on a successful read is
+  // `features/clients/screens/__tests__/SessionReviewScreen.test.tsx`'s job.
+  it('renders the session review focus mode at /(coach)/session/[id]', () => {
+    signInAsOwnerOf('/(coach)/session/s1');
+    renderRouter(routeContext(), { initialUrl: '/(coach)/session/s1' });
+
+    expect(screen.getByLabelText(SESSION_REVIEW_COPY.closeSpoken)).toBeTruthy();
   });
 
   it('redirects `/` into the tree rather than leaving it on +not-found', () => {
