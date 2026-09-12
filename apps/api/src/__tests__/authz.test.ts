@@ -216,6 +216,11 @@ const CTX_SCOPED_NO_INPUT: Record<string, string> = {
   'clientApp.leaveCoach': "Detaches the caller's own client profile.",
   'coach.clients.list':
     'coachProcedure; resolves against ctx.user.coachProfileId. A stub returning [] until P10.',
+  'coach.dashboard':
+    'coachProcedure; all three of its queries filter on ctx.user.coachProfileId and no id crosses ' +
+    'the wire. Proven behaviourally, not just asserted here, by ' +
+    'routers/__tests__/coach.dashboard.test.ts\'s "never returns another coach\'s client" and ' +
+    '"scopes every counter to the calling coach".',
   'invites.listPending': "Invites created by ctx.user.coachProfileId — the caller's own.",
   'me.get': "The caller's own users row.",
   'me.medicalDisclaimer.status': "The caller's own acknowledgment, read by ctx.user.id.",
