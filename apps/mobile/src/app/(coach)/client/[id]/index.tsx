@@ -1,13 +1,20 @@
-import { Text, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
-// Placeholder route (`phase-05-app-shell/router-skeleton/01`). Structure
-// only — it renders its own route path and nothing else, deliberately. The
-// phase that owns this screen designs and builds it; anything added here
-// first would have to be deleted then (P05 README, "Risks").
+import { ClientOverviewScreen } from '../../../../features/clients/screens/ClientOverviewScreen.tsx';
+
+// Composition only (`CLAUDE.md` §9.2) — the screen owns its query and its
+// states; this file owns the route param and where "back" leads
+// (`phase-10-coach-review-surfaces/client-detail/01`).
 export default function CoachClientOverviewScreen() {
+  const router = useRouter();
+  const { id } = useLocalSearchParams<{ id: string }>();
+
   return (
-    <View>
-      <Text>(coach)/client/[id]/index</Text>
-    </View>
+    <ClientOverviewScreen
+      clientId={id}
+      onBack={() => {
+        router.dismissTo('/(coach)/(tabs)');
+      }}
+    />
   );
 }

@@ -14,6 +14,17 @@ export const releaseClientInput = strictObject({
 export type ReleaseClientInput = z.infer<typeof releaseClientInput>;
 
 /**
+ * `coach.clients.overview` (`client-detail/01`) — §8.3's Overview tab, in
+ * one call. `clientId` and nothing else: every window the response covers
+ * (6 months of weight, 8 weeks of adherence) is a product decision that
+ * belongs server-side, not a range the caller may widen.
+ */
+export const clientOverviewInput = strictObject({
+  clientId: id,
+});
+export type ClientOverviewInput = z.infer<typeof clientOverviewInput>;
+
+/**
  * `coach_profiles.specialties` is an unconstrained `text[]` (DB§5.2 adds no
  * `CHECK`), so this list — not the database — is what keeps the column
  * groupable. A free-text field fills it with "fat loss", "weight loss" and

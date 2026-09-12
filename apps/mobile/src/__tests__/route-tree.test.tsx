@@ -2,7 +2,7 @@ import { readdirSync } from 'node:fs';
 import path from 'node:path';
 
 import { NOT_FOUND_COPY } from '@coachos/ui';
-import { Stack } from 'expo-router';
+import { Slot, Stack } from 'expo-router';
 import { renderRouter, screen } from 'expo-router/testing-library';
 import type { ComponentType } from 'react';
 
@@ -109,6 +109,10 @@ const EXPECTED_ROUTE_FILES = [
   '(coach)/(tabs)/programs.tsx',
   '(coach)/_layout.tsx',
   '(coach)/checkin/[id].tsx',
+  // Not in §9.1 — `phase-10-coach-review-surfaces/client-detail/01` gives
+  // the client-detail group a `Tabs` navigator, which is what makes §8.3's
+  // six facets one screen with one mounted tab each rather than six pushes.
+  '(coach)/client/[id]/_layout.tsx',
   '(coach)/client/[id]/chat.tsx',
   '(coach)/client/[id]/checkins.tsx',
   '(coach)/client/[id]/index.tsx',
@@ -184,7 +188,12 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   // is NOT substituted: the hub reads no query, so it renders in this tree
   // exactly as it does on a device, and asserting that is worth more than
   // asserting a string.
-  ['(coach)/client/[id]/index', '/(coach)/client/c1'],
+  // `(coach)/client/[id]/index` was a placeholder here until
+  // `phase-10-coach-review-surfaces/client-detail/01` composed the real
+  // Overview tab; it moved to SUBSTITUTED for the same reason
+  // `(coach)/(tabs)/index` did. The six rows below still render their own
+  // route key, through the pass-through that stands in for that feature's
+  // `_layout`.
   ['(coach)/client/[id]/training', '/(coach)/client/c1/training'],
   ['(coach)/client/[id]/nutrition', '/(coach)/client/c1/nutrition'],
   ['(coach)/client/[id]/videos', '/(coach)/client/c1/videos'],
@@ -239,6 +248,16 @@ function TestRootLayout() {
 
 function SubstitutedScreen() {
   return null;
+}
+
+/**
+ * Stands in for a substituted NESTED `_layout`. A layout replaced by
+ * `SubstitutedScreen` would render nothing and take every route beneath it
+ * with it; a `Slot` keeps the children resolving, which is the only thing
+ * this file tests.
+ */
+function PassThroughLayout() {
+  return <Slot />;
 }
 
 /**
@@ -301,6 +320,16 @@ const SUBSTITUTED = new Set([
   // TanStack Query. What it renders is covered by
   // `src/features/clients/components/__tests__/`.
   '(coach)/(tabs)/index',
+  // Real as of `phase-10-coach-review-surfaces/client-detail/01`. The
+  // Overview tab reads `coach.clients.overview` through TanStack Query, and
+  // its `_layout` — the six-facet `Tabs` navigator — reads the same entry
+  // for the client's name in its bar, so both need the tRPC provider this
+  // test deliberately substitutes. The layout is replaced by a pass-through
+  // rather than by nothing (see `routeContext`), so the five sibling tabs
+  // below still resolve and render their own route key. What each renders
+  // is covered by `src/features/clients/`.
+  '(coach)/client/[id]/_layout',
+  '(coach)/client/[id]/index',
   // Real as of `phase-09-workout-logger/today-card/01`, and the same
   // reason again: the Today screen reads `me.get`, `clientApp.coach` and
   // `workouts.upcoming` through TanStack Query, plus the local SQLite
@@ -347,7 +376,7 @@ function routeContext(): Record<string, ComponentType> {
     if (route === '_layout') {
       modules[route] = TestRootLayout;
     } else if (SUBSTITUTED.has(route)) {
-      modules[route] = SubstitutedScreen;
+      modules[route] = route.endsWith('_layout') ? PassThroughLayout : SubstitutedScreen;
     } else {
       const loaded = require(path.join(APP_DIR, file)) as { default: ComponentType };
       modules[route] = loaded.default;

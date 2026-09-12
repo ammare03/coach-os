@@ -1,0 +1,164 @@
+import { useQuery } from '@tanstack/react-query';
+
+import { QUERY_CACHE_MAX_AGE_MS } from '../../lib/query/persister.ts';
+import { api } from '../../lib/trpc.ts';
+
+// The `clients` feature's whole tRPC call surface (`code-conventions` §1 —
+// a feature talks to the API through one module, so a query key or an
+// invalidation rule has exactly one place to live). No component calls
+// `api.coach.clients.*` directly.
+//
+// The coach DASHBOARD's read is not here: it predates this file and lives
+// in `hooks/useCoachDashboard.ts`, keyed `['coach', 'dashboard']`. This
+// module is the client-DETAIL screen's six tabs.
+
+/**
+ * §8.3's six tabs, in the order the facet bar draws them.
+ *
+ * **`notes` is deliberately absent.** The Notes tab is `coach-notes`'s
+ * feature — a separate authorisation story (DB§5.4: a note is private to
+ * the coach who wrote it) — and it adds its own entry here when it ships.
+ * The route file already exists and `_layout.tsx` declares it; it is simply
+ * not a facet yet.
+ */
+export const CLIENT_DETAIL_TABS = [
+  'overview',
+  'training',
+  'nutrition',
+  'videos',
+  'checkins',
+  'chat',
+] as const;
+
+export type ClientDetailTab = (typeof CLIENT_DETAIL_TABS)[number];
+
+/**
+ * **The query-key factory for every client-detail tab. Tasks 02–06 import
+ * from here and never restate a key.**
+ *
+ * `['clients', clientId, tab]` — hierarchical, per `code-conventions` §5 and
+ * `screen-composition` §2, so a caller can invalidate one tab, one client,
+ * or the whole feature and never "the world". The three levels mean exactly
+ * three things:
+ *
+ * ```
+ * clientDetailKeys.all()                        every client, every tab
+ * clientDetailKeys.client(id)                   one client, every tab
+ * clientDetailKeys.tab(id, 'training')          one tab of one client
+ * ```
+ *
+ * **Why literal keys rather than tRPC's own.** `@trpc/react-query` derives a
+ * key from the procedure path, which would be fine for the two tabs that
+ * have a procedure today — and unavailable to the four that do not. Tabs
+ * 03–06 ship as shells whose data arrives with `phase-11-media-pipeline`,
+ * `phase-13-nutrition`, `phase-14-messaging-and-realtime` and
+ * `phase-17-structured-checkins` (the phase README's "the same pattern,
+ * four times"), and a key they cannot write down yet is a key they will
+ * invent separately later. One factory, written once, is what stops six
+ * tabs growing six naming schemes.
+ *
+ * The consequence is the one thing to remember: **invalidate through
+ * `queryClient.invalidateQueries({ queryKey })`, never through
+ * `utils.coach.clients.overview.invalidate()`** — the latter targets tRPC's
+ * key, which nothing on this screen uses.
+ */
+export const clientDetailKeys = {
+  all: () => ['clients'] as const,
+  client: (clientId: string) => ['clients', clientId] as const,
+  tab: (clientId: string, tab: ClientDetailTab) => ['clients', clientId, tab] as const,
+};
+
+/**
+ * How long a painted tab is treated as current.
+ *
+ * One minute, and the number is about navigation rather than about how fast
+ * a client's week changes. A coach's review block is dashboard → client →
+ * tab → tab → back → next client (`CLAUDE.md` §1.1), and every return
+ * inside this window costs nothing; past it, the next return revalidates
+ * behind the content already on screen. It matches
+ * `COACH_DASHBOARD_STALE_TIME_MS` deliberately — the two screens are one
+ * navigation apart and a coach moving between them should not meet two
+ * different staleness rules.
+ *
+ * **Never zero.** At zero, switching to Training and back re-fetches
+ * Overview, and on a slow connection the screen is a spinner over data it
+ * already had — the exact failure §8.3's "switching tabs never shows a
+ * spinner" acceptance criterion is written against.
+ */
+export const CLIENT_DETAIL_STALE_TIME_MS = 60_000;
+
+/**
+ * §8.3's Overview tab — the whole tab in one round trip.
+ *
+ * One `useQuery`, not five. The server assembles the weight trend, the
+ * adherence figures, the current program, the next check-in, the pinned
+ * notes and the injuries list into a single response
+ * (`features/coach/client-overview.ts`), because the screen's premise is a
+ * single glance and five awaited calls is five chances to be slow.
+ *
+ * `gcTime` is tied to the persistence window by import rather than by a
+ * matching literal: a `gcTime` below it evicts the entry the persister just
+ * restored, and the warm-cache guarantee silently becomes a cold one
+ * (`lib/query/persister.ts`).
+ */
+export function useClientOverview(clientId: string) {
+  const utils = api.useUtils();
+
+  return useQuery({
+    queryKey: clientDetailKeys.tab(clientId, 'overview'),
+    queryFn: () => utils.client.coach.clients.overview.query({ clientId }),
+    staleTime: CLIENT_DETAIL_STALE_TIME_MS,
+    gcTime: QUERY_CACHE_MAX_AGE_MS,
+  });
+}
+
+/** The whole Overview payload, inferred — never restated (`code-conventions` §3). */
+export type ClientOverview = NonNullable<ReturnType<typeof useClientOverview>['data']>;
+export type ClientInjury = ClientOverview['injuries'][number];
+export type WeightTrendPoint = ClientOverview['weightTrend'][number];
+export type AdherenceTrendPoint = ClientOverview['adherence']['trend'][number];
+export type PinnedNote = ClientOverview['pinnedNotes'][number];
+
+/** Just enough of the client to draw the header above the facet bar. */
+export interface ClientIdentity {
+  name: string;
+  status: ClientOverview['status'];
+  goal: ClientOverview['goal'];
+  avatarAssetId: string | null;
+  coachSince: Date | null;
+}
+
+/**
+ * The identity the tab shell's header draws — name, status, goal, avatar.
+ *
+ * **The same cache entry as `useClientOverview`, narrowed by `select`.** The
+ * header sits above all six tabs and its four fields are already in the
+ * Overview payload, so giving it a query of its own would be a second round
+ * trip for data the default tab has fetched anyway. `select` means the
+ * header re-renders only when one of those four fields changes — a weight
+ * reading landing does not touch it (`frontend-performance` §3).
+ *
+ * The one cost is a deep link straight to a non-default tab, where this
+ * fetches Overview for a name. That is one request, on a path a coach
+ * reaches by push notification rather than by tapping, and it is cheaper
+ * than the alternative: a name passed through route params, which is wrong
+ * the moment the client renames themselves and absent the moment the link
+ * comes from outside the app.
+ */
+export function useClientIdentity(clientId: string) {
+  const utils = api.useUtils();
+
+  return useQuery({
+    queryKey: clientDetailKeys.tab(clientId, 'overview'),
+    queryFn: () => utils.client.coach.clients.overview.query({ clientId }),
+    staleTime: CLIENT_DETAIL_STALE_TIME_MS,
+    gcTime: QUERY_CACHE_MAX_AGE_MS,
+    select: (data): ClientIdentity => ({
+      name: data.name,
+      status: data.status,
+      goal: data.goal,
+      avatarAssetId: data.avatarAssetId,
+      coachSince: data.coachSince,
+    }),
+  });
+}
