@@ -1,3 +1,4 @@
+import { formatSubstitutionNoteLine } from '@coachos/utils';
 import { eq } from 'drizzle-orm';
 import { useCallback, useEffect } from 'react';
 
@@ -68,9 +69,13 @@ export const SUBSTITUTED_EXERCISES_META_KEY = 'session_swaps';
  * One consistently-formatted sentence, so `session-summary` and the coach's
  * own session review (`phase-10-coach-review-surfaces/session-review/`) can
  * both recognise it without either inventing a second wording.
+ *
+ * That second reader now exists, so the wording itself lives in
+ * `@coachos/utils`' `session-notes.ts` beside the parser that reads it back
+ * — the promise this comment made, kept structurally rather than by care.
  */
 export function substitutionNoteLine(substitution: ExerciseSubstitution): string {
-  return `Substituted for ${substitution.originalName}.`;
+  return formatSubstitutionNoteLine({ originalName: substitution.originalName });
 }
 
 /**

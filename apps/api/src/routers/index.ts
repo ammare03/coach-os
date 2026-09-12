@@ -19,6 +19,7 @@ import { metricsRouter } from './metrics.ts';
 import { notificationsRouter } from './notifications.ts';
 import { nutritionRouter } from './nutrition.ts';
 import { programsRouter } from './programs.ts';
+import { sessionRouter } from './session.ts';
 import { supportRouter } from './support.ts';
 import { workoutsRouter } from './workouts.ts';
 
@@ -57,6 +58,7 @@ export const appRouter = router({
   notifications: notificationsRouter,
   nutrition: nutritionRouter,
   programs: programsRouter,
+  session: sessionRouter,
   support: supportRouter,
   workouts: workoutsRouter,
 });

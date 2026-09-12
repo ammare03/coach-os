@@ -32,6 +32,12 @@ export const RESOURCE_FIELD_KIND: Record<string, ResourceKind> = {
   // and `clientId` instead, both already registered above.
   assignmentId: 'assignment',
   workoutSessionId: 'workoutSession',
+  // `session.review` (`session-review/01`). A second name for the same kind,
+  // the way `sourceWeekId`/`targetWeekId` above are: under a router already
+  // called `session`, `session.review({ workoutSessionId })` says the word
+  // twice, and the plan task names the field `sessionId`. Both names resolve
+  // here, so neither can be the unguarded one.
+  sessionId: 'workoutSession',
   setLogId: 'setLog',
   mealId: 'meal',
   mediaAssetId: 'mediaAsset',
