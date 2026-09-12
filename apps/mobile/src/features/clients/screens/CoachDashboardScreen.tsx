@@ -11,13 +11,15 @@ import {
 } from '@coachos/ui';
 import { type AdherenceState } from '@coachos/utils';
 import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
-import { TriangleAlert, UserPlus } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
+import { SearchX, TriangleAlert, UserPlus } from 'lucide-react-native';
+import { useCallback } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ClientListControls } from '../components/ClientListControls.tsx';
 import { ClientRow } from '../components/ClientRow.tsx';
-import { DashboardCounters, type DashboardCounterKey } from '../components/DashboardCounters.tsx';
+import { DashboardCounters } from '../components/DashboardCounters.tsx';
+import { useClientListFilters } from '../hooks/useClientListFilters.ts';
 import { useCoachDashboard, type CoachDashboardClient } from '../hooks/useCoachDashboard.ts';
 
 // `(coach)/(tabs)/index` — §8.2's dashboard. A Scan list (`UI-UX.md` §UX2):
@@ -50,6 +52,13 @@ import { useCoachDashboard, type CoachDashboardClient } from '../hooks/useCoachD
 // the target device is the speculative work `frontend-performance` §10
 // warns against.
 
+/**
+ * One frozen array, not a fresh `[]` per render: it is the `clients`
+ * argument to `useClientListFilters`, whose memo would otherwise recompute
+ * — and re-sort a hundred rows — on every render before the fetch resolves.
+ */
+const EMPTY_ROSTER: readonly CoachDashboardClient[] = [];
+
 export interface CoachDashboardScreenProps {
   onOpenClient: (clientId: string) => void;
   onInviteClient: () => void;
@@ -60,15 +69,13 @@ export function CoachDashboardScreen({ onOpenClient, onInviteClient }: CoachDash
   const insets = useSafeAreaInsets();
   const dashboard = useCoachDashboard();
 
-  // Which counter the coach tapped. `coach-dashboard/02` replaces this
-  // `useState` with `useClientListFilters(clients)` and derives the array
-  // below from it; the tap target and the selected treatment already exist
-  // so that task only has to give them meaning.
-  const [selected, setSelected] = useState<DashboardCounterKey | null>(null);
+  const data = dashboard.data;
+  const roster = data?.clients ?? EMPTY_ROSTER;
 
-  const handleSelect = useCallback((counter: DashboardCounterKey) => {
-    setSelected((current) => (current === counter ? null : counter));
-  }, []);
+  // §8.2's sort, search, and filter — all of it derived from the array
+  // already fetched above, and the reason this screen still makes exactly
+  // one request (`coach-dashboard/02`).
+  const filters = useClientListFilters(roster);
 
   // Stable across renders, so `ClientRow`'s `memo` is not defeated by a new
   // arrow per row (`frontend-performance` §3).
@@ -79,14 +86,10 @@ export function CoachDashboardScreen({ onOpenClient, onInviteClient }: CoachDash
     [onOpenClient],
   );
 
-  const data = dashboard.data;
-  // ⬇︎ `coach-dashboard/02` swaps this for its filtered, sorted array.
-  const clients = data?.clients ?? [];
-
   return (
     <View style={[styles.flex, themed.screen]}>
       <FlashList
-        data={clients}
+        data={filters.clients}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
         ListHeaderComponent={
@@ -104,18 +107,24 @@ export function CoachDashboardScreen({ onOpenClient, onInviteClient }: CoachDash
                     offPlan: data.offTrack,
                     checkinsDue: data.checkinsDue,
                   }}
-                  selected={selected}
-                  onSelect={handleSelect}
+                  selected={filters.counter}
+                  onSelect={filters.selectCounter}
                 />
               </View>
             ) : null}
 
-            {clients.length > 0 ? <AdherenceKey /> : null}
-            {/* ⬆︎ `coach-dashboard/02` inserts <ClientListControls /> here. */}
+            {roster.length > 0 ? (
+              <>
+                <AdherenceKey />
+                <ClientListControls filters={filters} />
+              </>
+            ) : null}
           </View>
         }
         ListEmptyComponent={
           <DashboardBody
+            hasRoster={roster.length > 0}
+            onClearFilters={filters.clearAll}
             isPending={dashboard.isPending}
             isError={dashboard.isError}
             onRetry={() => {
@@ -146,6 +155,9 @@ export function CoachDashboardScreen({ onOpenClient, onInviteClient }: CoachDash
 }
 
 interface DashboardBodyProps {
+  /** The coach HAS clients; the list is empty because their own controls emptied it. */
+  hasRoster: boolean;
+  onClearFilters: () => void;
   isPending: boolean;
   isError: boolean;
   onRetry: () => void;
@@ -153,12 +165,19 @@ interface DashboardBodyProps {
 }
 
 /**
- * The three states a client list can be in with no rows to draw
+ * The four states a client list can be in with no rows to draw
  * (`ui-conventions` §4). Forbidden is absent deliberately: `coach.dashboard`
  * takes no id and resolves entirely from the caller's own
  * `coachProfileId`, so there is no other coach's dashboard to be refused.
  */
-function DashboardBody({ isPending, isError, onRetry, onInviteClient }: DashboardBodyProps) {
+function DashboardBody({
+  hasRoster,
+  onClearFilters,
+  isPending,
+  isError,
+  onRetry,
+  onInviteClient,
+}: DashboardBodyProps) {
   const iconColor = useEmptyIconColor();
 
   if (isPending) {
@@ -181,6 +200,23 @@ function DashboardBody({ isPending, isError, onRetry, onInviteClient }: Dashboar
         primaryAction={{ label: 'Try again', onPress: onRetry }}
         density="coach"
         testID="dashboard-error"
+      />
+    );
+  }
+
+  // The coach's own search and filters emptied the list. Stating the fact
+  // and offering the one action that undoes it (`product-copy` §5) — never
+  // "no results found", which reads as a failure of the roster rather than
+  // of the query.
+  if (hasRoster) {
+    return (
+      <EmptyState
+        icon={<SearchX size={22} color={iconColor} />}
+        title="No clients match"
+        body="Nothing on your roster matches this search and these filters."
+        primaryAction={{ label: 'Clear search and filters', onPress: onClearFilters }}
+        density="coach"
+        testID="dashboard-no-results"
       />
     );
   }

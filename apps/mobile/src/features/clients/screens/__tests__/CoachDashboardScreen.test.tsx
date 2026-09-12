@@ -1,8 +1,24 @@
-import { render as rtlRender, screen } from '@testing-library/react-native';
+import { act, fireEvent, render as rtlRender, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { SEARCH_DEBOUNCE_MS } from '../../hooks/useClientListFilters.ts';
 import type { CoachDashboardClient } from '../../hooks/useCoachDashboard.ts';
+import {
+  resetClientListPreferencesForTests,
+  useClientListPreferences,
+} from '../../store/client-list-preferences.ts';
 import { CoachDashboardScreen } from '../CoachDashboardScreen.tsx';
+
+// jest-expo's `Dimensions` fixture reports `fontScale: 2`, which is not a
+// device default — it is the same number as its pixel `scale`. Left alone it
+// would put `ClientListControls` permanently in its 200%-text reflow
+// (`SORT_REFLOW_FONT_SCALE`), so every case below would silently exercise a
+// branch no ordinary coach sees. Pinned to 1 here; the reflow itself has its
+// own case in `ClientListControls.test.tsx`.
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => ({ width: 390, height: 844, scale: 3, fontScale: 1 }),
+}));
 
 // The hook is the screen's only dependency on the network, so mocking it
 // is what lets this suite render the real `FlashList` — the swap from
@@ -66,7 +82,26 @@ function renderScreen() {
 
 beforeEach(() => {
   mockUseCoachDashboard.mockReset();
+  // Sort and the filter chips are persisted, so they outlive a case
+  // (`store/client-list-preferences.ts`).
+  resetClientListPreferencesForTests();
 });
+
+/**
+ * Which clients are on screen — as a SET, sorted for comparison.
+ *
+ * Deliberately not an order assertion: FlashList v2 renders from a render
+ * stack keyed by `keyExtractor` and positions each row by layout, so the
+ * element tree is in recycler order and not in visual order. The ordering
+ * itself is asserted where it is defined, in
+ * `hooks/__tests__/useClientListFilters.test.ts`.
+ */
+function renderedIds(): string[] {
+  return screen
+    .queryAllByTestId(/^client-row-/)
+    .map((row) => String(row.props.testID).replace('client-row-', ''))
+    .sort();
+}
 
 describe('CoachDashboardScreen', () => {
   it('renders the counters and the client rows through FlashList', () => {
@@ -131,5 +166,136 @@ describe('CoachDashboardScreen', () => {
     renderScreen();
 
     expect(screen.queryByTestId('adherence-key', { includeHiddenElements: true })).toBeNull();
+  });
+});
+
+// ── coach-dashboard/02 ──────────────────────────────────────────────────
+
+describe('CoachDashboardScreen — sort, search, and filter', () => {
+  // Fake timers rather than `waitFor`: the 150ms search debounce and
+  // FlashList's own layout commit both settle inside `act` this way, so the
+  // suite's output stays clean instead of carrying act(...) warnings from
+  // updates that landed after the assertion.
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    // FlashList schedules its layout commit on a task of its own. Drained
+    // here, inside `act`, so it cannot land in the NEXT case and be reported
+    // there as an unwrapped update.
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    jest.useRealTimers();
+  });
+
+  /** Let the search debounce, and anything it wakes, settle. */
+  function settleSearch() {
+    act(() => {
+      jest.advanceTimersByTime(SEARCH_DEBOUNCE_MS);
+    });
+  }
+
+  function roster() {
+    return [
+      client(1, { clientId: 'calm', name: 'Calm Client', overallAdherence: 95 }),
+      client(2, {
+        clientId: 'waiting',
+        name: 'Waiting Client',
+        unreviewedVideos: 2,
+        overallAdherence: 99,
+      }),
+      client(3, { clientId: 'struggling', name: 'Struggling Client', overallAdherence: 20 }),
+    ];
+  }
+
+  function showRoster() {
+    setQuery({ data: { needsReview: 2, offTrack: 1, checkinsDue: 4, clients: roster() } });
+    return renderScreen();
+  }
+
+  it('opens on attention-needed with the whole roster showing', () => {
+    showRoster();
+
+    expect(renderedIds()).toEqual(['calm', 'struggling', 'waiting']);
+    expect(useClientListPreferences.getState().sort).toBe('attention');
+    // Nothing is narrowed, so there is no count line to read.
+    expect(screen.queryByTestId('client-list-count')).toBeNull();
+  });
+
+  it('re-sorts from the control, and the choice is the one that persists', () => {
+    showRoster();
+
+    fireEvent.press(screen.getByLabelText('Name, tab 2 of 3'));
+
+    expect(useClientListPreferences.getState().sort).toBe('name');
+    // The screen's one and only read stays one read: nothing here refetches.
+    expect(mockUseCoachDashboard).toHaveBeenCalled();
+    expect(renderedIds()).toHaveLength(3);
+  });
+
+  it('narrows on a case-insensitive substring once typing settles', () => {
+    showRoster();
+
+    fireEvent.changeText(screen.getByLabelText('Search clients'), 'STRUG');
+    settleSearch();
+
+    expect(renderedIds()).toEqual(['struggling']);
+    expect(screen.getByText('1 of 3 clients')).toBeTruthy();
+  });
+
+  it('offers a way back rather than a dead end when nothing matches', () => {
+    showRoster();
+
+    fireEvent.changeText(screen.getByLabelText('Search clients'), 'zzzz');
+    settleSearch();
+
+    expect(screen.getByTestId('dashboard-no-results')).toBeTruthy();
+    // Never the "no clients yet" state — this coach has three.
+    expect(screen.queryByTestId('dashboard-empty')).toBeNull();
+
+    fireEvent.press(screen.getByText('Clear search and filters'));
+    settleSearch();
+
+    expect(renderedIds()).toHaveLength(3);
+  });
+
+  it('drills into a counter and back out of it on a second tap', () => {
+    showRoster();
+
+    fireEvent.press(screen.getByLabelText('Needs review, 2'));
+    expect(renderedIds()).toEqual(['waiting']);
+
+    fireEvent.press(screen.getByLabelText('Needs review, 2'));
+    expect(renderedIds()).toHaveLength(3);
+  });
+
+  it('narrows to the clients whose dot reads off plan', () => {
+    showRoster();
+
+    fireEvent.press(screen.getByLabelText('Off plan, 1'));
+
+    // The fixture's amber default; only a red client is off plan.
+    expect(renderedIds()).toEqual([]);
+    expect(screen.getByTestId('dashboard-no-results')).toBeTruthy();
+  });
+
+  // `v_client_overview` carries no per-client pending-check-in column, so
+  // this counter is a stat rather than a filter. It must not draw itself as
+  // selected over a list it did not change.
+  it('leaves the roster whole when Check-ins due is tapped', () => {
+    showRoster();
+
+    fireEvent.press(screen.getByLabelText('Check-ins due, 4'));
+
+    expect(renderedIds()).toHaveLength(3);
+  });
+
+  it('keeps the controls off a coach who has no clients to sort', () => {
+    setQuery({ data: { needsReview: 0, offTrack: 0, checkinsDue: 0, clients: [] } });
+    renderScreen();
+
+    expect(screen.queryByLabelText('Search clients')).toBeNull();
+    expect(screen.getByTestId('dashboard-empty')).toBeTruthy();
   });
 });
