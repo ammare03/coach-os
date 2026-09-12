@@ -15,6 +15,7 @@ import { PendingDeepLinkReplay } from '../features/navigation/deep-links/Pending
 import { SchemaVersionResetDialog } from '../features/offline/SchemaVersionResetDialog.tsx';
 import { useSchemaVersionGate } from '../features/offline/useSchemaVersionGate.ts';
 import { GuardianConsentRedirect } from '../features/onboarding/GuardianConsentRedirect.tsx';
+import { useAppearance } from '../features/settings/hooks/useAppearance.ts';
 import { SessionRecoveryRedirect } from '../features/workouts/components/SessionRecoveryRedirect.tsx';
 import { AnalyticsProvider } from '../lib/analytics/index.ts';
 import { ensureFlushOnRegain } from '../lib/connectivity/flush-on-regain.ts';
@@ -72,6 +73,13 @@ export default function RootLayout() {
   // `bootstrap()` below, and long before any route (which could read the
   // local SQLite mirror) is allowed to mount (`isReady`, further down).
   const schemaVersionGate = useSchemaVersionGate();
+  // `settings-shell/03`. Declared AFTER the schema gate so its own effect —
+  // the one read of `meta.appearance` — fires after the gate's, never into
+  // a mirror the gate is about to drop. Always a `Scheme`, never
+  // `undefined`: the store's default is dark and the read applies on top of
+  // it, so the first frame is dark in every code path and nothing here
+  // waits on SQLite (`CLAUDE.md` §19).
+  const { scheme } = useAppearance();
   const theme = useTheme();
 
   // `auth-client/04`'s cold-start sequence, kicked off from the one place
@@ -204,7 +212,7 @@ export default function RootLayout() {
                 layout keeps the two halves of the handoff that do belong at
                 the root: it starts the bootstrap, and it holds the splash
                 until the bootstrap has answered. */}
-            <ThemeProvider>
+            <ThemeProvider scheme={scheme}>
               {/* Inside Theme because the toast host reads tokens; outside the
                   sheet provider so a toast is never clipped by a sheet.
                   `set-entry/06` is its first real consumer — `useUndoToast`

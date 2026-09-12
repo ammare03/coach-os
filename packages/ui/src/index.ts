@@ -345,6 +345,10 @@ export {
   type TextScaleProviderProps,
 } from './theme/TextScaleProvider.tsx';
 export type { Scheme } from './theme/schemes.ts';
+// Read by the Appearance control AND by the preference store behind it
+// (`settings-shell/03`), so a dimmed segment and a refused setter can never
+// disagree about whether Light exists. `light-scheme/02` flips it.
+export { LIGHT_SCHEME_AVAILABLE } from './theme/light-scheme-flag.ts';
 // Values, for the genuine non-Tailwind consumers — SVG fills, gradient
 // stops, Reanimated colour targets. A component that reads these to build
 // a `style` object is doing by hand what `className` does for free.

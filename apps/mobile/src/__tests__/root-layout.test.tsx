@@ -169,6 +169,17 @@ describe('the root layout', () => {
     expect(depthOf(ThemeProvider)).toBeLessThan(depthOf(BottomSheetModalProvider));
   });
 
+  // `settings-shell/03` wired `ThemeProvider`'s `scheme` to the device-local
+  // appearance preference. The preference is read asynchronously, so what
+  // matters is what the provider is handed BEFORE that read lands.
+  it('hands the theme provider a real scheme on the first frame, never undefined', async () => {
+    await renderRootLayout();
+
+    const { scheme } = instanceOf(ThemeProvider).props as { scheme?: unknown };
+
+    expect(scheme).toBe('dark');
+  });
+
   it('puts the gesture handler root at the true root, with flex: 1', async () => {
     await renderRootLayout();
 

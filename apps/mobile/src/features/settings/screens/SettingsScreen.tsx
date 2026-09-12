@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuthStore } from '../../auth/store.ts';
 import { AccountHeader } from '../components/AccountHeader.tsx';
+import { AppearanceRow } from '../components/AppearanceRow.tsx';
 import { AppVersionRow } from '../components/AppVersionRow.tsx';
 import { UnitRow } from '../components/UnitRow.tsx';
 
@@ -72,7 +73,7 @@ export function SettingsScreen() {
         Section          Row                                 Coach Client  Owner
         (header)         Name · email · avatar                 ✓     ✓     this task → P11 profile-editing/01
         Preferences      Weight unit                           ✓     ✓     P03 account-lifecycle/08   ← MOUNTED
-                         Appearance                            ✓     ✓     settings-shell/03
+                         Appearance                            ✓     ✓     settings-shell/03          ← MOUNTED
                          Notifications                         ✓     ✓     P15 preferences-and-quiet-hours/01
                          Availability (quiet hours)            ✓     —     P14 quiet-hours/01
                          Sync workouts to Health               —     ✓     P24 workout-export/03
@@ -95,13 +96,19 @@ export function SettingsScreen() {
 
       <AccountHeader />
 
-      {/* PREFERENCES. `grouped={false}` and no eyebrow of its own: `UnitRow`
-          is a card in its own right (P03's approved "live comparison"
-          design) and `DESIGN.md` §2 forbids a card inside a card at the same
-          level. `settings-shell/03` adds Appearance as the section's first
-          real `ListRow`, at which point the eyebrow belongs on the group. */}
-      <ListSection grouped={false} density={density}>
+      {/* PREFERENCES. `grouped={false}`: `UnitRow` is a card in its own
+          right (P03's approved "live comparison" design), `AppearanceRow`
+          brings its own for the same reason, and `DESIGN.md` §2 forbids a
+          card inside a card at the same level.
+
+          The eyebrow arrives with `settings-shell/03`, as task 01 said it
+          would — a group of one unlabelled card needed no heading; a group
+          of two does, and it is what lets a screen reader jump the section
+          (`accessibility` §2). Appearance sits DIRECTLY below Weight unit,
+          per the feature README's section map. */}
+      <ListSection title="Preferences" grouped={false} density={density}>
         <UnitRow />
+        <AppearanceRow density={density} />
       </ListSection>
 
       {/* COACHING — client only. Empty until P10; renders nothing. */}

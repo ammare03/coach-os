@@ -18,6 +18,13 @@ jest.mock('expo-application', () => ({
   nativeBuildVersion: '24',
 }));
 
+// `AppearanceRow` reads `meta.appearance` from the local mirror
+// (`settings-shell/03`). `expo-sqlite` has no Jest-side native module, so
+// the same fake `lib/outbox` maintains stands in for it.
+jest.mock('expo-sqlite', () =>
+  require('../../../../lib/outbox/__fixtures__/sqlite-fake.ts').createSqliteFake(),
+);
+
 type MeQuery = {
   data: { id: string; name: string; email: string; weightUnit: 'kg' | 'lb' } | undefined;
   isPending: boolean;
@@ -102,6 +109,8 @@ describe('SettingsScreen — the row set, per role', () => {
     expect(screen.getByLabelText('App version, 1.2.0 (24)')).toBeTruthy();
     // P03 `account-lifecycle/08`'s control, finally reachable by a user.
     expect(screen.getByLabelText(/Kilograms/)).toBeTruthy();
+    // `settings-shell/03`.
+    expect(screen.getByText('Appearance')).toBeTruthy();
   });
 
   it.each(['coach', 'client'] as const)(
@@ -132,6 +141,64 @@ describe('SettingsScreen — the row set, per role', () => {
     renderScreen('client');
 
     expect(screen.getByRole('button', { name: 'Medical disclaimer' })).toBeTruthy();
+  });
+});
+
+describe('SettingsScreen — Appearance sits in Preferences, below Weight unit', () => {
+  it.each(['coach', 'client'] as const)(
+    'renders the Preferences eyebrow once the section has two children, for a %s',
+    (role) => {
+      renderScreen(role);
+
+      const eyebrow = screen.getByText('Preferences');
+      // A heading, not a caption — it is what lets a screen reader jump
+      // section to section (`accessibility` §2).
+      expect(eyebrow.props.accessibilityRole).toBe('header');
+    },
+  );
+
+  it.each(['coach', 'client'] as const)(
+    'puts Appearance after Weight unit and before Your data, for a %s',
+    (role) => {
+      renderScreen(role);
+
+      const order = screen
+        .getAllByText(/^(Preferences|Weight unit|Appearance|Your data)$/)
+        .map((node) => node.props.children);
+
+      // "Your data" twice: the section eyebrow, then the row inside it.
+      expect(order).toEqual(['Preferences', 'Weight unit', 'Appearance', 'Your data', 'Your data']);
+    },
+  );
+
+  it('offers Dark selected and Light unavailable, with the reason in words', () => {
+    renderScreen('client');
+
+    expect(screen.getByLabelText('Dark, tab 1 of 2').props.accessibilityState).toMatchObject({
+      selected: true,
+      disabled: false,
+    });
+    expect(screen.getByLabelText('Light, tab 2 of 2').props.accessibilityState).toMatchObject({
+      selected: false,
+      disabled: true,
+    });
+    // Never colour (or dimming) alone — `accessibility` §4.
+    expect(screen.getByText(/Light mode isn't ready yet/)).toBeTruthy();
+  });
+
+  it('has no System option — it would render the undesigned fallback', () => {
+    renderScreen('coach');
+
+    expect(screen.queryByText('System')).toBeNull();
+  });
+
+  it('does not promise a detail screen it does not have', () => {
+    renderScreen('client');
+
+    // The Appearance row is static text with its value, not a button, and
+    // draws no chevron: there is nowhere to go.
+    const row = screen.getByLabelText('Appearance');
+    expect(row.props.accessibilityRole).toBe('text');
   });
 });
 

@@ -19,6 +19,23 @@ import { Text } from './Text.tsx';
 export interface SegmentOption<V extends string> {
   value: V;
   label: string;
+  /**
+   * Drawn, announced, and unpressable — for an option that genuinely exists
+   * but is not available yet. The first case is `settings-shell/03`'s Light
+   * scheme, which has no designed palette behind it until
+   * `phase-22-release-engineering/light-scheme/02`.
+   *
+   * Deliberately not "hide the option": a user who wonders whether the app
+   * has a light mode gets an answer either way, and `ui-conventions` §5's
+   * rule is that a control never silently does nothing — a disabled segment
+   * is the honest form of that. The caller still owes a full-contrast line
+   * of copy saying WHY, because `fg.faint` carries no meaning on its own
+   * (`accessibility` §4).
+   *
+   * Never a substitute for a guard at the source: a disabled segment stops
+   * a finger and nothing else.
+   */
+  disabled?: boolean;
 }
 
 // Two to four options, capped in the TYPE — a fifth option is a `Select`
@@ -166,18 +183,32 @@ export function SegmentedControl<V extends string>({
 
       {options.map((option, index) => {
         const selected = index === selectedIndex;
+        const disabled = option.disabled ?? false;
         return (
           <Pressable
             key={option.value}
             onPress={() => onChange(option.value)}
+            disabled={disabled}
             hitSlop={ITEM_HIT_SLOP}
             accessibilityRole="tab"
             accessibilityLabel={`${option.label}, tab ${index + 1} of ${count}`}
-            accessibilityState={{ selected }}
+            // `disabled` is what makes VoiceOver say "dimmed" and TalkBack
+            // "disabled". It is the announcement, not the styling — the
+            // `faint` tone below is the visual half and carries no meaning
+            // on its own (`accessibility` §4).
+            accessibilityState={{ selected, disabled }}
             containerStyle={styles.segmentOuter}
             style={styles.segment}
           >
-            <Text size="label" tone={selected ? 'bright' : 'muted'} numberOfLines={1}>
+            {/* `faint` is §1.1's disabled role. It does not clear 4.5:1, and
+                does not have to: SC 1.4.3 exempts an inactive control, and
+                the caller's own line of copy carries the reason at full
+                contrast. */}
+            <Text
+              size="label"
+              tone={disabled ? 'faint' : selected ? 'bright' : 'muted'}
+              numberOfLines={1}
+            >
               {option.label}
             </Text>
           </Pressable>
