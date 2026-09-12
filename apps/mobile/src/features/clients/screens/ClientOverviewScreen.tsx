@@ -14,13 +14,14 @@ import {
   spacing,
 } from '@coachos/ui';
 import { formatLocalDate } from '@coachos/utils';
-import { Lock, TriangleAlert } from 'lucide-react-native';
+import { TriangleAlert } from 'lucide-react-native';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { useWeightUnit } from '../../../hooks/useWeightUnit.ts';
 import { getErrorCode } from '../../../lib/error-code.ts';
 import { useClientOverview, type ClientOverview, type PinnedNote } from '../api.ts';
 import { InjuriesBanner } from '../components/InjuriesBanner.tsx';
+import { PrivacyLabel } from '../components/PrivacyLabel.tsx';
 import { WeightTrendChart } from '../components/WeightTrendChart.tsx';
 
 // §8.3's Overview tab: "weight trend chart, adherence sparkline, current
@@ -332,17 +333,20 @@ interface PinnedNotesProps {
  * `pinnedNotesQuery`).
  */
 function PinnedNotes({ notes }: PinnedNotesProps) {
-  const iconColor = useMutedIconColor();
-
   return (
     <View style={styles.notes} testID="pinned-notes">
-      <View style={styles.notesHeader}>
-        <Lock size={13} color={iconColor} />
-        {/* `DESIGN.md` §10.6: coach notes are private, and the surface says
-            so rather than leaving the coach to assume it. */}
-        <Text size="eyebrow" tone="muted">
-          PINNED NOTES · ONLY YOU CAN SEE THESE
-        </Text>
+      <Text size="eyebrow" tone="muted">
+        PINNED NOTES
+      </Text>
+
+      {/* `DESIGN.md` §10.6: coach notes are private, and the surface says so
+          rather than leaving the coach to assume it. This replaced an 11px
+          uppercase `· ONLY YOU CAN SEE THESE` eyebrow — fine print is
+          exactly what §8.3's "labelled explicitly" rules out
+          (`coach-notes/02`). One component, two call sites: the other is
+          the Notes tab's fixed head. */}
+      <View style={styles.notesLabel}>
+        <PrivacyLabel />
       </View>
 
       {notes.length === 0 ? (
@@ -374,7 +378,7 @@ const styles = StyleSheet.create({
   value: { marginTop: spacing(4) },
   sub: { marginTop: spacing(3) },
   notes: { marginTop: SECTION_GAP },
-  notesHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing(7) },
+  notesLabel: { marginTop: spacing(9) },
   note: { marginTop: spacing(9) },
 });
 

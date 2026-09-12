@@ -1,4 +1,10 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+} from '@tanstack/react-query';
 
 import { QUERY_CACHE_MAX_AGE_MS } from '../../lib/query/persister.ts';
 import { api } from '../../lib/trpc.ts';
@@ -10,16 +16,17 @@ import { api } from '../../lib/trpc.ts';
 //
 // The coach DASHBOARD's read is not here: it predates this file and lives
 // in `hooks/useCoachDashboard.ts`, keyed `['coach', 'dashboard']`. This
-// module is the client-DETAIL screen's six tabs.
+// module is the client-DETAIL screen's seven tabs.
 
 /**
- * §8.3's six tabs, in the order the facet bar draws them.
+ * §8.3's tabs, in the order the facet bar draws them.
  *
- * **`notes` is deliberately absent.** The Notes tab is `coach-notes`'s
- * feature — a separate authorisation story (DB§5.4: a note is private to
- * the coach who wrote it) — and it adds its own entry here when it ships.
- * The route file already exists and `_layout.tsx` declares it; it is simply
- * not a facet yet.
+ * **`notes` is last, and it arrived with `coach-notes/02`.** It was
+ * deliberately absent until then — a note is private to the coach who wrote
+ * it (DB§5.4), a separate authorisation story worth isolating — and the
+ * route file and `_layout.tsx`'s declaration both predate it. Seven facets
+ * measure past the width of the row, which is exactly what `DESIGN.md` §9
+ * gives the underline-facet pattern to 5+ items *for*: the row scrolls.
  */
 export const CLIENT_DETAIL_TABS = [
   'overview',
@@ -28,6 +35,7 @@ export const CLIENT_DETAIL_TABS = [
   'videos',
   'checkins',
   'chat',
+  'notes',
 ] as const;
 
 export type ClientDetailTab = (typeof CLIENT_DETAIL_TABS)[number];
@@ -266,3 +274,350 @@ export type SessionReviewEntry = SessionReview['exercises'][number];
 export type SessionReviewExerciseGroup = Extract<SessionReviewEntry, { kind: 'performed' }>;
 export type SessionReviewSkippedExercise = Extract<SessionReviewEntry, { kind: 'skipped' }>;
 export type SessionReviewSet = SessionReviewExerciseGroup['sets'][number];
+
+// ── coach-notes/02 ──────────────────────────────────────────────────────
+//
+// §8.3's seventh tab. In this module for `clientDetailKeys`' own reason:
+// one feature, one tRPC call surface, so the key AND the invalidation rule
+// have exactly one home — and here that matters more than anywhere else,
+// because a pin writes to two cache entries at once.
+
+/**
+ * §8.3's Notes tab — every live note this coach has written about this
+ * client, keyset-paginated, newest first.
+ *
+ * Keyed `['clients', id, 'notes']` through the same factory as the other
+ * six tabs, so it invalidates, persists, and evicts on the same terms.
+ *
+ * **The server orders by `created_at DESC` only.** Pinned-first is the
+ * screen's grouping, applied at render (`ClientNotesScreen`), not a second
+ * sort order asked of the API — which is also what makes the optimistic pin
+ * re-sort free: flipping `isPinned` in the cache moves the row with no
+ * refetch and no list mutation.
+ */
+export function useClientNotes(clientId: string) {
+  const utils = api.useUtils();
+
+  return useInfiniteQuery({
+    queryKey: clientDetailKeys.tab(clientId, 'notes'),
+    queryFn: ({ pageParam }: { pageParam: string | null }) =>
+      utils.client.notes.listForClient.query(
+        pageParam === null ? { clientId } : { clientId, cursor: pageParam },
+      ),
+    // `exactOptionalPropertyTypes` makes an explicit `cursor: undefined` a
+    // different thing from an absent one, so the first page omits the key.
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    staleTime: CLIENT_DETAIL_STALE_TIME_MS,
+    gcTime: QUERY_CACHE_MAX_AGE_MS,
+  });
+}
+
+/** One note, inferred — never restated (`code-conventions` §3). */
+export type CoachClientNote = NonNullable<
+  ReturnType<typeof useClientNotes>['data']
+>['pages'][number]['items'][number];
+
+type NotesPage = NonNullable<ReturnType<typeof useClientNotes>['data']>['pages'][number];
+type NotesPages = InfiniteData<NotesPage, string | null>;
+
+/**
+ * The server's own tie-break, restated: `created_at DESC, id DESC`, and
+ * `id` is a UUIDv7 so it breaks a tie in the direction the timestamp would
+ * have. Used to put an undone delete back exactly where it was rather than
+ * bookkeeping an index.
+ */
+function isBelow(item: CoachClientNote, note: CoachClientNote): boolean {
+  const delta = item.createdAt.getTime() - note.createdAt.getTime();
+  return delta === 0 ? item.noteId < note.noteId : delta < 0;
+}
+
+export function setPinnedInPages(data: NotesPages, noteId: string, isPinned: boolean): NotesPages {
+  return {
+    ...data,
+    pages: data.pages.map((page) => ({
+      ...page,
+      items: page.items.map((item) => (item.noteId === noteId ? { ...item, isPinned } : item)),
+    })),
+  };
+}
+
+export function setBodyInPages(data: NotesPages, note: CoachClientNote): NotesPages {
+  return {
+    ...data,
+    pages: data.pages.map((page) => ({
+      ...page,
+      items: page.items.map((item) => (item.noteId === note.noteId ? note : item)),
+    })),
+  };
+}
+
+export function removeNoteFromPages(data: NotesPages, noteId: string): NotesPages {
+  return {
+    ...data,
+    pages: data.pages.map((page) => ({
+      ...page,
+      items: page.items.filter((item) => item.noteId !== noteId),
+    })),
+  };
+}
+
+/** Puts a note back at the position the server's ordering would have given it. */
+export function insertNoteIntoPages(data: NotesPages, note: CoachClientNote): NotesPages {
+  const pages = data.pages.map((page) => ({ ...page, items: [...page.items] }));
+
+  for (const page of pages) {
+    const at = page.items.findIndex((item) => isBelow(item, note));
+    if (at !== -1) {
+      page.items.splice(at, 0, note);
+      return { ...data, pages };
+    }
+  }
+
+  const last = pages[pages.length - 1];
+  // No page to put it on means nothing has been read yet — `onSettled`'s
+  // invalidate is what fills the list, and inventing a page here would give
+  // `InfiniteData` one more page than it has `pageParams`.
+  if (last === undefined) return data;
+  last.items.push(note);
+  return { ...data, pages };
+}
+
+/** `pinnedNotesQuery` orders by `updated_at DESC`; the patch has to agree. */
+export function upsertPinnedNote(
+  pinned: readonly PinnedNote[],
+  note: CoachClientNote,
+): PinnedNote[] {
+  const entry: PinnedNote = {
+    noteId: note.noteId,
+    body: note.body,
+    createdAt: note.createdAt,
+    updatedAt: note.updatedAt,
+  };
+  const without = pinned.filter((item) => item.noteId !== note.noteId);
+  return [...without, entry].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+}
+
+export function removePinnedNote(pinned: readonly PinnedNote[], noteId: string): PinnedNote[] {
+  return pinned.filter((item) => item.noteId !== noteId);
+}
+
+/**
+ * Both cache entries a note write touches, and the snapshot that puts them
+ * back. Named once so the four mutations below cannot patch one and forget
+ * the other.
+ */
+interface NoteCacheSnapshot {
+  notes: NotesPages | undefined;
+  overview: ClientOverview | undefined;
+}
+
+/**
+ * **The third acceptance criterion, and the subtle one.**
+ *
+ * Overview's pinned notes arrive inside `client.overview`
+ * (`features/coach/client-overview.ts`'s `pinnedNotesQuery`), NOT from
+ * `notes.listForClient` — so "no duplicate query" is satisfied by an
+ * *invalidation* relationship rather than a shared cache entry, and this
+ * tab never issues a second read of the same rows.
+ *
+ * **Invalidation alone is not enough.** The `Tabs` navigator keeps Overview
+ * mounted (`client/[id]/_layout.tsx`), so a coach who pins and immediately
+ * switches tabs would see the old pinned list for one refetch. Both entries
+ * are therefore patched in `onMutate` and both invalidated in `onSettled`.
+ */
+function useNoteCaches(clientId: string) {
+  const queryClient = useQueryClient();
+  const notesKey = clientDetailKeys.tab(clientId, 'notes');
+  const overviewKey = clientDetailKeys.tab(clientId, 'overview');
+
+  async function snapshot(): Promise<NoteCacheSnapshot> {
+    // In flight requests would otherwise land on top of the patch.
+    await Promise.all([
+      queryClient.cancelQueries({ queryKey: notesKey }),
+      queryClient.cancelQueries({ queryKey: overviewKey }),
+    ]);
+    return {
+      notes: queryClient.getQueryData<NotesPages>(notesKey),
+      overview: queryClient.getQueryData<ClientOverview>(overviewKey),
+    };
+  }
+
+  function patch(
+    previous: NoteCacheSnapshot,
+    notes: (data: NotesPages) => NotesPages,
+    pinnedNotes: (current: readonly PinnedNote[]) => PinnedNote[],
+  ): void {
+    if (previous.notes !== undefined) queryClient.setQueryData(notesKey, notes(previous.notes));
+    if (previous.overview !== undefined) {
+      queryClient.setQueryData(overviewKey, {
+        ...previous.overview,
+        pinnedNotes: pinnedNotes(previous.overview.pinnedNotes),
+      });
+    }
+  }
+
+  function restore(previous: NoteCacheSnapshot | undefined): void {
+    if (previous === undefined) return;
+    if (previous.notes !== undefined) queryClient.setQueryData(notesKey, previous.notes);
+    if (previous.overview !== undefined) queryClient.setQueryData(overviewKey, previous.overview);
+  }
+
+  function invalidate(): void {
+    void queryClient.invalidateQueries({ queryKey: notesKey });
+    void queryClient.invalidateQueries({ queryKey: overviewKey });
+  }
+
+  return { snapshot, patch, restore, invalidate };
+}
+
+/**
+ * §8.3's pin toggle, optimistic — `CLAUDE.md` §7.5's rule against blocking
+ * on the network for an async action.
+ *
+ * **Not the phase-08 outbox, deliberately** (the task's Approach step 2):
+ * notes are coach-authored on wifi, not client-critical data logged in a
+ * basement, so a standard TanStack optimistic mutation is the whole
+ * mechanism.
+ */
+export function useSetNotePinned(clientId: string) {
+  const utils = api.useUtils();
+  const caches = useNoteCaches(clientId);
+
+  return useMutation({
+    mutationFn: (input: { note: CoachClientNote; isPinned: boolean }) =>
+      utils.client.notes.setPinned.mutate({
+        coachNoteId: input.note.noteId,
+        isPinned: input.isPinned,
+      }),
+    onMutate: async ({ note, isPinned }) => {
+      const previous = await caches.snapshot();
+      caches.patch(
+        previous,
+        (data) => setPinnedInPages(data, note.noteId, isPinned),
+        (pinned) =>
+          isPinned ? upsertPinnedNote(pinned, note) : removePinnedNote(pinned, note.noteId),
+      );
+      return previous;
+    },
+    onError: (_error, _input, previous) => {
+      caches.restore(previous);
+    },
+    onSettled: () => {
+      caches.invalidate();
+    },
+  });
+}
+
+/**
+ * A note the coach deleted, removed from both caches and held so `Undo` can
+ * put it back.
+ *
+ * **The server mutation is deferred, not compensated** — `useUndoToast`'s
+ * documented default. `notes.delete` is a soft delete with no restore
+ * procedure behind it, so an immediate write would leave `Undo` with
+ * nothing to call but `create`, which would mint a new id and a new
+ * `created_at` for a note the coach never meant to rewrite.
+ */
+export function useDeleteNote(clientId: string) {
+  const utils = api.useUtils();
+  const caches = useNoteCaches(clientId);
+
+  /** Puts the note back where the server's ordering had it. */
+  async function restore(note: CoachClientNote): Promise<void> {
+    const previous = await caches.snapshot();
+    caches.patch(
+      previous,
+      (data) => insertNoteIntoPages(data, note),
+      (pinned) => (note.isPinned ? upsertPinnedNote(pinned, note) : [...pinned]),
+    );
+  }
+
+  const remove = useMutation({
+    mutationFn: (note: CoachClientNote) =>
+      utils.client.notes.delete.mutate({ coachNoteId: note.noteId }),
+    onError: (_error, note) => {
+      // The row went before the request did, so a failure puts that one row
+      // back rather than rolling a five-second-old snapshot forward over
+      // whatever else the coach changed in the meantime.
+      void restore(note);
+    },
+    onSettled: () => {
+      caches.invalidate();
+    },
+  });
+
+  return {
+    /** Applies the optimistic removal. The toast owns what happens next. */
+    hide: async (note: CoachClientNote) => {
+      const previous = await caches.snapshot();
+      caches.patch(
+        previous,
+        (data) => removeNoteFromPages(data, note.noteId),
+        (pinned) => removePinnedNote(pinned, note.noteId),
+      );
+    },
+    /** Undo, inside the five-second window: nothing was ever sent. */
+    restore,
+    /** The window closed untaken. */
+    commit: (note: CoachClientNote) => {
+      remove.mutate(note);
+    },
+  };
+}
+
+/**
+ * `notes.create` and `notes.update`, and **neither is optimistic.**
+ *
+ * The composer is the one place in this tab where the coach's own words are
+ * at stake, and the design's failure copy is the contract: *"Your words are
+ * still here. Try again when you are back online."* An optimistic insert
+ * followed by a rollback takes the sentence off the screen and then puts a
+ * different screen back — the composer stays open with the text in it
+ * instead, and the cache is patched only once the server has the row.
+ */
+export function useWriteNote(clientId: string) {
+  const utils = api.useUtils();
+  const caches = useNoteCaches(clientId);
+
+  const create = useMutation({
+    mutationFn: (body: string) => utils.client.notes.create.mutate({ clientId, body }),
+    onSuccess: async (note) => {
+      const previous = await caches.snapshot();
+      // A new note is never pinned (`notes.create` has no `isPinned`
+      // field), so Overview's list is untouched.
+      caches.patch(
+        previous,
+        (data) => insertNoteIntoPages(data, note),
+        (pinned) => [...pinned],
+      );
+    },
+    onSettled: () => {
+      caches.invalidate();
+    },
+  });
+
+  const update = useMutation({
+    mutationFn: (input: { note: CoachClientNote; body: string }) =>
+      utils.client.notes.update.mutate({ coachNoteId: input.note.noteId, body: input.body }),
+    onSuccess: async (note) => {
+      const previous = await caches.snapshot();
+      caches.patch(
+        previous,
+        (data) => setBodyInPages(data, note),
+        // Editing a pinned note moves it to the top of Overview's list:
+        // `touch_updated_at` moved `updated_at`, and that is the order
+        // `pinnedNotesQuery` reads in.
+        (pinned) =>
+          pinned.some((item) => item.noteId === note.noteId)
+            ? upsertPinnedNote(pinned, note)
+            : [...pinned],
+      );
+    },
+    onSettled: () => {
+      caches.invalidate();
+    },
+  });
+
+  return { create, update };
+}

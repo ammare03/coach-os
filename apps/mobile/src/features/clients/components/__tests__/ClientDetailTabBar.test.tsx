@@ -4,11 +4,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { CLIENT_DETAIL_TABS, type ClientIdentity } from '../../api.ts';
 import { ClientDetailTabBar, type ClientDetailTabBarProps } from '../ClientDetailTabBar.tsx';
 
-// §8.3's tab shell: six facets, in the designed order, each one reachable
-// and each one announcing its position. The `notes` route is in the
-// directory and declared by `_layout.tsx` — this asserts it is NOT a facet,
-// because the thing that would break silently is a seventh tab appearing
-// the day `coach-notes` lands.
+// §8.3's tab shell: seven facets, in the designed order, each one reachable
+// and each one announcing its position. `notes` became the seventh with
+// `coach-notes/02`; before that it was declared by `_layout.tsx` and
+// deliberately absent from the row.
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -80,22 +79,20 @@ beforeEach(() => {
 });
 
 describe('ClientDetailTabBar', () => {
-  it('renders the six §8.3 facets in the designed order, and not the seventh', () => {
+  it('renders the seven §8.3 facets in the designed order', () => {
     renderBar();
 
     const tabs = screen.getAllByRole('tab');
     expect(tabs).toHaveLength(CLIENT_DETAIL_TABS.length);
     expect(tabs.map((tab) => tab.props.accessibilityLabel)).toEqual([
-      'Overview, tab 1 of 6',
-      'Training, tab 2 of 6',
-      'Nutrition, tab 3 of 6',
-      'Videos, tab 4 of 6',
-      'Check-ins, tab 5 of 6',
-      'Chat, tab 6 of 6',
+      'Overview, tab 1 of 7',
+      'Training, tab 2 of 7',
+      'Nutrition, tab 3 of 7',
+      'Videos, tab 4 of 7',
+      'Check-ins, tab 5 of 7',
+      'Chat, tab 6 of 7',
+      'Notes, tab 7 of 7',
     ]);
-    // Declared in the navigator, deliberately not a facet until
-    // `coach-notes` ships.
-    expect(screen.queryByText('Notes')).toBeNull();
   });
 
   it('marks exactly one facet selected, and it follows the navigator', () => {
@@ -106,17 +103,17 @@ describe('ClientDetailTabBar', () => {
       .filter((tab) => tab.props.accessibilityState?.selected === true);
 
     expect(selected).toHaveLength(1);
-    expect(selected[0]?.props.accessibilityLabel).toBe('Nutrition, tab 3 of 6');
+    expect(selected[0]?.props.accessibilityLabel).toBe('Nutrition, tab 3 of 7');
   });
 
   it('navigates to a facet that is not already focused, and not to one that is', () => {
     renderBar();
 
-    fireEvent.press(screen.getByLabelText('Training, tab 2 of 6'));
+    fireEvent.press(screen.getByLabelText('Training, tab 2 of 7'));
     expect(navigate).toHaveBeenCalledWith('training', undefined);
 
     navigate.mockClear();
-    fireEvent.press(screen.getByLabelText('Overview, tab 1 of 6'));
+    fireEvent.press(screen.getByLabelText('Overview, tab 1 of 7'));
     expect(navigate).not.toHaveBeenCalled();
   });
 
@@ -132,7 +129,7 @@ describe('ClientDetailTabBar', () => {
     renderBar();
 
     // The shell never depends on a query: a failed or pending Overview
-    // still leaves the back control and all six facets usable
+    // still leaves the back control and all seven facets usable
     // (`screen-composition` §3).
     expect(screen.getAllByRole('tab')).toHaveLength(CLIENT_DETAIL_TABS.length);
     fireEvent.press(screen.getByLabelText('Back to clients'));

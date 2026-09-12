@@ -52,12 +52,9 @@ export default function CoachClientDetailLayout() {
       <Tabs.Screen name="videos" />
       <Tabs.Screen name="checkins" />
       <Tabs.Screen name="chat" />
-      {/* Declared, and deliberately NOT a facet: the Notes tab is
-          `coach-notes`'s feature (DB§5.4 — a note is private to the coach
-          who wrote it, a distinct authorisation story worth isolating), and
-          that feature adds it to `CLIENT_DETAIL_TABS` when it ships. The
-          route exists today as a `phase-05-app-shell` placeholder, so
-          without this line the navigator would report it as undeclared. */}
+      {/* The seventh facet, added by `coach-notes/02`. Declared here since
+          `phase-05-app-shell`; `CLIENT_DETAIL_TABS` is what made it a
+          facet. */}
       <Tabs.Screen name="notes" />
     </Tabs>
   );
