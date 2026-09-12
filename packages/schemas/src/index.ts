@@ -26,6 +26,7 @@ export * as me from './me.ts';
 export * as media from './media.ts';
 export * as messages from './messages.ts';
 export * as metrics from './metrics.ts';
+export * as notes from './notes.ts';
 export * as notifications from './notifications.ts';
 export * as nutrition from './nutrition.ts';
 export * as programs from './programs.ts';
