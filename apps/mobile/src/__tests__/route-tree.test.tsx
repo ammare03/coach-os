@@ -168,7 +168,10 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   // SUBSTITUTED below for the same reason `sign-in`/`sign-up` always were.
   ['(auth)/reset-password/[token]', '/(auth)/reset-password/tok_abc'],
 
-  ['(coach)/(tabs)/index', '/(coach)/(tabs)'],
+  // `(coach)/(tabs)/index` was a placeholder here until
+  // `phase-10-coach-review-surfaces/coach-dashboard/01` composed the real
+  // dashboard; it moved to SUBSTITUTED for the same reason
+  // `(coach)/(tabs)/programs` did.
   ['(coach)/(tabs)/clients', '/(coach)/(tabs)/clients'],
   // `(coach)/(tabs)/programs` was a placeholder here until
   // `program-templates/01` composed the real templates list; it moved to
@@ -293,6 +296,11 @@ const SUBSTITUTED = new Set([
   // What it renders is covered by
   // `src/features/programs/screens/__tests__/ProgramTemplatesScreen.test.tsx`.
   '(coach)/(tabs)/programs',
+  // Real as of `phase-10-coach-review-surfaces/coach-dashboard/01`, and the
+  // same reason again: the dashboard reads `coach.dashboard` through
+  // TanStack Query. What it renders is covered by
+  // `src/features/clients/components/__tests__/`.
+  '(coach)/(tabs)/index',
   // Real as of `phase-09-workout-logger/today-card/01`, and the same
   // reason again: the Today screen reads `me.get`, `clientApp.coach` and
   // `workouts.upcoming` through TanStack Query, plus the local SQLite

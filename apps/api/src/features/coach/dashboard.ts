@@ -41,10 +41,27 @@ const OFF_TRACK_COLOR: AdherenceColor = 'red';
  */
 export const NEEDS_REVIEW_CAP = 50;
 
+/**
+ * The view counts at most 100 unread messages per client, and `packages/ui`'s
+ * `Badge` renders anything over 99 as "99+". Exported so a caller reading
+ * `unreadMessages === 100` knows it means "at least 100", not "exactly 100".
+ */
+export const UNREAD_BADGE_CAP = 99;
+
 export interface ClientOverviewRow {
   clientId: string;
   name: string;
   status: ClientOverview['status'];
+  /** `null` until onboarding collects one — not a default (`ui-conventions` §2). */
+  goal: ClientOverview['goal'];
+  /**
+   * The asset id only. Turning it into a viewable image needs a signed URL
+   * (`security-and-privacy` §4), which no read path on this procedure has
+   * yet — the row renders `Avatar`'s initials fallback until one exists.
+   */
+  avatarAssetId: string | null;
+  /** Sent by the client, not yet read by the coach. Capped — see `UNREAD_BADGE_CAP`. */
+  unreadMessages: number;
   lastActiveAt: Date | null;
   sessionsCompleted7d: number;
   sessionsScheduled7d: number;
@@ -80,6 +97,11 @@ export function clientOverviewQuery(db: DbClient, coachProfileId: string) {
       unreviewedVideos: schema.vClientOverview.unreviewedVideos,
       nutritionAdherence7d: schema.vClientOverview.nutritionAdherence7d,
       latestWeightKg: schema.vClientOverview.latestWeightKg,
+      // Three columns the view grew for `coach-dashboard/01`'s row and
+      // `/02`'s filter, so neither costs a fourth statement.
+      goal: schema.vClientOverview.goal,
+      avatarAssetId: schema.vClientOverview.avatarAssetId,
+      unreadMessages: schema.vClientOverview.unreadMessages,
     })
     .from(schema.vClientOverview)
     .where(
@@ -185,6 +207,9 @@ export async function getCoachDashboard(
       clientId: row.clientId,
       name: row.name,
       status: row.status,
+      goal: row.goal,
+      avatarAssetId: row.avatarAssetId,
+      unreadMessages: row.unreadMessages,
       lastActiveAt: row.lastActiveAt,
       sessionsCompleted7d: row.sessionsCompleted7d,
       sessionsScheduled7d: row.sessionsScheduled7d,

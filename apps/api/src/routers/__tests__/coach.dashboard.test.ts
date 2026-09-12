@@ -14,12 +14,13 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
 import { createDbClient, schema, type DbClient } from '@coachos/db';
-import { sql, type SQLWrapper } from 'drizzle-orm';
+import { eq, sql, type SQLWrapper } from 'drizzle-orm';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 
 import { createTestContext } from '../../__tests__/test-context.ts';
 import {
   NEEDS_REVIEW_CAP,
+  UNREAD_BADGE_CAP,
   checkinsDueQuery,
   clientOverviewQuery,
   needsReviewQuery,
@@ -97,6 +98,16 @@ interface ClientPlan {
   unreviewedVideos: number;
   hasPendingCheckin: boolean;
   hasSubmittedCheckin: boolean;
+  /** `coach-dashboard/02` filters on this; `null` for a client who never set one. */
+  goal: (typeof schema.clientProfiles.$inferInsert)['goal'];
+  /** Whether the client's user row points at an avatar asset. */
+  hasAvatar: boolean;
+  /**
+   * Unread messages the CLIENT sent, before the view's cap. Each of these
+   * clients is also seeded with a read message, a coach-sent message, and a
+   * soft-deleted one — none of which may reach the badge.
+   */
+  unreadFromClient: number;
 }
 
 interface CoachWorld {
@@ -109,6 +120,15 @@ let coachA: CoachWorld;
 let coachB: CoachWorld;
 
 let seq = 0;
+
+/** Coach profile id → the user id that sends the coach's half of a thread. */
+const coachUserIds = new Map<string, string>();
+
+function coachUserIdFor(coachProfileId: string): string {
+  const userId = coachUserIds.get(coachProfileId);
+  if (!userId) throw new Error(`no seeded user for coach profile ${coachProfileId}`);
+  return userId;
+}
 
 async function insertCoach(label: string): Promise<{ profileId: string; ctx: Context }> {
   seq += 1;
@@ -127,6 +147,7 @@ async function insertCoach(label: string): Promise<{ profileId: string; ctx: Con
 
   const [profile] = await db.insert(schema.coachProfiles).values({ userId: user.id }).returning();
   if (!profile) throw new Error('seed insert into coach_profiles did not return a row');
+  coachUserIds.set(profile.id, user.id);
 
   const contextUser: ContextUser = {
     id: user.id,
@@ -144,6 +165,15 @@ async function insertCoach(label: string): Promise<{ profileId: string; ctx: Con
 
   return { profileId: profile.id, ctx: createTestContext({ db, user: contextUser }) };
 }
+
+const GOAL_CYCLE: ((typeof schema.clientProfiles.$inferInsert)['goal'] | null)[] = [
+  'fat_loss',
+  'muscle_gain',
+  'performance',
+  'health',
+  null,
+  'other',
+];
 
 /** `current_date - offset`, as the `date` literal the schema's columns take. */
 function dayOffset(offset: number): string {
@@ -212,6 +242,13 @@ function planFor(index: number): Omit<ClientPlan, 'profileId'> {
     unreviewedVideos: index % 10 === 0 ? 1 : 0,
     hasPendingCheckin: index % 7 === 0,
     hasSubmittedCheckin: index % 11 === 0,
+    // Every enum value appears, and index 4 of each ten carries `null` —
+    // a client who has not been asked yet is not "other".
+    goal: GOAL_CYCLE[index % GOAL_CYCLE.length] ?? null,
+    hasAvatar: index % 3 === 0,
+    // 0, 1 and 3 unread, plus one client past the view's 100-row cap so the
+    // badge's 99+ branch has a real row behind it.
+    unreadFromClient: index === 5 ? 140 : ([0, 1, 0, 3, 0][index % 5] ?? 0),
   };
 }
 
@@ -240,6 +277,7 @@ async function insertClient(
       userId: user.id,
       coachId: coachProfileId,
       status: plan.status,
+      goal: plan.goal,
       // `client_status_timestamps`: an active row needs `activated_at`, an
       // archived one needs `archived_at`.
       activatedAt: plan.status === 'invited' ? null : new Date(),
@@ -249,6 +287,80 @@ async function insertClient(
     .returning();
   if (!profile) throw new Error('seed insert into client_profiles did not return a row');
   const clientId = profile.id;
+
+  if (plan.hasAvatar) {
+    const [avatar] = await db
+      .insert(schema.mediaAssets)
+      .values({
+        ownerUserId: user.id,
+        // **No `coach_id` / `client_id`, and that is the point.** Those
+        // columns are DB§6's denormalised authorisation keys for content
+        // addressed to a coaching relationship — a form check, a progress
+        // photo. A profile picture is the user's own and belongs to
+        // neither, so filing one into a coach's media library is wrong on
+        // its face. It is also load-bearing for the EXPLAIN assertions
+        // below: `media_coach_unreviewed` is keyed on `coach_id`, so 34
+        // avatars carrying one inflate the planner's estimate for the
+        // needs-review anti-join and flip it onto a sequential scan of
+        // `comments`.
+        kind: 'image',
+        storageKey: `dashboard-test/${label}/${String(plan.index)}/avatar`,
+        mimeType: 'image/jpeg',
+        sizeBytes: 4096,
+        // An avatar is an image, not a form check — `processing_status`
+        // must stay off `ready` or it would land in the needs-review count
+        // and this seed would be testing two things at once.
+        processingStatus: 'uploading',
+      })
+      .returning();
+    if (!avatar) throw new Error('seed insert into media_assets did not return a row');
+    await db
+      .update(schema.users)
+      .set({ avatarAssetId: avatar.id })
+      .where(eq(schema.users.id, user.id));
+  }
+
+  // The messaging thread behind the unread badge, with its three negative
+  // controls seeded for every client that has a thread at all: a message
+  // the coach already read, one the coach sent, and one soft-deleted.
+  // None may reach the count, whatever `unreadFromClient` is.
+  if (plan.unreadFromClient > 0 || plan.index % 5 === 2) {
+    const [conversation] = await db
+      .insert(schema.conversations)
+      .values({ coachId: coachProfileId, clientId })
+      .returning();
+    if (!conversation) throw new Error('seed insert into conversations did not return a row');
+
+    const coachUserId = coachUserIdFor(coachProfileId);
+    await db.insert(schema.messages).values([
+      ...Array.from({ length: plan.unreadFromClient }, (_, i) => ({
+        conversationId: conversation.id,
+        senderUserId: user.id,
+        body: 'unread',
+        clientLocalId: `${clientId}-unread-${String(i)}`,
+      })),
+      {
+        conversationId: conversation.id,
+        senderUserId: user.id,
+        body: 'already read',
+        clientLocalId: `${clientId}-read`,
+        readAt: new Date(),
+      },
+      {
+        conversationId: conversation.id,
+        senderUserId: coachUserId,
+        body: 'from the coach, unread by the client',
+        clientLocalId: `${clientId}-coach`,
+      },
+      {
+        conversationId: conversation.id,
+        senderUserId: user.id,
+        body: 'withdrawn',
+        clientLocalId: `${clientId}-deleted`,
+        deletedAt: new Date(),
+      },
+    ]);
+  }
 
   if (plan.scheduledSessions > 0) {
     const reviewedAt = plan.unreviewedSessions > 0 ? null : new Date();
@@ -387,6 +499,31 @@ async function insertClient(
 }
 
 /**
+ * How many comments each of the ten thousand filler videos carries.
+ *
+ * **This number is load-bearing for the needs-review EXPLAIN assertion, and
+ * it has a ceiling as well as a floor.**
+ *
+ * `needsReviewQuery`'s `NOT EXISTS` can be answered two ways: a nested-loop
+ * anti-join probing `comments_target` once per candidate video, or a hash
+ * anti-join that reads `comments` end to end. Postgres picks on cost, so
+ * the assertion "never a sequential scan" is only meaningful while the
+ * index plan is *decisively* cheaper. At one comment per asset the table
+ * was 10,011 rows / 1.3MB, the two plans cost 395 and 581, and a 1.47x
+ * margin is close enough that a different ANALYZE sample flips it — which
+ * is exactly what happened on CI.
+ *
+ * The floor: enough rows that scanning them is plainly the worse plan.
+ * The ceiling: the table must stay under `min_parallel_table_scan_size`
+ * (8MB). Past that the planner may parallelise the sequential scan, its
+ * cost starts depending on how many CPUs the runner has, and the
+ * assertion becomes environment-dependent again — the failure mode we are
+ * fixing, reintroduced through the back door. Five keeps it at ~50k rows
+ * and ~6.5MB, comfortably inside both bounds.
+ */
+const COMMENTS_PER_FILLER_ASSET = 5;
+
+/**
  * Ten thousand clients belonging to ten other coaches, plus their sessions,
  * check-ins, videos, comments, and daily summaries.
  *
@@ -457,10 +594,16 @@ async function seedOtherCoachesAtScale(): Promise<void> {
       FROM identity.client_profiles cp
       JOIN identity.users u ON u.id = cp.user_id AND u.email LIKE 'filler-client-%'
   `);
+  // Five per filler asset, not one — `COMMENTS_PER_FILLER_ASSET` explains
+  // why the number matters. Every filler asset already carries a comment,
+  // so extra ones move no counter; they exist purely so `comments` is big
+  // enough for the planner's choice about it to be a real one.
   await db.execute(sql`
     INSERT INTO coaching.comments (author_user_id, target_type, target_id, client_id, body)
     SELECT ma.owner_user_id, 'media_asset', ma.id, ma.client_id, 'filler'
-      FROM coaching.media_assets ma WHERE ma.storage_key LIKE 'filler/%'
+      FROM coaching.media_assets ma
+      CROSS JOIN generate_series(1, ${COMMENTS_PER_FILLER_ASSET}) g
+     WHERE ma.storage_key LIKE 'filler/%'
   `);
   await db.execute(sql`
     INSERT INTO nutrition.daily_nutrition_summary (client_id, date, adherence_score, meals_logged)
@@ -475,6 +618,23 @@ async function seedOtherCoachesAtScale(): Promise<void> {
       FROM identity.client_profiles cp
       JOIN identity.users u ON u.id = cp.user_id AND u.email LIKE 'filler-client-%'
       CROSS JOIN generate_series(1, 2) g
+  `);
+  // 10k threads and 30k messages, so the unread subquery's EXPLAIN below is
+  // a claim about a real table rather than about two empty ones — the same
+  // reason this whole function exists.
+  await db.execute(sql`
+    INSERT INTO coaching.conversations (coach_id, client_id)
+    SELECT cp.coach_id, cp.id
+      FROM identity.client_profiles cp
+      JOIN identity.users u ON u.id = cp.user_id AND u.email LIKE 'filler-client-%'
+  `);
+  await db.execute(sql`
+    INSERT INTO coaching.messages (conversation_id, sender_user_id, body, client_local_id, read_at)
+    SELECT cv.id, cp.user_id, 'filler', format('%s-filler-%s', cv.id, g), now()
+      FROM coaching.conversations cv
+      JOIN identity.client_profiles cp ON cp.id = cv.client_id
+      JOIN identity.users u ON u.id = cp.user_id AND u.email LIKE 'filler-client-%'
+      CROSS JOIN generate_series(1, 3) g
   `);
 }
 
@@ -503,6 +663,9 @@ async function seedWorld(): Promise<void> {
         unreviewedVideos: 1,
         hasPendingCheckin: true,
         hasSubmittedCheckin: false,
+        goal: 'fat_loss',
+        hasAvatar: false,
+        unreadFromClient: 2,
       }),
     );
   }
@@ -705,6 +868,77 @@ describe('coach.dashboard — client rows', () => {
     expect(green.nutritionAdherence).toBe(95);
     expect(green.overallAdherence).toBeCloseTo(98, 6);
     expect(typeof green.sessionsScheduled7d).toBe('number');
+  });
+
+  it("carries each client's goal, including the null a client who was never asked has", async () => {
+    const result = await callDashboard(coachA);
+    const byId = new Map(result.clients.map((row) => [row.clientId, row]));
+
+    for (const plan of expectedRoster(coachA.plans)) {
+      expect(byId.get(plan.profileId)?.goal).toBe(plan.goal);
+    }
+    // Not vacuous: the seed has to have produced both a set goal and a null
+    // one for the loop above to be checking anything.
+    expect(result.clients.some((row) => row.goal !== null)).toBe(true);
+    expect(result.clients.some((row) => row.goal === null)).toBe(true);
+  });
+
+  it('carries the avatar asset id, and null for a client who has no avatar', async () => {
+    const result = await callDashboard(coachA);
+    const byId = new Map(result.clients.map((row) => [row.clientId, row]));
+
+    for (const plan of expectedRoster(coachA.plans)) {
+      const row = byId.get(plan.profileId);
+      if (plan.hasAvatar) {
+        expect(typeof row?.avatarAssetId).toBe('string');
+      } else {
+        expect(row?.avatarAssetId).toBeNull();
+      }
+    }
+  });
+
+  it('counts only unread, undeleted messages the client sent to the coach', async () => {
+    const result = await callDashboard(coachA);
+    const byId = new Map(result.clients.map((row) => [row.clientId, row]));
+
+    for (const plan of expectedRoster(coachA.plans)) {
+      const expected = Math.min(plan.unreadFromClient, UNREAD_BADGE_CAP + 1);
+      expect(byId.get(plan.profileId)?.unreadMessages).toBe(expected);
+    }
+    // Every threaded client also carries a read message, a coach-sent one,
+    // and a soft-deleted one. A client seeded with a thread and zero unread
+    // proves all three are excluded rather than merely outnumbered.
+    const threadedButSilent = expectedRoster(coachA.plans).filter(
+      (plan) => plan.unreadFromClient === 0 && plan.index % 5 === 2,
+    );
+    expect(threadedButSilent.length).toBeGreaterThan(0);
+    for (const plan of threadedButSilent) {
+      expect(byId.get(plan.profileId)?.unreadMessages).toBe(0);
+    }
+  });
+
+  it('caps the unread count rather than counting an unbounded thread', async () => {
+    const result = await callDashboard(coachA);
+
+    const flooded = coachA.plans.find((plan) => plan.unreadFromClient > UNREAD_BADGE_CAP + 1);
+    if (!flooded) throw new Error('expected a seeded client past the unread cap');
+
+    const row = result.clients.find((client) => client.clientId === flooded.profileId);
+    expect(flooded.unreadFromClient).toBe(140);
+    expect(row?.unreadMessages).toBe(UNREAD_BADGE_CAP + 1);
+  });
+
+  it('reports zero unread for a client with no conversation at all', async () => {
+    const result = await callDashboard(coachA);
+
+    const unthreaded = expectedRoster(coachA.plans).filter(
+      (plan) => plan.unreadFromClient === 0 && plan.index % 5 !== 2,
+    );
+    expect(unthreaded.length).toBeGreaterThan(0);
+    const byId = new Map(result.clients.map((row) => [row.clientId, row]));
+    for (const plan of unthreaded) {
+      expect(byId.get(plan.profileId)?.unreadMessages).toBe(0);
+    }
   });
 
   it("never returns another coach's client", async () => {
