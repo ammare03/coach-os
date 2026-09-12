@@ -22,6 +22,7 @@ import type {
   DataExportJobData,
   ExerciseReconcileJobData,
 } from './queues/types.ts';
+import { registerWorker, workers } from './queues/worker-registry.ts';
 
 /**
  * The worker process entry point (`03-worker-process.md`) — genuinely
@@ -34,13 +35,13 @@ import type {
 // Before anything else in the process, same reasoning as `index.ts`.
 initSentry();
 
-/**
- * The registration point `03-worker-process.md` built empty: as each phase
- * builds its processor, it imports its queue from `./queues/registry.ts`,
- * constructs a `new Worker(queueName, processor, { connection:
- * queueConnection })`, and pushes it here.
- */
-export const workers: Worker[] = [];
+// The registration point `03-worker-process.md` built empty: as each phase
+// builds its processor, it imports its queue from `./queues/registry.ts`,
+// constructs a `new Worker(queueName, processor, { connection:
+// queueConnection })`, and hands it to `registerWorker` — which is also
+// what attaches the dead-letter handler (`./queues/worker-registry.ts`).
+// Never construct a `Worker` here any other way; `worker.test.ts` fails the
+// build if one is.
 
 // This worker process's own DB client — never the API's per-request
 // `../trpc/context.ts` singleton, which is wired to Hono's request
@@ -57,7 +58,7 @@ const db = createDbClient({
 // import identity. Two job kinds on one queue (`./queues/types.ts`): the
 // per-account `purge` `enqueuePurgeAccount` emits, and the daily `sweep`
 // `scheduleDeletionRequestSweep` installs below.
-workers.push(
+registerWorker(
   new Worker<AccountDeletionJobData>(
     'account-deletion',
     async (job) => {
@@ -74,7 +75,7 @@ workers.push(
 // Pre-phase-09 audit: closes CLAUDE.md §21.5's daily minor→adult sweep,
 // which had a tested job function (`runAgeSweep`) but no queue or Worker
 // at all until this change.
-workers.push(
+registerWorker(
   new Worker<AgeSweepJobData>(
     'age-and-moderation-sweep',
     async () => {
@@ -85,7 +86,7 @@ workers.push(
 );
 
 // `account-lifecycle/09`.
-workers.push(
+registerWorker(
   new Worker<DataExportJobData>(
     'data-export',
     async (job) => {
@@ -98,7 +99,7 @@ workers.push(
 // `exercise-library/06`. One queue, two job kinds (`./queues/types.ts`):
 // the weekly `sweep` BullMQ's own scheduler emits, and the per-coach
 // `reconcile` jobs it fans out into.
-workers.push(
+registerWorker(
   new Worker<ExerciseReconcileJobData>(
     'exercise-reconcile',
     async (job) => {

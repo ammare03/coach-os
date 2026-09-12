@@ -28,7 +28,7 @@ export interface GracefulShutdownOptions {
  * signal to the Jest process.
  */
 export function registerGracefulShutdown(
-  workers: Worker[],
+  workers: readonly Worker[],
   {
     timeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
     exit = process.exit.bind(process),
