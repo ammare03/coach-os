@@ -200,7 +200,6 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   // device, and gets its own assertion at the bottom of this file rather
   // than a substitution that would record a provider dependency it does not
   // have.
-  ['(coach)/client/[id]/checkins', '/(coach)/client/c1/checkins'],
   ['(coach)/client/[id]/chat', '/(coach)/client/c1/chat'],
   ['(coach)/client/[id]/notes', '/(coach)/client/c1/notes'],
   ['(coach)/session/[id]', '/(coach)/session/s1'],
@@ -343,6 +342,11 @@ const SUBSTITUTED = new Set([
   // renders is covered by
   // `src/features/clients/screens/__tests__/ClientNutritionScreen.test.tsx`.
   '(coach)/client/[id]/nutrition',
+  // Real as of `client-detail/05`. The Check-ins tab reads its own query
+  // entry and the coach's time zone through TanStack Query. What it renders,
+  // including all four `checkin_status` badges, is covered by
+  // `src/features/clients/screens/__tests__/ClientCheckinsScreen.test.tsx`.
+  '(coach)/client/[id]/checkins',
   // Real as of `phase-09-workout-logger/today-card/01`, and the same
   // reason again: the Today screen reads `me.get`, `clientApp.coach` and
   // `workouts.upcoming` through TanStack Query, plus the local SQLite
