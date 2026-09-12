@@ -12,6 +12,8 @@ const tseslintParser = require('typescript-eslint').parser;
 const baseConfig = require('../../eslint.base.js');
 const rule = require('../no-hand-written-row-type.js');
 
+const { findRuleEntry } = require('./find-rule-entry.js');
+
 const ruleTester = new RuleTester({ languageOptions: { parser: tseslintParser } });
 
 ruleTester.run('no-hand-written-row-type', rule, {
@@ -53,11 +55,11 @@ describe('the eslint.base.js wiring', () => {
   // typescript-eslint config entries earlier in the array — so the wiring
   // check supplies it directly rather than pulling in the whole file.
   const parserEntry = { languageOptions: { parser: tseslintParser } };
-  const entry = baseConfig.find((config) => config.rules?.[RULE_ID] !== undefined);
+  const entry = findRuleEntry(baseConfig, RULE_ID);
 
   it('registers the rule at error severity', () => {
     expect(entry).toBeDefined();
-    expect(entry.rules[RULE_ID]).toBe('error');
+    expect(entry.rules?.[RULE_ID]).toBe('error');
   });
 
   it('reports a hand-written row type outside packages/db', () => {

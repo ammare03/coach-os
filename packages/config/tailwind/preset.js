@@ -9,6 +9,19 @@
 // `theme-tokens/04`'s dark/light switch and P25's white-label override can
 // change what a variable holds without this preset — or any component —
 // changing at all.
+//
+// The two requires below cross a workspace boundary by relative path, which
+// `import/no-relative-packages` exists to stop. `@coachos/ui` would be the
+// correct specifier and cannot be used: `packages/ui` extends
+// `@coachos/config` — its tailwind.config.js, eslint.config.js and
+// tsconfig.json all resolve through this package — so a package-specifier
+// import here would close a config↔ui cycle. Note that the rule's autofix
+// WILL rewrite these to `@coachos/ui/...` if the directives below are ever
+// detached from them, and `.lintstagedrc.json` runs `eslint --fix`. The
+// resolution is to move the token source into a package both can depend on,
+// which is an ownership decision rather than a lint fix: UNFORGET A20.
+/* eslint-disable import/no-relative-packages -- see above; UNFORGET A20. */
+const { flattenColorChannels } = require('../../ui/src/theme/to-rgb-channels.ts');
 const {
   colors,
   radius,
@@ -16,7 +29,7 @@ const {
   fontFamily,
   fontSize,
 } = require('../../ui/src/theme/tokens.ts');
-const { flattenColorChannels } = require('../../ui/src/theme/to-rgb-channels.ts');
+/* eslint-enable import/no-relative-packages */
 
 const channelNames = Object.keys(flattenColorChannels(colors));
 
@@ -36,18 +49,26 @@ const cssVarColors = Object.fromEntries(
 // never generated, and NativeWind drops the unknown class without erroring.
 // Order-independent on purpose: `flattenColorChannels` decides which arrives
 // first, and neither ordering may lose a value.
+/**
+ * @param {Record<string, string>} flat
+ * @returns {Record<string, string | Record<string, string>>}
+ */
 function nest(flat) {
+  /** @type {Record<string, string | Record<string, string>>} */
   const out = {};
   for (const [key, value] of Object.entries(flat)) {
-    const [group, ...rest] = key.split('-');
+    // `split` always yields at least one segment, so the default never
+    // fires — it is there so the checker can see `group` as a string.
+    const [group = key, ...rest] = key.split('-');
+    const existing = out[group];
     if (rest.length === 0) {
-      if (typeof out[group] === 'object') out[group].DEFAULT = value;
+      if (typeof existing === 'object') existing.DEFAULT = value;
       else out[group] = value;
       continue;
     }
-    if (typeof out[group] === 'string') out[group] = { DEFAULT: out[group] };
-    out[group] = out[group] ?? {};
-    out[group][rest.join('-')] = value;
+    const nested = typeof existing === 'string' ? { DEFAULT: existing } : (existing ?? {});
+    nested[rest.join('-')] = value;
+    out[group] = nested;
   }
   return out;
 }

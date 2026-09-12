@@ -4,12 +4,12 @@
 // (CLAUDE.md §3.1).
 const rawExpoConfig = require('eslint-config-expo/flat');
 
-const base = require('./eslint.base');
-const noRawColor = require('./eslint-rules/no-raw-color.js');
 const adherenceColorsOnly = require('./eslint-rules/adherence-colors-only.js');
 const noArbitraryTailwind = require('./eslint-rules/no-arbitrary-tailwind.js');
 const noBareInvalidateQueries = require('./eslint-rules/no-bare-invalidate-queries.js');
 const noDirectOutboxWrite = require('./eslint-rules/no-direct-outbox-write.js');
+const noRawColor = require('./eslint-rules/no-raw-color.js');
+const base = require('./eslint.base');
 
 // eslint-config-expo bundles its own eslint-plugin-import registration in
 // several entries. `base` already registers `import` workspace-wide with no
@@ -17,8 +17,12 @@ const noDirectOutboxWrite = require('./eslint-rules/no-direct-outbox-write.js');
 // key throws "Cannot redefine plugin" — strip expo's duplicate registration
 // and let base's supply the plugin for expo's import/* rules too.
 const expoConfig = rawExpoConfig.map((entry) => {
-  if (!entry.plugins || !('import' in entry.plugins)) return entry;
-  const { import: _unused, ...remainingPlugins } = entry.plugins;
+  const plugins = entry.plugins;
+  if (!plugins || !('import' in plugins)) return entry;
+  const remainingPlugins = Object.fromEntries(
+    Object.entries(plugins).filter(([name]) => name !== 'import'),
+  );
+  /** @type {import('eslint').Linter.Config} */
   const deduped = { ...entry, plugins: remainingPlugins };
   if (Object.keys(remainingPlugins).length === 0) delete deduped.plugins;
   return deduped;
@@ -41,6 +45,7 @@ const THEME_PLUGIN = {
   },
 };
 
+/** @type {import('eslint').Linter.Config} */
 const noArbitraryTailwindRule = {
   files: ['**/*.{ts,tsx}'],
   plugins: THEME_PLUGIN,
@@ -64,6 +69,7 @@ const QUERY_PLUGIN = {
 // No `ignores`. Unlike the colour rules there is no file that legitimately
 // needs to refetch the whole cache — `keys.ts` exists so that even the
 // broadest invalidation names a prefix.
+/** @type {import('eslint').Linter.Config} */
 const noBareInvalidateQueriesRule = {
   files: ['**/*.{ts,tsx}'],
   plugins: QUERY_PLUGIN,
@@ -83,6 +89,7 @@ const OUTBOX_PLUGIN = {
   },
 };
 
+/** @type {import('eslint').Linter.Config} */
 const noDirectOutboxWriteRule = {
   files: ['**/*.{ts,tsx}'],
   ignores: [
@@ -113,6 +120,7 @@ const noDirectOutboxWriteRule = {
 // apps/mobile/eslint.config.js's own comment documents for
 // `noInlineInputSchemaRules` — verified by deliberately tripping it (§6
 // below) before trusting it.
+/** @type {import('eslint').Linter.Config} */
 const noRawColorRule = {
   files: ['**/*.{ts,tsx}'],
   ignores: [
@@ -168,6 +176,7 @@ const noRawColorRule = {
   rules: { 'theme/no-raw-color': 'error' },
 };
 
+/** @type {import('eslint').Linter.Config} */
 const adherenceColorsOnlyRule = {
   files: ['**/*.{ts,tsx}'],
   ignores: [
@@ -259,8 +268,8 @@ const adherenceColorsOnlyRule = {
   rules: { 'theme/adherence-colors-only': 'error' },
 };
 
-/** @type {import('eslint').Linter.Config[]} */
-module.exports = [
+/** @type {import('typescript-eslint').ConfigArray} */
+const reactNativeConfig = [
   ...base,
   ...expoConfig,
   noArbitraryTailwindRule,
@@ -269,4 +278,8 @@ module.exports = [
   noBareInvalidateQueriesRule,
 ];
 
-module.exports.noDirectOutboxWriteRule = noDirectOutboxWriteRule;
+// `Object.assign` rather than a second `module.exports.x =` statement: it
+// mutates and returns the same array, so the runtime shape is unchanged,
+// and the returned intersection is what lets a consumer read the named
+// export without the array's type losing it.
+module.exports = Object.assign(reactNativeConfig, { noDirectOutboxWriteRule });

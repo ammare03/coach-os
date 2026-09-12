@@ -9,6 +9,8 @@ const { Linter, RuleTester } = require('eslint');
 const reactNativeConfig = require('../../eslint.react-native.js');
 const rule = require('../no-arbitrary-tailwind.js');
 
+const { findRuleEntry } = require('./find-rule-entry.js');
+
 const ruleTester = new RuleTester();
 
 ruleTester.run('no-arbitrary-tailwind', rule, {
@@ -43,11 +45,11 @@ ruleTester.run('no-arbitrary-tailwind', rule, {
 
 describe('the eslint.react-native.js wiring', () => {
   const RULE_ID = 'theme/no-arbitrary-tailwind';
-  const entry = reactNativeConfig.find((config) => config.rules?.[RULE_ID] !== undefined);
+  const entry = findRuleEntry(reactNativeConfig, RULE_ID);
 
   it('registers the rule at error severity with no exemptions', () => {
     expect(entry).toBeDefined();
-    expect(entry.rules[RULE_ID]).toBe('error');
+    expect(entry.rules?.[RULE_ID]).toBe('error');
     expect(entry.ignores).toBeUndefined();
   });
 

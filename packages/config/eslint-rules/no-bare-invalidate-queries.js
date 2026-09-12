@@ -26,6 +26,7 @@
 
 const BANNED_METHOD = 'invalidateQueries';
 
+/** @param {import('estree').Expression | import('estree').Super} callee */
 function isInvalidateQueriesCallee(callee) {
   if (callee.type === 'Identifier') {
     return callee.name === BANNED_METHOD;
@@ -36,12 +37,18 @@ function isInvalidateQueriesCallee(callee) {
   return callee.property.type === 'Identifier' && callee.property.name === BANNED_METHOD;
 }
 
-/** `{}` — no properties, no spread. Matches every query, exactly like no argument at all. */
+/**
+ * `{}` — no properties, no spread. Matches every query, exactly like no argument at all.
+ * @param {import('estree').Node} node
+ */
 function isEmptyObjectLiteral(node) {
   return node.type === 'ObjectExpression' && node.properties.length === 0;
 }
 
-/** `undefined` or `void 0` — TanStack Query treats an explicit undefined identically to no argument. */
+/**
+ * `undefined` or `void 0` — TanStack Query treats an explicit undefined identically to no argument.
+ * @param {import('estree').Node} node
+ */
 function isUndefinedArgument(node) {
   if (node.type === 'Identifier' && node.name === 'undefined') return true;
   return node.type === 'UnaryExpression' && node.operator === 'void';
@@ -77,6 +84,11 @@ const rule = {
           return;
         }
         const [first] = node.arguments;
+        // Unreachable — the length check above guarantees it. Present so
+        // the checker can see the element is not `undefined`.
+        if (!first) {
+          return;
+        }
         if (isEmptyObjectLiteral(first)) {
           context.report({ node, messageId: 'emptyFilters' });
           return;

@@ -7,16 +7,39 @@
 //
 // The loop in the first test is the real guard; the named cases below it are
 // documentation of the collision that motivated it.
-const preset = require('../preset.js');
-const { colors: tokenColors } = require('../../../ui/src/theme/tokens.ts');
+//
+// The two requires below carry the same undeclared `packages/config` →
+// `packages/ui` edge `../preset.js` itself does, for the same reason — see
+// that file's note and UNFORGET A20.
+/* eslint-disable import/no-relative-packages -- see above; UNFORGET A20. */
 const { flattenColorChannels } = require('../../../ui/src/theme/to-rgb-channels.ts');
+const { colors: tokenColors } = require('../../../ui/src/theme/tokens.ts');
+/* eslint-enable import/no-relative-packages */
+const preset = require('../preset.js');
 
-const { colors } = preset.theme;
+/** @typedef {Record<string, string | Record<string, string>>} ColorTree */
+
+const theme = preset.theme;
+if (!theme || !theme.colors) {
+  throw new Error('preset.theme.colors is missing — the preset did not build.');
+}
+const colors = /** @type {ColorTree} */ (theme.colors);
+
+/** A group that must be nested, named so a shape regression fails legibly. */
+function group(/** @type {string} */ name) {
+  const node = colors[name];
+  if (typeof node !== 'object') {
+    throw new Error(`expected colors.${name} to be a nested group, got ${typeof node}`);
+  }
+  return node;
+}
 
 /** `'urgent-text'` → `colors.urgent.text`; `'urgent'` → `colors.urgent.DEFAULT`. */
-function resolveChannel(flatKey) {
-  const [group, ...rest] = flatKey.split('-');
-  const node = colors[group];
+function resolveChannel(/** @type {string} */ flatKey) {
+  // `split` always yields at least one segment; the default is for the
+  // checker, not for a case that can occur.
+  const [groupName = flatKey, ...rest] = flatKey.split('-');
+  const node = colors[groupName];
   if (rest.length === 0) {
     return typeof node === 'string' ? node : node?.DEFAULT;
   }
@@ -37,8 +60,8 @@ describe('tailwind preset — every colour token survives nesting', () => {
   });
 
   it('loses no token — nested leaf count matches the flat key count', () => {
-    const leaves = Object.values(colors).flatMap((group) =>
-      typeof group === 'string' ? [group] : Object.values(group),
+    const leaves = Object.values(colors).flatMap((node) =>
+      typeof node === 'string' ? [node] : Object.values(node),
     );
     expect(leaves).toHaveLength(flatKeys.length);
   });
@@ -49,21 +72,21 @@ describe('tailwind preset — the urgent/urgent-text collision (Q9)', () => {
   // the first hyphen put a string at `colors.urgent`, and the sibling's
   // assignment onto a string primitive was a silent no-op.
   it('keeps both, with the bare value under DEFAULT', () => {
-    expect(colors.urgent.DEFAULT).toBe('rgb(var(--color-urgent) / <alpha-value>)');
-    expect(colors.urgent.text).toBe('rgb(var(--color-urgent-text) / <alpha-value>)');
+    expect(group('urgent').DEFAULT).toBe('rgb(var(--color-urgent) / <alpha-value>)');
+    expect(group('urgent').text).toBe('rgb(var(--color-urgent-text) / <alpha-value>)');
   });
 
   it('still generates text-urgent as well as text-urgent-text', () => {
     // Tailwind emits the bare utility name from `DEFAULT`, so promoting the
     // string did not cost the `text-urgent` class.
-    expect(typeof colors.urgent.DEFAULT).toBe('string');
+    expect(typeof group('urgent').DEFAULT).toBe('string');
   });
 
   it('leaves a group with no bare sibling nested as before', () => {
     // `on-deep` has no bare `on`, so it must stay a plain nested key.
-    expect(colors.on.deep).toBe('rgb(var(--color-on-deep) / <alpha-value>)');
-    expect(colors.on.DEFAULT).toBeUndefined();
-    expect(colors.bg.raised).toBe('rgb(var(--color-bg-raised) / <alpha-value>)');
+    expect(group('on').deep).toBe('rgb(var(--color-on-deep) / <alpha-value>)');
+    expect(group('on').DEFAULT).toBeUndefined();
+    expect(group('bg').raised).toBe('rgb(var(--color-bg-raised) / <alpha-value>)');
   });
 });
 
@@ -75,9 +98,9 @@ describe('tailwind preset — the rest of the theme is replaced, not extended', 
   });
 
   it('exposes radius, spacing, and type from tokens.ts', () => {
-    expect(Object.keys(preset.theme.borderRadius).length).toBeGreaterThan(0);
-    expect(Object.keys(preset.theme.spacing).length).toBeGreaterThan(0);
-    expect(Object.keys(preset.theme.fontSize).length).toBeGreaterThan(0);
-    expect(Object.keys(preset.theme.fontFamily).length).toBeGreaterThan(0);
+    expect(Object.keys(theme.borderRadius ?? {}).length).toBeGreaterThan(0);
+    expect(Object.keys(theme.spacing ?? {}).length).toBeGreaterThan(0);
+    expect(Object.keys(theme.fontSize ?? {}).length).toBeGreaterThan(0);
+    expect(Object.keys(theme.fontFamily ?? {}).length).toBeGreaterThan(0);
   });
 });

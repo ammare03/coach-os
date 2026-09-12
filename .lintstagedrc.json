@@ -4,6 +4,7 @@
   "apps/api/**/*.{ts,tsx,js,cjs,mjs}": "pnpm --dir apps/api exec eslint --fix",
   "apps/mobile/**/*.{ts,tsx,js,cjs,mjs}": "pnpm --dir apps/mobile exec eslint --fix",
   "apps/web/**/*.{ts,tsx,js,cjs,mjs}": "pnpm --dir apps/web exec eslint --fix",
+  "packages/config/**/*.{ts,tsx,js,cjs,mjs}": "pnpm --dir packages/config exec eslint --fix",
   "packages/db/**/*.{ts,tsx,js,cjs,mjs}": "pnpm --dir packages/db exec eslint --fix",
   "packages/schemas/**/*.{ts,tsx,js,cjs,mjs}": "pnpm --dir packages/schemas exec eslint --fix",
   "packages/ui/**/*.{ts,tsx,js,cjs,mjs}": "pnpm --dir packages/ui exec eslint --fix",

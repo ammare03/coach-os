@@ -17,6 +17,8 @@ const { Linter, RuleTester } = require('eslint');
 const reactNativeConfig = require('../../eslint.react-native.js');
 const rule = require('../adherence-colors-only.js');
 
+const { findRuleEntry } = require('./find-rule-entry.js');
+
 const ruleTester = new RuleTester();
 
 ruleTester.run('adherence-colors-only', rule, {
@@ -59,11 +61,11 @@ ruleTester.run('adherence-colors-only', rule, {
 
 describe('the eslint.react-native.js wiring', () => {
   const RULE_ID = 'theme/adherence-colors-only';
-  const entry = reactNativeConfig.find((config) => config.rules?.[RULE_ID] !== undefined);
+  const entry = findRuleEntry(reactNativeConfig, RULE_ID);
 
   it('registers the rule at error severity', () => {
     expect(entry).toBeDefined();
-    expect(entry.rules[RULE_ID]).toBe('error');
+    expect(entry.rules?.[RULE_ID]).toBe('error');
   });
 
   it('reports the ramp outside the allowlisted adherence-state files', () => {

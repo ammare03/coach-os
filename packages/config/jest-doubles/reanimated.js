@@ -14,7 +14,9 @@
 
 module.exports = function reanimatedDouble() {
   const { View } = jest.requireActual('react-native');
-  const identity = (value) => value;
+  // Generic so a value handed to `withTiming`/`withSpring`/`runOnJS` comes
+  // back as the same type rather than widening to `unknown`.
+  const identity = /** @type {<T>(value: T) => T} */ ((value) => value);
   return {
     __esModule: true,
     // `call` and the bare `View` export are what `expo-router`'s own
@@ -22,25 +24,35 @@ module.exports = function reanimatedDouble() {
     // never needed them.
     default: { View, createAnimatedComponent: identity, call: () => undefined },
     View,
-    Easing: { bezier: () => (t) => t },
-    useSharedValue: (initial) => ({ value: initial }),
-    useAnimatedStyle: (factory) => factory(),
-    useDerivedValue: (factory) => ({ value: factory() }),
+    Easing: { bezier: () => (/** @type {number} */ t) => t },
+    useSharedValue: /** @type {<T>(initial: T) => { value: T }} */ (
+      (initial) => ({
+        value: initial,
+      })
+    ),
+    useAnimatedStyle: /** @type {<T>(factory: () => T) => T} */ ((factory) => factory()),
+    useDerivedValue: /** @type {<T>(factory: () => T) => { value: T }} */ (
+      (factory) => ({
+        value: factory(),
+      })
+    ),
     withTiming: identity,
     withSpring: identity,
-    withDelay: (_delay, value) => value,
+    withDelay: /** @type {<T>(delayMs: number, value: T) => T} */ ((_delay, value) => value),
     // The PR pill's `prpop` overshoot (`personal-records/03`) is two
     // segments — .86 → 1.05 → 1. Resolved to the LAST value, which is the
     // end state a behavioural test asserts on; the overshoot in between is
     // a UI-thread interpolation and is verified on hardware.
-    withSequence: (...values) => values[values.length - 1],
+    withSequence: /** @type {<T>(...values: T[]) => T | undefined} */ (
+      (...values) => values[values.length - 1]
+    ),
     // `Skeleton` (`ui-primitives-data/06`) loops its shimmer sweep; the
     // double resolves the loop to its target so nothing animates in a
     // behavioural test, and cancellation is a no-op with nothing running.
-    withRepeat: (value) => value,
+    withRepeat: identity,
     cancelAnimation: () => undefined,
-    runOnJS: (fn) => fn,
-    interpolate: (value) => value,
+    runOnJS: identity,
+    interpolate: identity,
     // The three members `react-native-gesture-handler`'s own
     // `handlers/gestures/reanimatedWrapper.ts` probes for before it will
     // mount a `<GestureDetector>` (`program-builder/03`'s draggable list is

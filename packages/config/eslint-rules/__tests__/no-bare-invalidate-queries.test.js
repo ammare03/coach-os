@@ -8,6 +8,8 @@ const { Linter, RuleTester } = require('eslint');
 const reactNativeConfig = require('../../eslint.react-native.js');
 const rule = require('../no-bare-invalidate-queries.js');
 
+const { findRuleEntry } = require('./find-rule-entry.js');
+
 const ruleTester = new RuleTester();
 
 ruleTester.run('no-bare-invalidate-queries', rule, {
@@ -94,11 +96,11 @@ describe('the eslint.react-native.js wiring', () => {
   // wrong reason.
   const FILENAME = 'src/features/workouts/api.ts';
 
-  const entry = reactNativeConfig.find((config) => config.rules?.[RULE_ID] !== undefined);
+  const entry = findRuleEntry(reactNativeConfig, RULE_ID);
 
   it('registers the rule at error severity', () => {
     expect(entry).toBeDefined();
-    expect(entry.rules[RULE_ID]).toBe('error');
+    expect(entry.rules?.[RULE_ID]).toBe('error');
   });
 
   it('applies to the TypeScript files the app is written in', () => {

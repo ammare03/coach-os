@@ -22,6 +22,10 @@ const rule = {
     },
   },
   create(context) {
+    /**
+     * @param {import('eslint').Rule.Node} node
+     * @param {unknown} value
+     */
     function check(node, value) {
       if (typeof value === 'string' && ARBITRARY_RE.test(value)) {
         context.report({ node, messageId: 'arbitraryValue', data: { value } });

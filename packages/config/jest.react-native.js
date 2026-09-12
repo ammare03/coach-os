@@ -5,13 +5,14 @@
 // this file only layers CoachOS's cross-cutting settings on top of it.
 // Do not try to hand-roll the transform-ignore pattern here; jest-expo's
 // is kept in step with each Expo SDK release and a hand-rolled one drifts.
-const base = require('./jest.base');
-
+//
 // Setting `preset: 'jest-expo'` as a string means Jest resolves that
 // preset's own `moduleNameMapper` later, in its config loader — so it has
 // to be read directly from `jest-expo` here to EXTEND it rather than
 // clobber it.
 const jestExpoPreset = require('jest-expo/jest-preset');
+
+const base = require('./jest.base');
 
 /** @type {import('jest').Config} */
 module.exports = {

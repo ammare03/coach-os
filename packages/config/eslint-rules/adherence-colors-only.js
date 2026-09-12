@@ -36,6 +36,10 @@ const rule = {
   create(context) {
     const sourceCode = context.sourceCode ?? context.getSourceCode();
 
+    /**
+     * @param {import('eslint').Rule.Node} node
+     * @param {unknown} value
+     */
     function checkString(node, value) {
       if (typeof value !== 'string') return;
       if (CLASS_RE.test(value)) {
