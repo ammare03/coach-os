@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
 import { QUERY_CACHE_MAX_AGE_MS } from '../../lib/query/persister.ts';
 import { api } from '../../lib/trpc.ts';
@@ -162,3 +162,44 @@ export function useClientIdentity(clientId: string) {
     }),
   });
 }
+
+/**
+ * §8.3's Training tab — the session history list, keyset-paginated.
+ *
+ * `useInfiniteQuery` with the literal key rather than
+ * `api.coach.clients.trainingHistory.useInfiniteQuery`, for the reason
+ * `clientDetailKeys` states: the tab's cache entry is `['clients', id,
+ * 'training']`, so this tab invalidates, persists, and evicts on the same
+ * terms as the other five, and `coach-notes` or `session-review` can reach
+ * it by name without knowing a tRPC path.
+ *
+ * `initialPageParam` is `null`, not `undefined`: `exactOptionalPropertyTypes`
+ * makes an explicit `cursor: undefined` a different thing from an absent
+ * one, so the first page omits the key entirely rather than sending it
+ * empty.
+ *
+ * The list is what a coach came to the tab for, so it is fetched eagerly on
+ * mount and the SECOND page is not — `getNextPageParam` returns the
+ * server's own `nextCursor`, and `null` there is TanStack's "no more
+ * pages", which is exactly what the server means by it.
+ */
+export function useClientTrainingHistory(clientId: string) {
+  const utils = api.useUtils();
+
+  return useInfiniteQuery({
+    queryKey: clientDetailKeys.tab(clientId, 'training'),
+    queryFn: ({ pageParam }: { pageParam: string | null }) =>
+      utils.client.coach.clients.trainingHistory.query(
+        pageParam === null ? { clientId } : { clientId, cursor: pageParam },
+      ),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    staleTime: CLIENT_DETAIL_STALE_TIME_MS,
+    gcTime: QUERY_CACHE_MAX_AGE_MS,
+  });
+}
+
+/** One session in the history list, inferred — never restated (`code-conventions` §3). */
+export type SessionHistoryItem = NonNullable<
+  ReturnType<typeof useClientTrainingHistory>['data']
+>['pages'][number]['items'][number];

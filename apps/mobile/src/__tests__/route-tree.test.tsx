@@ -194,7 +194,6 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   // `(coach)/(tabs)/index` did. The six rows below still render their own
   // route key, through the pass-through that stands in for that feature's
   // `_layout`.
-  ['(coach)/client/[id]/training', '/(coach)/client/c1/training'],
   ['(coach)/client/[id]/nutrition', '/(coach)/client/c1/nutrition'],
   ['(coach)/client/[id]/videos', '/(coach)/client/c1/videos'],
   ['(coach)/client/[id]/checkins', '/(coach)/client/c1/checkins'],
@@ -330,6 +329,11 @@ const SUBSTITUTED = new Set([
   // is covered by `src/features/clients/`.
   '(coach)/client/[id]/_layout',
   '(coach)/client/[id]/index',
+  // Real as of `client-detail/02`. The Training tab reads
+  // `coach.clients.trainingHistory` through TanStack Query, so it needs the
+  // provider this tree substitutes. What it renders is covered by
+  // `src/features/clients/screens/__tests__/ClientTrainingScreen.test.tsx`.
+  '(coach)/client/[id]/training',
   // Real as of `phase-09-workout-logger/today-card/01`, and the same
   // reason again: the Today screen reads `me.get`, `clientApp.coach` and
   // `workouts.upcoming` through TanStack Query, plus the local SQLite

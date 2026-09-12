@@ -1,6 +1,7 @@
 import { coach as coachSchemas } from '@coachos/schemas';
 
 import { getClientOverview } from '../features/coach/client-overview.ts';
+import { getClientTrainingHistory } from '../features/coach/client-training-history.ts';
 import { getCoachDashboard } from '../features/coach/dashboard.ts';
 import { updateCoachProfile } from '../features/coach/update-profile.ts';
 import { detachClient, notifyRelationshipEnded } from '../services/coach-client-transition.ts';
@@ -57,6 +58,22 @@ export const coachRouter = router({
       .query(({ ctx, input }) =>
         getClientOverview(ctx.db, ctx.user.coachProfileId, input.clientId),
       ),
+
+    // `phase-10-coach-review-surfaces/client-detail/02` — §8.3's Training
+    // tab: the session history list, most recent first, keyset-paginated.
+    //
+    // Sits beside `overview` under `coach.clients` for the same reason it
+    // gives, and takes the same one guard: `ownsResource('client', …)` is
+    // the whole security story, and `getClientTrainingHistory` re-checks
+    // nothing.
+    //
+    // Every row is render-complete — duration, volume, PR count, reviewed
+    // state — so nothing on the Training tab fetches per row
+    // (`screen-composition` §2, and this task's own Risks section).
+    trainingHistory: coachProcedure
+      .input(coachSchemas.clientTrainingHistoryInput)
+      .use(ownsResource('client', (i: { clientId: string }) => i.clientId))
+      .query(({ ctx, input }) => getClientTrainingHistory(ctx.db, input.clientId, input)),
 
     release: coachProcedure
       .input(coachSchemas.releaseClientInput)
