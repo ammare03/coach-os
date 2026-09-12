@@ -1,6 +1,6 @@
 import { ListRow, ListSection, density as densityTokens, type Density } from '@coachos/ui';
 import { useRouter } from 'expo-router';
-import { Download, Info, LogOut } from 'lucide-react-native';
+import { Download, Info, LogOut, Trash2 } from 'lucide-react-native';
 import { ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -85,7 +85,7 @@ export function SettingsScreen() {
         Privacy & safety Privacy                               ✓     ✓     P15 preferences-and-quiet-hours/04
                          Blocked people                        ✓     ✓     P26 blocking-and-filtering/03
         Your data        Your data (export)                    ✓     ✓     P03 account-lifecycle/11  ← MOUNTED
-                         Delete account — DIRECTLY BELOW IT    ✓     ✓     settings-shell → account-actions/02
+                         Delete account — DIRECTLY BELOW IT    ✓     ✓     account-actions/02         ← MOUNTED
         Help & about     Medical disclaimer                    ✓     ✓     P06 onboarding-infrastructure/03 ← MOUNTED
                          Terms · Privacy Policy                ✓     ✓     P22 legal-and-compliance/01
                          Help → Send diagnostic info           ✓     ✓     P26 support-tooling/04
@@ -131,6 +131,24 @@ export function SettingsScreen() {
           icon={Download}
           density={density}
           onPress={() => router.push('/your-data')}
+        />
+        {/* `account-actions/02`. The NEXT child of this section, not a row
+            at the foot of the page: `CLAUDE.md` §21.4 puts deletion ≤3 taps
+            from here, and the order — export above deletion — is what makes
+            the copy offered before the exit.
+
+            `destructive`, so `ListRow` draws no chevron. It does navigate,
+            unlike Sign out above; the component's rule is that a
+            destructive row never draws one, and the alternative (a red
+            label wearing a chevron) reads as a navigation row that happens
+            to be red. The screen it opens is what explains itself. */}
+        <ListRow
+          label="Delete account"
+          icon={Trash2}
+          destructive
+          density={density}
+          onPress={() => router.push('/delete-account')}
+          testID="settings-delete-account"
         />
       </ListSection>
 

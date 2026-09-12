@@ -147,6 +147,14 @@ const EXPECTED_ROUTE_FILES = [
   'medical-disclaimer.tsx',
   // Not in §9.1 — a real shipped P03 screen (`account-lifecycle/`).
   'your-data.tsx',
+  // Not in §9.1 — two real shipped P09 screens
+  // (`account-actions/02`). Flat for the same reason the two above are:
+  // one screen each, identical for every role, reached from both roles'
+  // settings. `pending-deletion` additionally must NOT sit in a group,
+  // because it is the blocking state the group gates would otherwise
+  // govern.
+  'delete-account.tsx',
+  'pending-deletion.tsx',
 ].sort();
 
 /**
@@ -253,6 +261,11 @@ const SUBSTITUTED = new Set([
   '_dev/gallery',
   'medical-disclaimer',
   'your-data',
+  // Real as of `account-actions/02`. What each renders is covered by
+  // `src/features/settings/screens/__tests__/DeleteAccountScreen.test.tsx`
+  // and `src/features/auth/screens/__tests__/PendingDeletionScreen.test.tsx`.
+  'delete-account',
+  'pending-deletion',
   // Real screens as of `phase-06-onboarding/coach-onboarding/01` and
   // `client-onboarding/02`. What each renders is covered by
   // `src/features/onboarding/__tests__/`.

@@ -108,7 +108,6 @@ const UNSHIPPED_ROWS = [
   'Privacy & safety',
   'Terms',
   'Privacy Policy',
-  'Delete account',
   'Billing',
   'Branding',
   'Team',
@@ -131,6 +130,10 @@ describe('SettingsScreen — the row set, per role', () => {
     expect(screen.getByLabelText(/Kilograms/)).toBeTruthy();
     // `settings-shell/03`.
     expect(screen.getByText('Appearance')).toBeTruthy();
+    // `account-actions/02`. It left `UNSHIPPED_ROWS` in the same change
+    // that mounted it; placement and the three-tap walk are asserted by
+    // `DeleteAccountScreen.test.tsx`, which owns that flow.
+    expect(screen.getByRole('button', { name: 'Delete account' })).toBeTruthy();
   });
 
   it.each(['coach', 'client'] as const)(
