@@ -36,6 +36,17 @@ export interface CardProps {
   density?: Density;
   /** Turns the card into a control: `accessibilityRole="button"` and the shared press treatment. A card with no `onPress` is a container, never focusable. */
   onPress?: () => void;
+  /**
+   * Off for a card whose children own their own horizontal padding —
+   * `ListSection`'s grouped rows, where the row is 16px in and the
+   * `Divider` between two rows insets itself by the density's own card
+   * padding (`Divider`'s contract). With the padding on, that inset applies
+   * twice and the rule floats away from the text it separates.
+   *
+   * Added by `settings-shell/01` rather than re-deriving `DESIGN.md` §2's
+   * raised recipe — gradient, hairline, shadow — in a second component.
+   */
+  padded?: boolean;
   children: ReactNode;
   accessibilityLabel?: string;
   testID?: string;
@@ -54,6 +65,7 @@ export function Card({
   elevation: level = 'raised',
   density: densityProp = 'client',
   onPress,
+  padded = true,
   children,
   accessibilityLabel,
   testID,
@@ -98,7 +110,7 @@ export function Card({
           content, never the container's own `opacity` — text stays at full
           contrast through the press. */}
       {onPress && pressed && <View pointerEvents="none" style={themed.pressedTint} />}
-      <View style={{ padding }}>{children}</View>
+      <View style={padded ? { padding } : undefined}>{children}</View>
     </View>
   );
 

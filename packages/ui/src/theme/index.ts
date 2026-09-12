@@ -31,6 +31,7 @@ export {
 } from './tokens.ts';
 
 export { schemes, schemeInk, schemeTokens, type Scheme } from './schemes.ts';
+export { LIGHT_SCHEME_AVAILABLE } from './light-scheme-flag.ts';
 export {
   DARK_INK,
   darkSchemeTokens,

@@ -19,6 +19,8 @@ import { FormField } from './components/FormField.tsx';
 import { IconButton } from './components/IconButton.tsx';
 import { Input } from './components/Input.tsx';
 import { LineChart } from './components/LineChart.tsx';
+import { ListRow } from './components/ListRow.tsx';
+import { ListSection } from './components/ListSection.tsx';
 import { LoadingState } from './components/LoadingState.tsx';
 import { MacroBar } from './components/MacroBar.tsx';
 import { Modal } from './components/Modal.tsx';
@@ -102,6 +104,53 @@ describe('interactive primitives are labelled, roled, and stated', () => {
       </Card>,
     );
     expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('ListRow — one item per row, and the role follows the trailing shape', () => {
+    const { rerender } = render(
+      <ListRow
+        label="Your data"
+        description="Request a copy of everything you have logged"
+        onPress={jest.fn()}
+      />,
+    );
+    // Label, description, and value merge into ONE item. A row that reads
+    // as three fragments is the failure `accessibility` §2 names for lists.
+    expect(
+      screen.getByRole('button', {
+        name: 'Your data, Request a copy of everything you have logged',
+      }),
+    ).toBeTruthy();
+
+    rerender(
+      <ListRow
+        label="Share usage data"
+        trailing={{ kind: 'switch', value: true, onValueChange: jest.fn() }}
+      />,
+    );
+    expect(
+      screen.getByRole('switch', { name: 'Share usage data' }).props.accessibilityState,
+    ).toMatchObject({ checked: true });
+
+    rerender(<ListRow label="App version" trailing={{ kind: 'value', value: '1.0.0' }} />);
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByLabelText('App version, 1.0.0').props.accessibilityRole).toBe('text');
+  });
+
+  it('ListRow — disabled is announced, not merely drawn faint', () => {
+    render(<ListRow label="Light theme" onPress={jest.fn()} disabled />);
+    expect(screen.getByLabelText('Light theme').props.accessibilityState).toMatchObject({
+      disabled: true,
+    });
+  });
+
+  it('ListSection — the eyebrow is a heading, so sections are navigable', () => {
+    render(
+      <ListSection title="Your data">
+        <ListRow label="Your data" onPress={jest.fn()} />
+      </ListSection>,
+    );
+    expect(screen.getByRole('header', { name: 'Your data' })).toBeTruthy();
   });
 
   it('Chip — interactive chips are buttons carrying their selected state', () => {

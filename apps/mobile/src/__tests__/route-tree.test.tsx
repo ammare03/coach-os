@@ -92,6 +92,10 @@ const EXPECTED_ROUTE_FILES = [
   '(client)/log-food.tsx',
   '(client)/record-form-check.tsx',
   '(client)/scan.tsx',
+  // Not in §9.1 — `phase-09-workout-logger/settings-shell/01` gives each
+  // settings route group a Stack so every sub-screen a later phase adds
+  // under `settings/` inherits a header, a title, and a back action.
+  '(client)/settings/_layout.tsx',
   '(client)/settings/index.tsx',
   '(client)/workout/[sessionId].tsx',
   '(client)/workout/[sessionId]/summary.tsx',
@@ -125,6 +129,7 @@ const EXPECTED_ROUTE_FILES = [
   '(coach)/program/[id]/day/[dayId].tsx',
   '(coach)/program/[id]/index.tsx',
   '(coach)/session/[id].tsx',
+  '(coach)/settings/_layout.tsx',
   '(coach)/settings/index.tsx',
   '(coach)/video/[id].tsx',
   '+native-intent.ts',
@@ -161,7 +166,13 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   // `program-templates/01` composed the real templates list; it moved to
   // SUBSTITUTED for the same reason `(coach)/exercise-library` did.
   ['(coach)/(tabs)/inbox', '/(coach)/(tabs)/inbox'],
-  ['(coach)/(tabs)/more', '/(coach)/(tabs)/more'],
+  // `(coach)/(tabs)/more` was a placeholder here until
+  // `phase-09-workout-logger/settings-shell/02` composed the real hub. It
+  // no longer renders its own route key, so — like `+not-found` — it gets
+  // its own assertion at the bottom of this file instead of a row here. It
+  // is NOT substituted: the hub reads no query, so it renders in this tree
+  // exactly as it does on a device, and asserting that is worth more than
+  // asserting a string.
   ['(coach)/client/[id]/index', '/(coach)/client/c1'],
   ['(coach)/client/[id]/training', '/(coach)/client/c1/training'],
   ['(coach)/client/[id]/nutrition', '/(coach)/client/c1/nutrition'],
@@ -182,7 +193,6 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   // SUBSTITUTED for the same reason `(auth)/welcome` did.
   ['(coach)/invite-client', '/(coach)/invite-client'],
   ['(coach)/live/[sessionId]', '/(coach)/live/l1'],
-  ['(coach)/settings/index', '/(coach)/settings'],
 
   // `(client)/(tabs)/index` was a placeholder here until
   // `phase-09-workout-logger/today-card/01` composed the real Today
@@ -201,7 +211,6 @@ const PLACEHOLDER_ROUTES: readonly (readonly [route: string, url: string])[] = [
   ['(client)/record-form-check', '/(client)/record-form-check'],
   ['(client)/checkin/[id]', '/(client)/checkin/k2'],
   ['(client)/live/[sessionId]', '/(client)/live/l2'],
-  ['(client)/settings/index', '/(client)/settings'],
 
   // `(coach-onboarding)/index` and `(client-onboarding)/index` were both
   // here until `coach-onboarding/01` and `client-onboarding/02` composed
@@ -291,6 +300,14 @@ const SUBSTITUTED = new Set([
   // it renders is covered by
   // `src/features/workouts/components/__tests__/SessionSummaryScreen.test.tsx`.
   '(client)/workout/[sessionId]/summary',
+  // Real as of `phase-09-workout-logger/settings-shell/01`, and the same
+  // reason again: one `SettingsScreen` for both roles, whose account header
+  // reads `me.get` through TanStack Query. What it renders — the row set
+  // per role, where each row navigates, and the degraded header — is
+  // covered by
+  // `src/features/settings/screens/__tests__/SettingsScreen.test.tsx`.
+  '(coach)/settings/index',
+  '(client)/settings/index',
 ]);
 
 /**
@@ -384,9 +401,9 @@ describe('the §9.1 route tree', () => {
       (route) => !covered.has(route) && !SUBSTITUTED.has(route) && !route.endsWith('_layout'),
     );
 
-    // The two non-placeholder routes, both asserted below: the root
-    // redirect, and the catch-all.
-    expect(uncovered).toEqual(['+not-found', 'index']);
+    // The three non-placeholder routes, each asserted below: the coach More
+    // hub, the root redirect, and the catch-all.
+    expect(uncovered).toEqual(['(coach)/(tabs)/more', '+not-found', 'index']);
   });
 
   it.each(PLACEHOLDER_ROUTES)('renders %s at %s', (route, url) => {
@@ -394,6 +411,18 @@ describe('the §9.1 route tree', () => {
     renderRouter(routeContext(), { initialUrl: url });
 
     expect(screen.getByText(route)).toBeTruthy();
+  });
+
+  // The More tab is a real hub as of `settings-shell/02`, so it renders its
+  // own first row rather than its route key. Which rows exist, where each
+  // one goes, and that none of them is dead is
+  // `features/navigation/coach/__tests__/MoreHub.test.tsx`; this asserts
+  // only the tree's half — that the URL still resolves to the hub.
+  it('renders the More hub at /(coach)/(tabs)/more', () => {
+    signInAsOwnerOf('/(coach)/(tabs)/more');
+    renderRouter(routeContext(), { initialUrl: '/(coach)/(tabs)/more' });
+
+    expect(screen.getByTestId('coach-more-hub')).toBeTruthy();
   });
 
   it('redirects `/` into the tree rather than leaving it on +not-found', () => {

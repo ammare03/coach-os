@@ -7,6 +7,7 @@ import { FormsSection } from './FormsSection.tsx';
 import { HapticsSection } from './HapticsSection.tsx';
 import { LabelsSection } from './LabelsSection.tsx';
 import { LegalNoticesSection } from './LegalNoticesSection.tsx';
+import { ListsSection } from './ListsSection.tsx';
 import { LoadingSection } from './LoadingSection.tsx';
 import { OverlaysSection } from './OverlaysSection.tsx';
 import { PeopleSection } from './PeopleSection.tsx';
@@ -29,6 +30,7 @@ export const GALLERY_SECTIONS: readonly GalleryEntry[] = [
   { name: 'Text and Metric', Section: TypographySection },
   { name: 'Pressables', Section: PressablesSection },
   { name: 'Surfaces', Section: SurfacesSection },
+  { name: 'Lists', Section: ListsSection },
   { name: 'Forms', Section: FormsSection },
   { name: 'Overlays', Section: OverlaysSection },
   { name: 'Toasts and undo', Section: ToastsSection },

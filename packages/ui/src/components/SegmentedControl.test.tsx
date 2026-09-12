@@ -41,6 +41,51 @@ describe('SegmentedControl', () => {
     expect(onChange).toHaveBeenCalledWith('week');
   });
 
+  // `settings-shell/03`'s Light scheme: an option that exists, has no
+  // designed palette behind it yet, and must say so rather than either
+  // vanishing or silently doing nothing.
+  describe('a disabled option', () => {
+    const withDisabled: SegmentedOptions<'dark' | 'light'> = [
+      { value: 'dark', label: 'Dark' },
+      { value: 'light', label: 'Light', disabled: true },
+    ];
+
+    it('is announced as unavailable, not merely dimmed', () => {
+      render(<SegmentedControl options={withDisabled} value="dark" onChange={jest.fn()} />);
+
+      expect(screen.getByLabelText('Light, tab 2 of 2').props.accessibilityState).toMatchObject({
+        selected: false,
+        disabled: true,
+      });
+    });
+
+    it('refuses the press outright — it never silently does nothing', () => {
+      const onChange = jest.fn();
+      render(<SegmentedControl options={withDisabled} value="dark" onChange={onChange} />);
+
+      fireEvent.press(screen.getByLabelText('Light, tab 2 of 2'));
+
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('leaves every other segment pressable', () => {
+      const onChange = jest.fn();
+      render(<SegmentedControl options={withDisabled} value="light" onChange={onChange} />);
+
+      fireEvent.press(screen.getByLabelText('Dark, tab 1 of 2'));
+
+      expect(onChange).toHaveBeenCalledWith('dark');
+    });
+
+    it('reports every other segment as enabled, so the flag is visibly per-option', () => {
+      render(<SegmentedControl options={withDisabled} value="dark" onChange={jest.fn()} />);
+
+      expect(screen.getByLabelText('Dark, tab 1 of 2').props.accessibilityState).toMatchObject({
+        disabled: false,
+      });
+    });
+  });
+
   it('fires onChange with the pressed option value', () => {
     const onChange = jest.fn();
     render(<SegmentedControl options={options} value="day" onChange={onChange} />);

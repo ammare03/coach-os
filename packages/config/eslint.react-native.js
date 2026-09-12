@@ -227,6 +227,18 @@ const adherenceColorsOnlyRule = {
     // beside a "Live" label. Neither uses colour alone.
     '**/components/FormField.tsx',
     '**/components/Badge.tsx',
+    // `ListRow`'s `destructive` variant, and the same argument as
+    // `Button`'s `danger` above: `DESIGN.md` §1.1 makes `urgent` the
+    // destructive colour, and a settings list is where "Delete account" and
+    // "Leave coach" live (`settings-shell/01`). The row takes its icon as a
+    // COMPONENT and colours it itself precisely so that entitlement stays
+    // here rather than spreading to every call site that draws one —
+    // without that, each caller reaches for the token and this allowlist
+    // grows a file per feature. §8's requirement is unaffected: the label
+    // recolours and the chevron is dropped, so the variant carries a second
+    // non-colour channel, and nothing about adherence state is expressible
+    // through it.
+    '**/components/ListRow.tsx',
     // Test files that assert the rule itself — `avatar-fallback.test.ts`
     // proves the fallback palette contains no adherence colour, and
     // `Text`/`Input`'s tests prove the urgent tone reaches its token. Each

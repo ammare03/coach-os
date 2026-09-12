@@ -40,6 +40,29 @@ export {
 } from './surfaces/GlassSurface.tsx';
 export { useGlassAvailable, type GlassAvailability } from './surfaces/useGlassAvailable.ts';
 
+// ── Lists ───────────────────────────────────────────────────────────────
+// The settings screen, the coach More hub, P15's notification toggles and
+// P26's blocked list are all the same list of the same row, so the row is a
+// primitive rather than a third one-off beside `UnitRow` and
+// `AppearanceRow` (`code-conventions` §1's promote-on-the-second-consumer
+// rule, overdue by two when `settings-shell/01` wrote this).
+//
+// `ListRow`'s trailing shape is a discriminated union, not four optional
+// props: a `value` with no chevron and a `switch` with no handler are both
+// expressible in the optional version and neither is a row. `ListSection`
+// renders NOTHING when it has no children, which is what lets the settings
+// section map reserve a name for a phase that has not shipped without
+// drawing a row that opens nothing.
+export {
+  ListRow,
+  LIST_ROW_MIN_HEIGHT,
+  listRowMinHeight,
+  type ListRowIcon,
+  type ListRowProps,
+  type ListRowTrailing,
+} from './components/ListRow.tsx';
+export { ListSection, type ListSectionProps } from './components/ListSection.tsx';
+
 // ── Forms ───────────────────────────────────────────────────────────────
 export { Input, type InputProps, type InputState } from './components/Input.tsx';
 export { FormField, type FormFieldProps } from './components/FormField.tsx';
@@ -322,6 +345,10 @@ export {
   type TextScaleProviderProps,
 } from './theme/TextScaleProvider.tsx';
 export type { Scheme } from './theme/schemes.ts';
+// Read by the Appearance control AND by the preference store behind it
+// (`settings-shell/03`), so a dimmed segment and a refused setter can never
+// disagree about whether Light exists. `light-scheme/02` flips it.
+export { LIGHT_SCHEME_AVAILABLE } from './theme/light-scheme-flag.ts';
 // Values, for the genuine non-Tailwind consumers — SVG fills, gradient
 // stops, Reanimated colour targets. A component that reads these to build
 // a `style` object is doing by hand what `className` does for free.
