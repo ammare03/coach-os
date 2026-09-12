@@ -1,23 +1,27 @@
 import { EmptyState, NotFoundState, Skeleton, Text } from '@coachos/ui';
 import { createThemedValue, density, spacing } from '@coachos/ui/theme';
+import type { WeightUnit } from '@coachos/utils';
 import { ClipboardList, TriangleAlert } from 'lucide-react-native';
-import { useContext, type ReactNode } from 'react';
+import { useCallback, useContext, useMemo, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 import { useWeightUnit } from '../../../hooks/useWeightUnit.ts';
 import { getErrorCode } from '../../../lib/error-code.ts';
+import { SET_FLAG_COPY } from '../../workouts/components/SetFlagChips.tsx';
 import {
   useCachedClientName,
   useSessionReview,
   type SessionReview,
   type SessionReviewSet,
 } from '../api.ts';
+import { CommentAffordance } from '../components/CommentAffordance.tsx';
 import { SessionExerciseGroup } from '../components/SessionExerciseGroup.tsx';
 import { SessionFiguresCard, sessionFigures } from '../components/SessionFiguresCard.tsx';
 import { formatSessionDate } from '../components/SessionHistoryRow.tsx';
 import { SessionNoteWell, SESSION_NOTE_COPY } from '../components/SessionNoteWell.tsx';
 import { SessionReviewHeader } from '../components/SessionReviewHeader.tsx';
+import { formatSetLoad } from '../components/SessionSetRow.tsx';
 import { SessionSkippedRow } from '../components/SessionSkippedRow.tsx';
 
 // `session-review/01` — §8.4's coach-side close: "full session with every
@@ -78,8 +82,10 @@ export interface SessionReviewScreenProps {
   onClose: () => void;
   /**
    * **`session-review/02`'s seam**, handed straight to every exercise
-   * group. Omitted here; the reserved 32×32 cell renders its inert
-   * placeholder and the row geometry is identical either way.
+   * group. Omitted, the screen supplies its own — {@link useSessionCommentSlot}
+   * — so the affordance is on every row without a caller having to know
+   * about it; the prop stays for a test or a gallery that wants a different
+   * occupant.
    */
   renderCommentSlot?: (set: SessionReviewSet) => ReactNode;
 }
@@ -98,6 +104,7 @@ export function SessionReviewScreen({
 
   const session = review.data ?? null;
   const clientName = useCachedClientName(session?.clientId ?? null);
+  const commentSlot = useSessionCommentSlot(session, unit);
 
   return (
     <View
@@ -137,7 +144,7 @@ export function SessionReviewScreen({
           <SessionBody
             session={review.data}
             unit={unit}
-            {...(renderCommentSlot === undefined ? {} : { renderCommentSlot })}
+            renderCommentSlot={renderCommentSlot ?? commentSlot}
           />
         )}
       </View>
@@ -165,6 +172,61 @@ export function sessionSubtitle(session: SessionReview, clientName: string | nul
   return clientName === null
     ? `${verb.charAt(0).toUpperCase()}${verb.slice(1)} ${date}`
     : `${clientName} · ${verb} ${date}`;
+}
+
+/**
+ * **`session-review/02`'s seam, filled.** One callback that renders the
+ * comment affordance for any set in this session.
+ *
+ * **Stable across renders, and that is the whole reason it is a hook.**
+ * `SessionSetRow` is memoised for a 72-set session, and the render-prop
+ * shape exists so one callback serves every row instead of each row
+ * allocating its own (`frontend-performance` §3). Rebuilding it per render
+ * would give that up on the first line.
+ *
+ * The lookup exists because the seam hands the callback a set and not its
+ * group — `session-review/01` fixed that signature and this task uses it
+ * rather than widening it. Keyed on `setLogId`, so it is complete by
+ * construction.
+ */
+export function useSessionCommentSlot(
+  session: SessionReview | null,
+  unit: WeightUnit,
+): (set: SessionReviewSet) => ReactNode {
+  const exerciseNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const entry of session?.exercises ?? []) {
+      if (entry.kind !== 'performed') continue;
+      for (const set of entry.sets) names.set(set.setLogId, entry.exerciseName);
+    }
+    return names;
+  }, [session]);
+
+  return useCallback(
+    (set: SessionReviewSet) => {
+      const exerciseName = exerciseNames.get(set.setLogId);
+      // Unreachable: the lookup is built from the same session these rows
+      // come from. It fails to the row's own reserved placeholder rather
+      // than to "Comment on , set 3", which would be a lie to a screen
+      // reader — and the cell holds its 32px either way.
+      if (exerciseName === undefined) return null;
+
+      return (
+        <CommentAffordance
+          targetType="set_log"
+          targetId={set.setLogId}
+          exerciseName={exerciseName}
+          // The row's own vocabulary, not a second one: a warm-up claims no
+          // set number, here or in `speakSetRow` (`code-conventions` §1).
+          setLabel={set.isWarmup ? SET_FLAG_COPY.warmupSetLabel : `Set ${String(set.setNumber)}`}
+          // Formatted by the row's formatter, which reaches `packages/utils`
+          // — the sheet never sees a kilogram (`CLAUDE.md` §0).
+          load={formatSetLoad(set, unit)}
+        />
+      );
+    },
+    [exerciseNames, unit],
+  );
 }
 
 /** Every set of every performed group. The figures card's denominator, and the empty test. */

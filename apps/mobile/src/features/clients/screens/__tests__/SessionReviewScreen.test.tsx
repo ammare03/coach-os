@@ -413,9 +413,21 @@ describe('SessionReviewScreen exercises', () => {
   it('offers no way to edit anything — the client owns their own log', () => {
     renderScreen();
 
-    // The only button on a settled screen is the way out.
-    expect(screen.getAllByRole('button')).toHaveLength(1);
+    // Every button on a settled screen is either the way out or
+    // `session-review/02`'s comment affordance, one per logged set. This
+    // read `toHaveLength(1)` while the reserved cell held task 01's silent
+    // placeholder; filling it is what task 02 is for, so the count moved
+    // and the CLAIM did not. Nothing here edits, deletes or re-logs — the
+    // client owns editing their own logged data.
+    const labels = screen
+      .getAllByRole('button')
+      .map((node) => String(node.props.accessibilityLabel));
+    const slots = screen.getAllByTestId('session-set-comment-slot');
+
     expect(screen.getByLabelText('Close this session')).toBeOnTheScreen();
+    expect(labels.filter((label) => label.startsWith('Comment on '))).toHaveLength(slots.length);
+    expect(labels).toHaveLength(slots.length + 1);
+    expect(labels.join(' · ')).not.toMatch(/edit|delete|remove|undo|log again/i);
   });
 
   it('closes a bounded session with the fact that it ended', () => {
