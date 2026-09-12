@@ -7,7 +7,7 @@ import type {
   SessionReviewSet,
   SessionReviewSkippedExercise,
 } from '../../api.ts';
-import { SessionReviewScreen } from '../SessionReviewScreen.tsx';
+import { formatSessionWhen, SessionReviewScreen } from '../SessionReviewScreen.tsx';
 
 // The four states `ui-conventions` §4 requires, plus the five things this
 // screen is actually for: the server's order is the screen's order, a
@@ -17,6 +17,7 @@ import { SessionReviewScreen } from '../SessionReviewScreen.tsx';
 
 const SESSION_ID = '01924f2c-0000-7000-8000-0000000000aa';
 const CLIENT_ID = '01924f2c-0000-7000-8000-00000000000a';
+const CLIENT_TZ = 'Asia/Kolkata';
 
 interface MockReview {
   data?: SessionReview;
@@ -27,14 +28,12 @@ interface MockReview {
 }
 
 let mockReview: MockReview;
-let mockClientName: string | null;
 
 jest.mock('../../api.ts', () => {
   const actual = jest.requireActual('../../api.ts') as Record<string, unknown>;
   return {
     ...actual,
     useSessionReview: () => mockReview,
-    useCachedClientName: () => mockClientName,
   };
 });
 
@@ -63,6 +62,26 @@ function makeSet(overrides: Partial<SessionReviewSet> = {}): SessionReviewSet {
   };
 }
 
+/** The design's own bench block — `formatTargetScheme` prints it `4 × 6–8 · RPE 8`. */
+const BENCH_TARGET: NonNullable<SessionReviewExerciseGroup['target']> = {
+  targetSets: 4,
+  targetRepsMin: 6,
+  targetRepsMax: 8,
+  targetRpe: 8,
+  targetRir: null,
+  targetPercent1rm: null,
+  targetWeightKg: null,
+  tempo: null,
+  targetRestSeconds: null,
+};
+
+/**
+ * A prescribed group by default, because that is the ordinary session.
+ *
+ * The two groups the server guarantees carry `target: null` — a swap and an
+ * exercise the day never prescribed — pass it explicitly below, so the
+ * invariant is visible in the test rather than folded into this factory.
+ */
 function makeGroup(
   overrides: Partial<SessionReviewExerciseGroup> = {},
 ): SessionReviewExerciseGroup {
@@ -71,6 +90,7 @@ function makeGroup(
     exerciseId: 'ex-bench',
     exerciseName: 'Barbell Bench Press',
     substitutedFor: null,
+    target: BENCH_TARGET,
     sets: [makeSet()],
     ...overrides,
   };
@@ -92,11 +112,17 @@ function makeSession(overrides: Partial<SessionReview> = {}): SessionReview {
   return {
     sessionId: SESSION_ID,
     clientId: CLIENT_ID,
+    clientName: 'Priya Sharma',
+    // Deliberately NOT the zone this test runner is in. Every date-line
+    // assertion below turns on the difference (`CLAUDE.md` §25.5).
+    clientTimezone: CLIENT_TZ,
     scheduledDate: '2026-09-09',
     name: 'Upper A · Push',
     status: 'completed',
-    startedAt: new Date('2026-09-09T12:12:00.000Z'),
-    completedAt: new Date('2026-09-09T13:00:00.000Z'),
+    // 12:42 UTC is 6:12 pm in Kolkata and 8:42 am in Toronto — the same
+    // instant, two answers, which is the whole point of the field.
+    startedAt: new Date('2026-09-09T12:42:00.000Z'),
+    completedAt: new Date('2026-09-09T13:30:00.000Z'),
     durationSeconds: 2880,
     totalVolumeKg: 7240,
     perceivedExertion: 8,
@@ -146,7 +172,6 @@ function renderedEntryOrder(): string[] {
 beforeEach(() => {
   onClose.mockClear();
   nextSetId = 0;
-  mockClientName = 'Priya Sharma';
   settle(makeSession());
 });
 
@@ -253,10 +278,126 @@ describe('SessionReviewScreen header', () => {
     expect(screen.getByText('Priya Sharma · logged Wed 9 Sep')).toBeOnTheScreen();
   });
 
-  it('degrades to the date alone when the client is not in the cache', () => {
-    mockClientName = null;
+  it('names the client on a deep link, with nothing else in the cache', () => {
+    // There IS no other cache entry here: the screen renders bare, with
+    // only `session.review` mocked, which is exactly the deep-link case.
+    // The name arrives with the session or not at all, and the assertion
+    // that it arrives is the assertion that nothing else is consulted.
     renderScreen();
-    expect(screen.getByText('Logged Wed 9 Sep')).toBeOnTheScreen();
+
+    expect(screen.getByText('Priya Sharma · logged Wed 9 Sep')).toBeOnTheScreen();
+    expect(screen.queryByText(/^Logged /)).toBeNull();
+  });
+
+  it('names whoever the session says, not a name held from somewhere else', () => {
+    settle(makeSession({ clientName: 'Arjun Mehta' }));
+    renderScreen();
+
+    expect(screen.getByText('Arjun Mehta · logged Wed 9 Sep')).toBeOnTheScreen();
+    expect(screen.queryByText(/Priya Sharma/)).toBeNull();
+  });
+});
+
+/** What the date line says, in the case it was written rather than the case it is shown in. */
+function whenLabel(): string {
+  return String(screen.getByTestId('session-review-when').props.accessibilityLabel);
+}
+
+// `CLAUDE.md` §25.5, and the reason the screen shipped without a time of
+// day at all until the payload carried a zone. The DAY comes from
+// `scheduledDate`, which is already the client's; the TIME comes from
+// `startedAt`, which is an instant and means nothing without the client's
+// zone. These are the tests that catch a coach in Mumbai being shown a
+// Toronto client's 8:42 am session as 6:12 pm.
+//
+// The rendered assertions never pin a clock reading, because the runner's
+// own locale decides 12- versus 24-hour and `pnpm check` runs on more than
+// one machine. What is pinned is asserted through `formatSessionWhen`'s
+// `locales` argument, which exists for exactly that.
+describe('SessionReviewScreen date line', () => {
+  it('spells the day, the time of day, and the zone’s own name', () => {
+    // The design's line, character for character, for a coach reading on
+    // an Indian device.
+    expect(formatSessionWhen(makeSession(), 'en-IN')).toBe('Wed 9 Sep · 6:12 pm IST');
+
+    // And for one whose locale has no short name for that zone: the
+    // formatter falls back to the offset, and this file keeps no table of
+    // abbreviations to disagree with it.
+    expect(formatSessionWhen(makeSession(), 'en-US')).toMatch(/^Wed 9 Sep · 6:12 PM \S+$/);
+    expect(formatSessionWhen(makeSession(), 'en-GB')).toMatch(/^Wed 9 Sep · 18:12 \S+$/);
+  });
+
+  it('re-reads the same instant when only the zone changes', () => {
+    renderScreen();
+    const kolkata = whenLabel();
+
+    screen.unmount();
+    const abroad = makeSession({ clientTimezone: 'America/Toronto' });
+    settle(abroad);
+    renderScreen();
+    const toronto = whenLabel();
+
+    // Same `startedAt`, same `scheduledDate`, different zone. A screen
+    // rendering the instant in the DEVICE's zone prints the same string
+    // twice, and this is the assertion it fails.
+    expect(toronto).not.toBe(kolkata);
+    expect(kolkata.startsWith('Wed 9 Sep · ')).toBe(true);
+    expect(toronto.startsWith('Wed 9 Sep · ')).toBe(true);
+
+    expect(formatSessionWhen(abroad, 'en-IN')).toMatch(/^Wed 9 Sep · 8:42 am \S+$/);
+  });
+
+  it('takes the day from scheduledDate, never from the instant', () => {
+    // 19:15 UTC on the 9th is 00:45 on the TENTH in Kolkata. The client
+    // trained on their own local 9th, and `scheduledDate` is the only
+    // field that knows it — re-deriving the day from `startedAt` would
+    // move this session a day forward.
+    const nearMidnight = makeSession({
+      scheduledDate: '2026-09-09',
+      startedAt: new Date('2026-09-09T19:15:00.000Z'),
+    });
+    settle(nearMidnight);
+    renderScreen();
+
+    expect(whenLabel().startsWith('Wed 9 Sep · ')).toBe(true);
+    expect(whenLabel()).not.toContain('10 Sep');
+    expect(formatSessionWhen(nearMidnight, 'en-IN')).toBe('Wed 9 Sep · 12:45 am IST');
+  });
+
+  it('renders the day alone, with no dangling separator, when nothing was started', () => {
+    settle(
+      makeSession({
+        status: 'skipped',
+        startedAt: null,
+        completedAt: null,
+        exercises: [],
+        totalVolumeKg: null,
+        durationSeconds: null,
+        clientNotes: null,
+        skipReason: 'travelling',
+      }),
+    );
+    renderScreen();
+
+    expect(whenLabel()).toBe('Wed 9 Sep');
+    expect(screen.getByText('WED 9 SEP')).toBeOnTheScreen();
+  });
+
+  it('degrades to the day alone rather than throwing on a zone it cannot read', () => {
+    // `users.timezone` is free text with a `'UTC'` default and no IANA
+    // check behind it, and `Intl` raises on an unknown one. A header
+    // detail must not take the screen down with it.
+    settle(makeSession({ clientTimezone: 'Mars/Olympus_Mons' }));
+    renderScreen();
+
+    expect(whenLabel()).toBe('Wed 9 Sep');
+    expect(screen.getByTestId('session-review-scroll')).toBeOnTheScreen();
+  });
+
+  it('speaks exactly what it shows', () => {
+    renderScreen();
+
+    expect(screen.getByText(whenLabel().toUpperCase())).toBeOnTheScreen();
   });
 });
 
@@ -276,7 +417,11 @@ describe('SessionReviewScreen figures', () => {
         perceivedExertion: null,
         exercises: [
           makeGroup({
+            exerciseId: 'ex-leg-raise',
             exerciseName: 'Hanging Leg Raise',
+            // A movement the client added themselves: the day prescribed
+            // nothing for it.
+            target: null,
             sets: [
               makeSet({ weightKg: null, reps: 12, rpe: null }),
               makeSet({ setNumber: 2, weightKg: null, reps: 10, rpe: null }),
@@ -310,6 +455,7 @@ describe('SessionReviewScreen exercises', () => {
             exerciseId: 'ex-shoulder',
             exerciseName: 'Dumbbell Shoulder Press',
             substitutedFor: 'Barbell Overhead Press',
+            target: null,
           }),
         ],
       }),
@@ -336,6 +482,49 @@ describe('SessionReviewScreen exercises', () => {
     ).toBeOnTheScreen();
   });
 
+  it('states what the day asked for, beside the movement it asked for it on', () => {
+    renderScreen();
+
+    // `packages/utils`' own string, not a second one assembled here — the
+    // coach reads the identical line in their program builder.
+    expect(screen.getByText('4 × 6–8 · RPE 8')).toBeOnTheScreen();
+    expect(
+      screen.getByLabelText('Barbell Bench Press. Target: 4 × 6–8 · RPE 8. 1 set.'),
+    ).toBeOnTheScreen();
+  });
+
+  it('renders no target at all — not a dash, not an empty slot — when there was none', () => {
+    settle(
+      makeSession({
+        exercises: [
+          // A swap: the block was written for the movement that was
+          // replaced, so naming it as this one's target would misreport it.
+          makeGroup({
+            exerciseId: 'ex-shoulder',
+            exerciseName: 'Dumbbell Shoulder Press',
+            substitutedFor: 'Barbell Overhead Press',
+            target: null,
+          }),
+          // Ad-hoc: no program day to ask.
+          makeGroup({ exerciseId: 'ex-curl', exerciseName: 'Cable Curl', target: null }),
+        ],
+      }),
+    );
+    renderScreen();
+
+    expect(screen.queryByText('4 × 6–8 · RPE 8')).toBeNull();
+    expect(screen.queryByText('—')).toBeNull();
+    expect(screen.queryByText('-')).toBeNull();
+    // And the spoken head says nothing about a target either — being asked
+    // for nothing is not the same as being asked for zero.
+    expect(screen.getByLabelText('Cable Curl. 1 set.')).toBeOnTheScreen();
+    expect(
+      screen.getByLabelText(
+        'Dumbbell Shoulder Press, substituted for Barbell Overhead Press. 1 set.',
+      ),
+    ).toBeOnTheScreen();
+  });
+
   it('names the swap under the exercise that was actually performed', () => {
     settle(
       makeSession({
@@ -344,6 +533,9 @@ describe('SessionReviewScreen exercises', () => {
             exerciseId: 'ex-shoulder',
             exerciseName: 'Dumbbell Shoulder Press',
             substitutedFor: 'Barbell Overhead Press',
+            // The server returns none for a swap: the block was written
+            // for the movement the client replaced.
+            target: null,
             sets: [makeSet(), makeSet({ setNumber: 2 })],
           }),
         ],

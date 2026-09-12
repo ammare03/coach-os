@@ -266,38 +266,3 @@ export type SessionReviewEntry = SessionReview['exercises'][number];
 export type SessionReviewExerciseGroup = Extract<SessionReviewEntry, { kind: 'performed' }>;
 export type SessionReviewSkippedExercise = Extract<SessionReviewEntry, { kind: 'skipped' }>;
 export type SessionReviewSet = SessionReviewExerciseGroup['sets'][number];
-
-/**
- * The client's name for the session-review header — **from the cache only,
- * never a request.**
- *
- * `session.review` returns a `clientId` and no name, and the screen's whole
- * premise is one round trip (`screen-composition` §2). A second query for a
- * header line would be a waterfall behind the first: its input is a field
- * of the response it would be waiting on.
- *
- * So this observes the client-detail Overview entry `useClientIdentity`
- * already owns, with `enabled: false`. On the path a coach actually takes —
- * dashboard → client → Training → a session — that entry is warm and the
- * name is free. On a deep link it is absent, and the header's sub-line
- * degrades to the date alone, which is `LoggerHeader`'s rule carried over:
- * every slot degrades on its own and none of them produces a half-filled
- * bar.
- *
- * `gcTime` matches `useClientOverview`'s so that mounting this observer can
- * never shorten the entry's life.
- */
-export function useCachedClientName(clientId: string | null): string | null {
-  const utils = api.useUtils();
-
-  const { data } = useQuery({
-    queryKey: clientDetailKeys.tab(clientId ?? '', 'overview'),
-    queryFn: () => utils.client.coach.clients.overview.query({ clientId: clientId ?? '' }),
-    // Never fetches. The entry is either already there or it is not.
-    enabled: false,
-    gcTime: QUERY_CACHE_MAX_AGE_MS,
-    select: (overview): string => overview.name,
-  });
-
-  return clientId === null ? null : (data ?? null);
-}

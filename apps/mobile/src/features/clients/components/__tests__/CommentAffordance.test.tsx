@@ -74,6 +74,9 @@ function makeGroup(sets: SessionReviewSet[]): SessionReviewExerciseGroup {
     exerciseId: EXERCISE_ID,
     exerciseName: 'Barbell back squat',
     substitutedFor: null,
+    // Real, not elided by the cast: this group is RENDERED below, and the
+    // head reads `target` to decide whether to print a scheme at all.
+    target: null,
     sets,
   } as SessionReviewExerciseGroup;
 }

@@ -9,12 +9,7 @@ import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { useWeightUnit } from '../../../hooks/useWeightUnit.ts';
 import { getErrorCode } from '../../../lib/error-code.ts';
 import { SET_FLAG_COPY } from '../../workouts/components/SetFlagChips.tsx';
-import {
-  useCachedClientName,
-  useSessionReview,
-  type SessionReview,
-  type SessionReviewSet,
-} from '../api.ts';
+import { useSessionReview, type SessionReview, type SessionReviewSet } from '../api.ts';
 import { CommentAffordance } from '../components/CommentAffordance.tsx';
 import { SessionExerciseGroup } from '../components/SessionExerciseGroup.tsx';
 import { SessionFiguresCard, sessionFigures } from '../components/SessionFiguresCard.tsx';
@@ -103,7 +98,6 @@ export function SessionReviewScreen({
   const insets = useContext(SafeAreaInsetsContext);
 
   const session = review.data ?? null;
-  const clientName = useCachedClientName(session?.clientId ?? null);
   const commentSlot = useSessionCommentSlot(session, unit);
 
   return (
@@ -118,7 +112,7 @@ export function SessionReviewScreen({
         title={
           review.isPending ? null : (session?.name ?? SESSION_REVIEW_SCREEN_COPY.fallbackTitle)
         }
-        subtitle={session === null ? null : sessionSubtitle(session, clientName)}
+        subtitle={session === null ? null : sessionSubtitle(session)}
         // The read landing IS the write landing: `session.review` sets
         // `reviewed_at` as a side effect of returning (decision (a)). There
         // is nothing else to ask, and nothing to press.
@@ -153,7 +147,14 @@ export function SessionReviewScreen({
 }
 
 /**
- * `Priya Sharma · logged Tue 9 Sep`, or `Logged Tue 9 Sep` on a deep link.
+ * `Priya Sharma · logged Wed 9 Sep`.
+ *
+ * The name is the session's own `clientName` — `users.name`, the column
+ * `v_client_overview.name` itself projects (server decision (e)), so this
+ * header, the dashboard row and the client-detail shell name one person
+ * identically. It arrives WITH the session, so there is no deep-link case
+ * where the sub-line degrades to a date alone and no second query to wait
+ * on for one string.
  *
  * The verb is the one that is true: a session with sets was **logged**, a
  * session that recorded nothing was **opened**, and a session the client
@@ -165,13 +166,80 @@ export function SessionReviewScreen({
  * September as the 8th for a coach west of UTC, which is the single most
  * common date bug in this product (`CLAUDE.md` §25.5).
  */
-export function sessionSubtitle(session: SessionReview, clientName: string | null): string {
+export function sessionSubtitle(session: SessionReview): string {
   const verb =
     session.status === 'skipped' ? 'skipped' : countSets(session) > 0 ? 'logged' : 'opened';
-  const date = formatSessionDate(session.scheduledDate);
-  return clientName === null
-    ? `${verb.charAt(0).toUpperCase()}${verb.slice(1)} ${date}`
-    : `${clientName} · ${verb} ${date}`;
+  return `${session.clientName} · ${verb} ${formatSessionDate(session.scheduledDate)}`;
+}
+
+/**
+ * `Wed 9 Sep · 6:12 pm IST` — the day the client trained, and the time of
+ * day it was **for them**.
+ *
+ * Two fields, and neither derives the other:
+ *
+ * The DAY is `scheduledDate`, already the client's local `yyyy-MM-dd`
+ * (DB§5.3). Re-deriving it from `startedAt` would move a session logged at
+ * 00:30 onto the previous day — `CLAUDE.md` §25.5's exact trap, and the
+ * reason the column exists at all.
+ *
+ * The TIME is `startedAt`, a UTC instant, rendered in `clientTimezone` and
+ * never in this device's zone. The screen shipped without it precisely
+ * because the payload carried no zone: a coach in Mumbai reading a client
+ * in Toronto would have seen a 7am session as 5:30pm, and been wrong about
+ * the one fact the line is for. The server now returns the zone raw rather
+ * than a formatted instant, so the device spells it (server decision (e)).
+ *
+ * `Intl.DateTimeFormat` and nothing else. The `timeZone` option is built
+ * in, and already ships in this bundle twice over — `packages/ui`'s
+ * `calendar-grid.ts` calls it directly, and `formatSessionDate` reaches it
+ * through date-fns-tz, which is `Intl` underneath. A date library for this
+ * would be `CLAUDE.md` §3.4.1 step 2. The zone's NAME comes from the
+ * formatter too, so a coach reads whatever their own locale calls it
+ * (`IST` on an Indian device, `GMT+5:30` on a US one) and nothing here
+ * keeps a table of abbreviations to go stale.
+ *
+ * A session that was never started renders the day ALONE — there is no
+ * separator with nothing after it.
+ */
+export function formatSessionWhen(
+  session: Pick<SessionReview, 'scheduledDate' | 'startedAt' | 'clientTimezone'>,
+  locales?: string | string[],
+): string {
+  const day = formatSessionDate(session.scheduledDate);
+  const time =
+    session.startedAt === null
+      ? null
+      : formatZonedTime(session.startedAt, session.clientTimezone, locales);
+  return time === null ? day : `${day} · ${time}`;
+}
+
+/**
+ * `6:12 pm IST` · `18:12 GMT+5:30` — 12- or 24-hour by the READER's locale,
+ * because the coach is who is reading it. Only the zone is the client's.
+ *
+ * `null` rather than a throw on a zone this platform does not know:
+ * `users.timezone` is a free-text column with a `'UTC'` default and no IANA
+ * check behind it, and `Intl` raises `RangeError` on an unrecognised one.
+ * The line then degrades to the day alone — the same shape a session with
+ * no `startedAt` renders — instead of taking a whole screen down for a
+ * header detail.
+ */
+function formatZonedTime(
+  instant: Date,
+  timeZone: string,
+  locales?: string | string[],
+): string | null {
+  try {
+    return new Intl.DateTimeFormat(locales, {
+      timeZone,
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    }).format(instant);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -253,6 +321,7 @@ interface SessionBodyProps {
 function SessionBody({ session, unit, renderCommentSlot }: SessionBodyProps) {
   const setCount = countSets(session);
   const figures = sessionFigures(session, setCount, unit);
+  const when = formatSessionWhen(session);
 
   // Built as a list so the gap between two blocks is decided once, and the
   // first block never carries a top margin no matter which one it is —
@@ -315,8 +384,19 @@ function SessionBody({ session, unit, renderCommentSlot }: SessionBodyProps) {
       showsVerticalScrollIndicator={false}
       testID="session-review-scroll"
     >
-      <Text size="eyebrow" tone="muted" style={[styles.when, styles.tabular]}>
-        {formatSessionDate(session.scheduledDate).toUpperCase()}
+      <Text
+        size="eyebrow"
+        tone="muted"
+        style={[styles.when, styles.tabular]}
+        // Spoken in its own case, not the line's. The eyebrow is uppercased
+        // for the same reason the history row's is, and `WED 9 SEP · 6:12
+        // PM IST` is a string a screen reader may spell out letter by
+        // letter — so the label carries exactly what is shown, in the case
+        // it was written (`accessibility` §2).
+        accessibilityLabel={when}
+        testID="session-review-when"
+      >
+        {when.toUpperCase()}
       </Text>
 
       {blocks.map((block, index) => (
@@ -426,8 +506,10 @@ function ReviewFailure({ error, onClose, onRetry }: ReviewFailureProps) {
 function SessionReviewSkeleton() {
   return (
     <View style={styles.content} testID="session-review-loading">
+      {/* Wide enough for the day AND the time — the line it stands in for
+          is `WED 9 SEP · 6:12 PM IST`, not a date. */}
       <Skeleton
-        width={150}
+        width={WHEN_SKELETON_WIDTH}
         height={11}
         radius="chip"
         style={styles.when}
@@ -465,6 +547,7 @@ function SessionReviewSkeleton() {
   );
 }
 
+const WHEN_SKELETON_WIDTH = 172;
 /** Uneven on purpose — a column of identical bars reads as a table, not as loading content. */
 const SKELETON_FIGURE_WIDTHS = [84, 70, 62];
 const SKELETON_GROUPS = [
