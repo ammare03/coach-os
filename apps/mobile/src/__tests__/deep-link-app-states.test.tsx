@@ -9,6 +9,7 @@ import { redirectSystemPath } from '../app/+native-intent.ts';
 import { useAuthStore } from '../features/auth/store.ts';
 import { clearPendingDeepLink } from '../features/navigation/deep-links/pending.ts';
 import { PendingDeepLinkReplay } from '../features/navigation/deep-links/PendingDeepLinkReplay.tsx';
+import { TRPCTestProvider } from '../test-support/trpc-test-provider.tsx';
 
 // `phase-05-app-shell/deep-linking/04`. §8.1 names three states a deep link
 // must work from, and this file exercises the two that live in JavaScript:
@@ -45,12 +46,17 @@ function routeFilesOnDisk(directory = ''): string[] {
 
 function TestRootLayout() {
   return (
-    <>
+    // Not the real root layout — that owns the splash, Sentry and the schema
+    // check, none of which this file is about. Just the provider pair, so a
+    // deep-link target that reads through TanStack Query resolves instead of
+    // throwing; see the provider's own comment for why that beats adding it
+    // to `SUBSTITUTED`.
+    <TRPCTestProvider>
       <Stack screenOptions={{ headerShown: false }} />
       {/* The production mount order (`src/app/_layout.tsx`): after the
           `<Stack>`, so the replay's effect flushes after the gate's. */}
       <PendingDeepLinkReplay />
-    </>
+    </TRPCTestProvider>
   );
 }
 
