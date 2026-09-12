@@ -616,11 +616,17 @@ export const vClientOverview = coachingSchema.view('v_client_overview', {
     u.name,
     cp.status,
     u.last_active_at,
+    -- Both windows exclude soft-deleted sessions (UNFORGET A14). A deleted
+    -- session is neither owed nor done, and counting it moves the training
+    -- adherence the coach dashboard sorts and triages on.
     (SELECT count(*) FROM training.workout_sessions ws
       WHERE ws.client_id = cp.id AND ws.status = 'completed'
-        AND ws.scheduled_date >= current_date - 7)                       AS sessions_completed_7d,
+        AND ws.scheduled_date >= current_date - 7
+        AND ws.deleted_at IS NULL)                                       AS sessions_completed_7d,
     (SELECT count(*) FROM training.workout_sessions ws
-      WHERE ws.client_id = cp.id AND ws.scheduled_date BETWEEN current_date - 7 AND current_date) AS sessions_scheduled_7d,
+      WHERE ws.client_id = cp.id
+        AND ws.scheduled_date BETWEEN current_date - 7 AND current_date
+        AND ws.deleted_at IS NULL)                                       AS sessions_scheduled_7d,
     -- \`deleted_at IS NULL\` is the one addition to DB§9's text: a
     -- soft-deleted session is not work the coach still owes. This counter
     -- and \`needsReviewQuery\`'s session branch sit on the same dashboard and
@@ -628,10 +634,15 @@ export const vClientOverview = coachingSchema.view('v_client_overview', {
     (SELECT count(*) FROM training.workout_sessions ws
       WHERE ws.client_id = cp.id AND ws.status='completed' AND ws.reviewed_at IS NULL
         AND ws.deleted_at IS NULL) AS unreviewed_sessions,
+    -- \`c.deleted_at IS NULL\` is load-bearing twice over (UNFORGET A10): a
+    -- video whose only comment was withdrawn is unreviewed again, and
+    -- \`comments_target\` is PARTIAL on that predicate, so without repeating
+    -- it Postgres cannot use the index at all.
     (SELECT count(*) FROM coaching.media_assets ma
       WHERE ma.client_id = cp.id AND ma.processing_status='ready' AND ma.deleted_at IS NULL
         AND NOT EXISTS (SELECT 1 FROM coaching.comments c
-                        WHERE c.target_type='media_asset' AND c.target_id = ma.id)) AS unreviewed_videos,
+                        WHERE c.target_type='media_asset' AND c.target_id = ma.id
+                          AND c.deleted_at IS NULL)) AS unreviewed_videos,
     (SELECT avg(dns.adherence_score) FROM nutrition.daily_nutrition_summary dns
       WHERE dns.client_id = cp.id AND dns.date >= current_date - 7)       AS nutrition_adherence_7d,
     (SELECT bm.weight_kg FROM coaching.body_metrics bm

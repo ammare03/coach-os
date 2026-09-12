@@ -94,8 +94,13 @@ interface ClientPlan {
   nutritionScore: number | null;
   /** Completed sessions the coach has not opened — DB§22 branch 1. */
   unreviewedSessions: number;
-  /** Ready, undeleted, uncommented videos — DB§22 branch 2. */
+  /** Ready, undeleted, effectively uncommented videos — DB§22 branch 2. */
   unreviewedVideos: number;
+  /**
+   * Whether the client carries a ready video whose ONLY comment was
+   * withdrawn. It is unreviewed again, and is counted in `unreviewedVideos`.
+   */
+  hasVideoWithWithdrawnComment: boolean;
   hasPendingCheckin: boolean;
   hasSubmittedCheckin: boolean;
   /** `coach-dashboard/02` filters on this; `null` for a client who never set one. */
@@ -239,7 +244,8 @@ function planFor(index: number): Omit<ClientPlan, 'profileId'> {
     ...shape,
     // A quarter of the book has work the coach has not opened.
     unreviewedSessions: index % 4 === 0 ? shape.completedSessions : 0,
-    unreviewedVideos: index % 10 === 0 ? 1 : 0,
+    unreviewedVideos: (index % 10 === 0 ? 1 : 0) + (index % 10 === 4 ? 1 : 0),
+    hasVideoWithWithdrawnComment: index % 10 === 4,
     hasPendingCheckin: index % 7 === 0,
     hasSubmittedCheckin: index % 11 === 0,
     // Every enum value appears, and index 4 of each ten carries `null` —
@@ -397,6 +403,32 @@ async function insertClient(
       reviewedAt: null,
       deletedAt: new Date(),
     });
+
+    // Two more soft-deleted controls, this time INSIDE both of the view's
+    // seven-day windows, which the thirty-day one above deliberately
+    // avoids. One completed and one still scheduled, so a counter ignoring
+    // `deleted_at` moves `sessions_completed_7d` by one and
+    // `sessions_scheduled_7d` by two — and training adherence with them,
+    // whatever the client's ratio is (UNFORGET A14).
+    await db.insert(schema.workoutSessions).values([
+      {
+        clientId,
+        coachId: coachProfileId,
+        scheduledDate: dayOffset(1),
+        status: 'completed' as const,
+        startedAt: new Date(),
+        completedAt: new Date(),
+        reviewedAt: new Date(),
+        deletedAt: new Date(),
+      },
+      {
+        clientId,
+        coachId: coachProfileId,
+        scheduledDate: dayOffset(2),
+        status: 'scheduled' as const,
+        deletedAt: new Date(),
+      },
+    ]);
   }
 
   if (plan.nutritionScore !== null) {
@@ -412,7 +444,9 @@ async function insertClient(
     );
   }
 
-  if (plan.unreviewedVideos > 0) {
+  // `unreviewedVideos` is the total the view must report, and the
+  // withdrawn-comment control below already supplies one of them.
+  if (plan.unreviewedVideos - (plan.hasVideoWithWithdrawnComment ? 1 : 0) > 0) {
     await db.insert(schema.mediaAssets).values({
       ownerUserId: user.id,
       coachId: coachProfileId,
@@ -473,6 +507,35 @@ async function insertClient(
       mimeType: 'video/mp4',
       sizeBytes: 2048,
       processingStatus: 'ready',
+      deletedAt: new Date(),
+    });
+  }
+
+  // A fourth control, and the only one of the four that DOES count: a ready
+  // video whose sole comment was withdrawn. Feedback that was deleted is not
+  // feedback, so the video is unreviewed again — for the inbox counter and
+  // for `v_client_overview.unreviewed_videos` alike (UNFORGET A10).
+  if (plan.hasVideoWithWithdrawnComment) {
+    const [withdrawn] = await db
+      .insert(schema.mediaAssets)
+      .values({
+        ownerUserId: user.id,
+        coachId: coachProfileId,
+        clientId,
+        kind: 'video',
+        storageKey: `dashboard-test/${label}/${String(plan.index)}/withdrawn`,
+        mimeType: 'video/mp4',
+        sizeBytes: 2048,
+        processingStatus: 'ready',
+      })
+      .returning();
+    if (!withdrawn) throw new Error('seed insert into media_assets did not return a row');
+    await db.insert(schema.comments).values({
+      authorUserId: user.id,
+      targetType: 'media_asset',
+      targetId: withdrawn.id,
+      clientId,
+      body: 'Withdrawn',
       deletedAt: new Date(),
     });
   }
@@ -679,6 +742,7 @@ async function seedWorld(): Promise<void> {
         nutritionScore: null,
         unreviewedSessions: 2,
         unreviewedVideos: 1,
+        hasVideoWithWithdrawnComment: false,
         hasPendingCheckin: true,
         hasSubmittedCheckin: false,
         goal: 'fat_loss',
@@ -916,6 +980,48 @@ describe('coach.dashboard — client rows', () => {
     expect(result.clients.some((row) => row.unreviewedSessions === 0)).toBe(true);
   });
 
+  it('never counts a soft-deleted session in either seven-day window', async () => {
+    const result = await callDashboard(coachA);
+    const byId = new Map(result.clients.map((row) => [row.clientId, row]));
+
+    // Every client with sessions carries a soft-deleted completed one and a
+    // soft-deleted scheduled one inside the window. A view that ignored
+    // `deleted_at` would report one more completed and two more scheduled
+    // for each of them, and a training adherence to match (UNFORGET A14).
+    for (const plan of expectedRoster(coachA.plans)) {
+      const row = byId.get(plan.profileId);
+      expect(row?.sessionsCompleted7d).toBe(plan.completedSessions);
+      expect(row?.sessionsScheduled7d).toBe(plan.scheduledSessions);
+      expect(row?.trainingAdherence).toBe(
+        plan.scheduledSessions === 0
+          ? null
+          : (plan.completedSessions / plan.scheduledSessions) * 100,
+      );
+    }
+    // Not vacuous: the controls only exist for clients that have sessions.
+    expect(result.clients.some((row) => row.sessionsScheduled7d > 0)).toBe(true);
+  });
+
+  it('counts a video whose only comment was withdrawn as unreviewed again', async () => {
+    const result = await callDashboard(coachA);
+    const byId = new Map(result.clients.map((row) => [row.clientId, row]));
+
+    // A soft-deleted comment is not a review, so the view's `NOT EXISTS`
+    // has to ignore it exactly as the needs-review inbox does (UNFORGET
+    // A10). The commented, processing, and soft-deleted video controls
+    // seeded alongside still must not count.
+    for (const plan of expectedRoster(coachA.plans)) {
+      expect(byId.get(plan.profileId)?.unreviewedVideos).toBe(plan.unreviewedVideos);
+    }
+    const withWithdrawn = expectedRoster(coachA.plans).filter(
+      (plan) => plan.hasVideoWithWithdrawnComment,
+    );
+    expect(withWithdrawn.length).toBeGreaterThan(0);
+    for (const plan of withWithdrawn) {
+      expect(byId.get(plan.profileId)?.unreviewedVideos).toBeGreaterThan(0);
+    }
+  });
+
   it("carries each client's goal, including the null a client who was never asked has", async () => {
     const result = await callDashboard(coachA);
     const byId = new Map(result.clients.map((row) => [row.clientId, row]));
@@ -1141,18 +1247,16 @@ describe('coach.dashboard — query plans at 100-client scale', () => {
   it('sequentially scans only what v_client_overview leaves no index for', async () => {
     const nodes = await explain(clientOverviewQuery(db, coachA.profileId));
 
-    // `comments_target` is PARTIAL on `deleted_at IS NULL`, and the view's
-    // `NOT EXISTS` does not repeat that predicate, so Postgres cannot use
-    // it. `needsReviewQuery` does repeat it, which is why the same shape is
-    // an index scan there and a sequential scan here. That is UNFORGET A10,
-    // a property of DB§9's view text and deliberately still open.
+    // `users` is the whole list now. `media_assets` left it when
+    // `0033_fat_mentor` added the `client_id` FK index (A9) it had been
+    // missing, and `comments` left it when the view's `NOT EXISTS` started
+    // repeating `deleted_at IS NULL` (A10) — `comments_target` is PARTIAL on
+    // that predicate, so the planner could not prove the index covered the
+    // rows without it.
     //
-    // `media_assets` left this list when `0033_fat_mentor` added the
-    // `client_id` FK index (A9) it had been missing.
-    //
-    // Pinned by name so a third sequentially-scanned table fails this test
-    // rather than arriving unnoticed, and so fixing A10 is visible.
-    expect(sequentiallyScanned(nodes)).toEqual(['comments', 'users']);
+    // Pinned by name so a newly sequentially-scanned table fails this test
+    // rather than arriving unnoticed.
+    expect(sequentiallyScanned(nodes)).toEqual(['users']);
   });
 
   it('reads the needs-review inbox through an index, never a sequential scan', async () => {
