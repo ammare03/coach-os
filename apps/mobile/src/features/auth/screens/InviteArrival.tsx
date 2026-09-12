@@ -3,12 +3,12 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import type { WipeResult } from '../../../db/wipe.ts';
 import { getErrorCode } from '../../../lib/error-code.ts';
 import { api } from '../../../lib/trpc.ts';
 import { InviteEntryStep } from '../../onboarding/steps/InviteEntryStep.tsx';
 import { AuthScreenShell } from '../components/AuthScreenShell.tsx';
-import { useSignOut } from '../hooks/useSignOut.ts';
+import { UnsyncedWorkPrompt } from '../components/UnsyncedWorkPrompt.tsx';
+import { useSignOutFlow, type SignOutFlow } from '../hooks/useSignOutFlow.ts';
 import { useAuthStore } from '../store.ts';
 
 import { InviteRefusedScreen } from './InviteRefusedScreen.tsx';
@@ -59,28 +59,28 @@ function copyFor(error: unknown, table: Record<string, string>): string {
 }
 
 /**
- * Every `onSignOut` on this screen routes through here rather than a bare
- * `void signOut()`, so a `blocked` result can't be dropped silently.
+ * The prompt every sign-out affordance on this screen owes a person with
+ * unsynced work (`account-actions/01`). It used to be a `handleWrongSession-
+ * SignOut` helper that dropped `blocked` on the floor with a comment saying
+ * the dialog was design-gated; the dialog exists now, and the helper is
+ * gone. `useSignOutFlow` is the only thing on this screen that calls
+ * `useSignOut`.
  *
- * Unreachable today: nothing writes to the `outbox` table until
- * `phase-08-offline-core/outbox` ships, so `wipeLocalDatabase` always sees
- * an empty table and this always resolves `wiped`. Once that feature
- * lands, a coach or client with unsynced work who taps sign-out here will
- * get refused silently — `signOut()` correctly leaves the session
- * untouched (`local-database/03-wipe-on-logout.md`), but nothing on this
- * screen says so. The confirm-discard prompt that branch needs is
- * design-gated (`design-gate` skill) and Ammar's call, not built here —
- * this `if` exists so the next person touching this screen finds that gap
- * before a real client hits it, not after.
+ * Rendered as a sibling of each branch's screen rather than inside it:
+ * `InviteRefusedScreen` and `ReturningClientInviteScreen` are presentation
+ * and know nothing about the outbox, and a `Modal` contributes no layout, so
+ * the sibling costs the screens nothing.
  */
-function handleWrongSessionSignOut(
-  signOut: (options?: { force?: boolean }) => Promise<WipeResult>,
-): void {
-  void signOut().then((result) => {
-    if (result.outcome === 'blocked') {
-      // See the function comment above.
-    }
-  });
+function SignOutPrompt({ flow }: { flow: SignOutFlow }) {
+  return (
+    <UnsyncedWorkPrompt
+      pendingCount={flow.pendingCount}
+      onKeepSignedIn={flow.keepSignedIn}
+      onDiscard={flow.discardAndSignOut}
+      isDiscarding={flow.isSigningOut}
+      testID="invite-arrival-unsynced-work"
+    />
+  );
 }
 
 export interface InviteArrivalProps {
@@ -128,22 +128,25 @@ export function InviteArrival({ code }: InviteArrivalProps) {
 
 function RefusedAsCoach() {
   const email = useSignedInEmail();
-  const { signOut, isSigningOut } = useSignOut();
+  const flow = useSignOutFlow();
 
   return (
-    <InviteRefusedScreen
-      reason="signed-in-as-coach"
-      email={email}
-      onSignOut={() => handleWrongSessionSignOut(signOut)}
-      isSigningOut={isSigningOut}
-    />
+    <>
+      <InviteRefusedScreen
+        reason="signed-in-as-coach"
+        email={email}
+        onSignOut={flow.requestSignOut}
+        isSigningOut={flow.isSigningOut}
+      />
+      <SignOutPrompt flow={flow} />
+    </>
   );
 }
 
 function SignedInClientArrival({ code }: { code: string }) {
   const router = useRouter();
   const email = useSignedInEmail();
-  const { signOut, isSigningOut } = useSignOut();
+  const flow = useSignOutFlow();
   const coach = api.clientApp.coach.useQuery();
 
   if (coach.isPending) {
@@ -157,24 +160,30 @@ function SignedInClientArrival({ code }: { code: string }) {
   // Case 1 — refuse and explain. No switch control, by decision.
   if (coach.data) {
     return (
-      <InviteRefusedScreen
-        reason="client-has-coach"
-        coachName={coach.data.name}
-        email={email}
-        onOpenSettings={() => router.push('/(client)/settings')}
-        onSignOut={() => handleWrongSessionSignOut(signOut)}
-        isSigningOut={isSigningOut}
-      />
+      <>
+        <InviteRefusedScreen
+          reason="client-has-coach"
+          coachName={coach.data.name}
+          email={email}
+          onOpenSettings={() => router.push('/(client)/settings')}
+          onSignOut={flow.requestSignOut}
+          isSigningOut={flow.isSigningOut}
+        />
+        <SignOutPrompt flow={flow} />
+      </>
     );
   }
 
   // Case 2 — the returning client, who gets a real choice.
   return (
-    <ReturningClientAcceptance
-      code={code}
-      onSignOut={() => handleWrongSessionSignOut(signOut)}
-      isSigningOut={isSigningOut}
-    />
+    <>
+      <ReturningClientAcceptance
+        code={code}
+        onSignOut={flow.requestSignOut}
+        isSigningOut={flow.isSigningOut}
+      />
+      <SignOutPrompt flow={flow} />
+    </>
   );
 }
 

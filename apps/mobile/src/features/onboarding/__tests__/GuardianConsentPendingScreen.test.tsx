@@ -225,6 +225,19 @@ describe('the two actions', () => {
     expect(mockSignOut).toHaveBeenCalled();
   });
 
+  // `account-actions/01` — the same prompt the settings row and the invite
+  // screen reach, from the one flow. This screen used to drop `blocked` with
+  // a comment saying the dialog was design-gated.
+  it('names the unsynced work rather than appearing to do nothing', async () => {
+    mockSignOut.mockResolvedValue({ outcome: 'blocked', pendingCount: 1 });
+    render(<GuardianConsentPendingScreen />);
+
+    fireEvent.press(screen.getByText('Sign out'));
+
+    expect(await screen.findByText('1 entry hasn’t synced yet')).toBeTruthy();
+    expect(screen.getByText('Keep me signed in')).toBeTruthy();
+  });
+
   it('does not put account deletion one tap away', () => {
     render(<GuardianConsentPendingScreen />);
 

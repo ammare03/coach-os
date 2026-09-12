@@ -41,7 +41,8 @@ import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { trackEvent } from '../../lib/analytics/index.ts';
-import { useSignOut } from '../auth/hooks/useSignOut.ts';
+import { UnsyncedWorkPrompt } from '../auth/components/UnsyncedWorkPrompt.tsx';
+import { useSignOutFlow } from '../auth/hooks/useSignOutFlow.ts';
 
 import { cooldownLabel, useGuardianConsentResend } from './useGuardianConsentResend.ts';
 import { useGuardianConsentStatus } from './useGuardianConsentStatus.ts';
@@ -60,7 +61,7 @@ export function GuardianConsentPendingScreen() {
 
   const status = useGuardianConsentStatus();
   const resend = useGuardianConsentResend();
-  const { signOut, isSigningOut } = useSignOut();
+  const signOutFlow = useSignOutFlow();
 
   const [isCorrecting, setIsCorrecting] = useState(false);
   const [draftEmail, setDraftEmail] = useState('');
@@ -404,29 +405,29 @@ export function GuardianConsentPendingScreen() {
           </>
         )}
         {isCorrecting ? null : (
+          // `account-actions/01` — one flow, three call sites. The `blocked`
+          // branch this used to drop on the floor now opens the prompt
+          // below; nothing on this screen calls `useSignOut` directly any
+          // more.
           <Button
             variant="ghost"
             size="lg"
             fullWidth
-            onPress={() => {
-              // Same gap as `auth/screens/InviteArrival.tsx`'s
-              // `handleWrongSessionSignOut` — see that comment.
-              // `local-database/03-wipe-on-logout.md` refuses the sign-out
-              // when unsynced outbox rows exist; unreachable until
-              // `phase-08-offline-core/outbox` ships, and the confirm-discard
-              // prompt it then needs is design-gated.
-              void signOut().then((result) => {
-                if (result.outcome === 'blocked') {
-                  // Intentionally unhandled — see above.
-                }
-              });
-            }}
-            loading={isSigningOut}
+            onPress={signOutFlow.requestSignOut}
+            loading={signOutFlow.isSigningOut}
           >
             Sign out
           </Button>
         )}
       </View>
+
+      <UnsyncedWorkPrompt
+        pendingCount={signOutFlow.pendingCount}
+        onKeepSignedIn={signOutFlow.keepSignedIn}
+        onDiscard={signOutFlow.discardAndSignOut}
+        isDiscarding={signOutFlow.isSigningOut}
+        testID="guardian-consent-unsynced-work"
+      />
     </View>
   );
 }

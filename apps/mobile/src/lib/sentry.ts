@@ -277,6 +277,25 @@ export function initSentry(): void {
   Sentry.init({ ...buildSentryOptions() });
 }
 
+/**
+ * The device-mirror wipe failed during sign-out (`account-actions/01`).
+ *
+ * Handled, not crashed: `useSignOut` proceeds anyway rather than trapping
+ * someone in an account over a disk error, so nothing else would ever record
+ * that it happened.
+ *
+ * **The parameter is an error's CLASS NAME, never an error.** A raw SQLite
+ * message can carry row values (`security-and-privacy` §5) and `scrubEvent`
+ * keeps `exception` intact by design, so the message must not reach this
+ * function at all — a narrow signature is the guarantee, a careful caller is
+ * not. `errorCode` is one of the three allowlisted tags above.
+ */
+export function captureLocalWipeFailure(errorName: string): void {
+  Sentry.captureException(new Error(`Sign-out local wipe failed (${errorName})`), {
+    tags: { errorCode: 'LOCAL_WIPE_FAILED' },
+  });
+}
+
 /** Exposed for `__tests__/sentry.test.ts` — the config, never the client. */
 export function __getSentryOptionsForTest(): SentryOptions {
   return buildSentryOptions();

@@ -1,9 +1,11 @@
 import { ListRow, ListSection, density as densityTokens, type Density } from '@coachos/ui';
 import { useRouter } from 'expo-router';
-import { Download, Info } from 'lucide-react-native';
+import { Download, Info, LogOut } from 'lucide-react-native';
 import { ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { UnsyncedWorkPrompt } from '../../auth/components/UnsyncedWorkPrompt.tsx';
+import { useSignOutFlow } from '../../auth/hooks/useSignOutFlow.ts';
 import { useAuthStore } from '../../auth/store.ts';
 import { AccountHeader } from '../components/AccountHeader.tsx';
 import { AppearanceRow } from '../components/AppearanceRow.tsx';
@@ -36,6 +38,7 @@ export function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const role = useAuthStore((state) => state.role);
+  const signOutFlow = useSignOutFlow();
 
   // `ui-conventions` §1 — density is a prop decided by role, never a forked
   // component. An assistant coach (P25) is a coach for every purpose this
@@ -144,9 +147,37 @@ export function SettingsScreen() {
         <AppVersionRow density={density} />
       </ListSection>
 
-      {/* FOOTER SLOT — `account-actions/01` puts Sign out here, as the last
-          child of this scroll view. Left genuinely empty rather than
-          stubbed: see rule 3 above. */}
+      {/* FOOTER SLOT — `account-actions/01`. Its own untitled `ListSection`
+          rather than a bare row: the exit gets the same card every other
+          group has, so it reads as the last item of the list instead of a
+          stray control floating under the page.
+
+          `destructive`, so the label and glyph take `DESIGN.md` §1.1's
+          accent-on-dark and the row draws no chevron — it acts, it does not
+          navigate. No confirmation: with an empty outbox this is one tap and
+          the sign-in screen (`ui-conventions` §5's undo-not-confirm rule,
+          and sign-out is neither of its two typed-confirmation exceptions).
+          The only question that can appear is the prompt below, and only
+          when the device still holds work nothing has synced. */}
+      <ListSection density={density}>
+        <ListRow
+          label="Sign out"
+          icon={LogOut}
+          destructive
+          density={density}
+          disabled={signOutFlow.isSigningOut}
+          onPress={signOutFlow.requestSignOut}
+          testID="settings-sign-out"
+        />
+      </ListSection>
+
+      <UnsyncedWorkPrompt
+        pendingCount={signOutFlow.pendingCount}
+        onKeepSignedIn={signOutFlow.keepSignedIn}
+        onDiscard={signOutFlow.discardAndSignOut}
+        isDiscarding={signOutFlow.isSigningOut}
+        testID="settings-unsynced-work"
+      />
     </ScrollView>
   );
 }

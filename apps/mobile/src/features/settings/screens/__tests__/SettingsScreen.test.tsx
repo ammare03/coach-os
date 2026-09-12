@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -41,13 +41,33 @@ const mockLoaded: MeQuery = {
 
 let mockMeQuery: MeQuery = mockLoaded;
 
+// `account-actions/01` mounted the footer's Sign out row, so the screen now
+// pulls in `useSignOut` too. The wipe itself is covered by `useSignOut.test`
+// and `db/__tests__/wipe.test`; here it only has to resolve.
+const mockWipeLocalDatabase = jest.fn(async () => ({ outcome: 'wiped' as const }));
+
+jest.mock('../../../../db/wipe.ts', () => ({
+  wipeLocalDatabase: () => mockWipeLocalDatabase(),
+}));
+
+jest.mock('../../../../lib/query/persister.ts', () => ({
+  clearPersistedQueryCache: jest.fn(async () => undefined),
+}));
+
+jest.mock('../../../auth/token-store.ts', () => ({
+  getTokens: jest.fn(async () => null),
+  clearTokens: jest.fn(async () => undefined),
+}));
+
 jest.mock('../../../../lib/trpc.ts', () => ({
   api: {
     me: {
       get: { useQuery: () => mockMeQuery },
       updatePreferences: { useMutation: () => ({ mutate: jest.fn() }) },
     },
+    auth: { signOut: { useMutation: () => ({ mutateAsync: jest.fn() }) } },
     useUtils: () => ({
+      invalidate: jest.fn(),
       me: {
         get: {
           cancel: jest.fn(),
@@ -89,7 +109,6 @@ const UNSHIPPED_ROWS = [
   'Terms',
   'Privacy Policy',
   'Delete account',
-  'Sign out',
   'Billing',
   'Branding',
   'Team',
@@ -98,6 +117,7 @@ const UNSHIPPED_ROWS = [
 beforeEach(() => {
   mockPush.mockClear();
   mockMeQuery = mockLoaded;
+  mockWipeLocalDatabase.mockClear();
 });
 
 describe('SettingsScreen — the row set, per role', () => {
@@ -253,6 +273,52 @@ describe('SettingsScreen — the header degrades, the rows do not', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Retry loading your account' }));
 
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+// `account-actions/01` — the footer slot `settings-shell/01` left empty.
+describe('SettingsScreen — the way out', () => {
+  it.each(['coach', 'client'] as const)(
+    'renders Sign out as the last row of the screen, for a %s',
+    (role) => {
+      renderScreen(role);
+
+      const rows = screen
+        .getAllByRole('button')
+        .map((node) => String(node.props.accessibilityLabel));
+
+      expect(rows.at(-1)).toBe('Sign out');
+    },
+  );
+
+  it('acts rather than navigating — a destructive row draws no chevron', () => {
+    renderScreen('client');
+
+    const row = screen.getByTestId('settings-sign-out');
+    expect(row.props.accessibilityRole).toBe('button');
+    expect(within(row).queryByTestId('list-row-chevron')).toBeNull();
+  });
+
+  it('asks nothing when the outbox is empty — one tap and the wipe runs', async () => {
+    renderScreen('coach');
+
+    fireEvent.press(screen.getByTestId('settings-sign-out'));
+
+    await waitFor(() => expect(mockWipeLocalDatabase).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/synced yet$/)).toBeNull();
+  });
+
+  it('names the unsynced count instead of discarding it', async () => {
+    mockWipeLocalDatabase.mockResolvedValue({
+      outcome: 'blocked',
+      pendingCount: 2,
+    } as unknown as { outcome: 'wiped' });
+    renderScreen('client');
+
+    fireEvent.press(screen.getByTestId('settings-sign-out'));
+
+    expect(await screen.findByText('2 entries haven’t synced yet')).toBeTruthy();
+    expect(screen.getByText('Keep me signed in')).toBeTruthy();
   });
 });
 
