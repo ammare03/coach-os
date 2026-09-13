@@ -187,10 +187,18 @@ describe('getMyCoach', () => {
     const { coachProfileId } = await insertCoach('Rhea Kapoor');
     const client = await insertClient(coachProfileId);
 
+    // The four sharing fields are `relationship-controls/03`'s widening —
+    // the settings screen reads its current setting from this one query
+    // rather than a second one. A fresh client has decided nothing, so all
+    // four are null.
     await expect(getMyCoach(db, client.clientProfileId)).resolves.toEqual({
       id: coachProfileId,
       name: 'Rhea Kapoor',
       businessName: 'Rhea Kapoor Strength',
+      historySharedFrom: null,
+      historySharingChoice: null,
+      metricsSharedFrom: null,
+      nutritionSharedFrom: null,
     });
   });
 
