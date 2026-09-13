@@ -1,4 +1,4 @@
-import { NotFoundState, hapticSessionComplete } from '@coachos/ui';
+import { LoadingState, NotFoundState, hapticSessionComplete } from '@coachos/ui';
 import { createThemedStyles, density, spacing } from '@coachos/ui/theme';
 import { useCallback, useContext, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -414,10 +414,27 @@ interface BodyHandlers {
 function renderBody(state: LoggerSessionState, handlers: BodyHandlers) {
   switch (state.kind) {
     case 'loading':
-      // Deliberately nothing. The read is one indexed SELECT on an open
-      // handle, so it resolves inside a frame — a skeleton here would be a
-      // flicker, and `DESIGN.md` §5 forbids a spinner outright.
-      return null;
+      // Reserves the body rather than leaving it blank (`CLAUDE.md` §9.2,
+      // `ui-conventions` §4). `detail` is the loaded body's own rhythm —
+      // position, exercise name, target line, set card — so nothing shifts
+      // when the read lands. Skeletons, never a spinner (`DESIGN.md` §5).
+      //
+      // This branch rendered nothing until now, on the grounds that the read
+      // is "one indexed SELECT on an already-open handle". It is two selects,
+      // the set-log one is unindexed, and on the cold deep link the route
+      // itself documents, `getLocalDb()` opens the file and runs the
+      // bootstrap DDL before either of them runs.
+      //
+      // The label is not the header's: two busy regions sharing one string
+      // is a single announcement heard twice (`accessibility` §2).
+      return (
+        <LoadingState
+          shape="detail"
+          density="client"
+          accessibilityLabel="Loading exercises"
+          testID="logger-loading"
+        />
+      );
 
     case 'error':
       return (

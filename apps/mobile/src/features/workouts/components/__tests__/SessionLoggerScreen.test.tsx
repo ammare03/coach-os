@@ -285,6 +285,7 @@ describe('a session that loaded', () => {
 
     expect(screen.queryByTestId('logger-error')).toBeNull();
     expect(screen.queryByTestId('logger-no-prescription')).toBeNull();
+    expect(screen.queryByTestId('logger-loading')).toBeNull();
   });
 
   it('holds the claim for as long as the logger is open', () => {
@@ -468,6 +469,22 @@ describe('while the read is in flight', () => {
 
     expect(screen.queryByTestId('logger-error')).toBeNull();
     expect(screen.queryByTestId('logger-no-prescription')).toBeNull();
+  });
+
+  it('reserves the body with a skeleton rather than leaving it blank', () => {
+    renderScreen();
+
+    expect(screen.getByTestId('logger-loading')).toBeTruthy();
+  });
+
+  it('names what the body is loading without repeating the header', () => {
+    // Two busy regions with one label is one announcement heard twice
+    // (`accessibility` §2). The header names the workout, the body names
+    // the content standing in for the pager.
+    renderScreen();
+
+    expect(screen.getByLabelText('Loading exercises')).toBeTruthy();
+    expect(screen.getAllByLabelText('Loading this workout')).toHaveLength(1);
   });
 
   it('still lets the client leave', () => {
