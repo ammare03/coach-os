@@ -1,4 +1,4 @@
-import { ThemeProvider, ToastProvider, useTheme } from '@coachos/ui';
+import { ThemeProvider, useTheme } from '@coachos/ui';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
@@ -13,6 +13,7 @@ import { bootstrap } from '../features/auth/bootstrap.ts';
 import { PendingDeletionRedirect } from '../features/auth/PendingDeletionRedirect.tsx';
 import { useAuthStore } from '../features/auth/store.ts';
 import { PendingDeepLinkReplay } from '../features/navigation/deep-links/PendingDeepLinkReplay.tsx';
+import { RouteAwareToastProvider } from '../features/navigation/toast/RouteAwareToastProvider.tsx';
 import { SchemaVersionResetDialog } from '../features/offline/SchemaVersionResetDialog.tsx';
 import { useSchemaVersionGate } from '../features/offline/useSchemaVersionGate.ts';
 import { GuardianConsentRedirect } from '../features/onboarding/GuardianConsentRedirect.tsx';
@@ -217,8 +218,15 @@ export default function RootLayout() {
               {/* Inside Theme because the toast host reads tokens; outside the
                   sheet provider so a toast is never clipped by a sheet.
                   `set-entry/06` is its first real consumer — `useUndoToast`
-                  throws without it. */}
-              <ToastProvider>
+                  throws without it.
+
+                  Route-aware rather than bare (UNFORGET S46): the provider's
+                  102px default clears the dock, and only the `(tabs)`
+                  navigators draw one. The wrapper subscribes to the route so
+                  that this layout does not have to — its children are built
+                  here, so their identity survives a navigation and React skips
+                  the subtree below. */}
+              <RouteAwareToastProvider>
                 <BottomSheetModalProvider>
                   {/* `style="light"` — light content (icons/text) for CoachOS's
                     dark chrome, explicit rather than `"auto"` so it never
@@ -294,7 +302,7 @@ export default function RootLayout() {
                     </>
                   )}
                 </BottomSheetModalProvider>
-              </ToastProvider>
+              </RouteAwareToastProvider>
             </ThemeProvider>
           </TRPCProvider>
         </QueryClientProvider>

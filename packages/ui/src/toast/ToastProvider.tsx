@@ -59,10 +59,21 @@ export const MAX_VISIBLE_TOASTS = 3;
 
 /**
  * The action bar's position (`DESIGN.md` §9): `bottom: 102px`, clear of the
- * 64px dock at `bottom: 26px`. A screen without a dock passes its own
- * offset.
+ * 64px dock at `bottom: 26px`.
+ *
+ * Summed rather than written as 102, because `spacing(102)` throws — 102 is
+ * not a step on §1.4's scale, and each of the three values it is made of is.
+ * That is the shape of the number: an arithmetic result about a dock, never a
+ * design value in its own right (§9 has no Toast row).
+ *
+ * **Which is why this is a FALLBACK, not the answer.** It is only correct on a
+ * route that draws a dock, and only two of the app's eleven layouts do
+ * (UNFORGET S46). The live value is resolved per route by the app, which knows
+ * what chrome the route has and what the safe area is, and passed in as
+ * `bottomOffset` — see `apps/mobile/src/features/navigation/toast/`. This
+ * constant is what a `ToastProvider` mounted bare falls back to.
  */
-export const TOAST_BOTTOM_OFFSET = 102;
+export const TOAST_BOTTOM_OFFSET = spacing(26) + spacing(64) + spacing(12);
 
 // `toastId` rather than `id`: an object type with an `id` field is what
 // `local/no-hand-written-row-type` flags as a database row, and this is a
@@ -77,7 +88,11 @@ let nextToastId = 0;
 
 export interface ToastProviderProps {
   children: ReactNode;
-  /** Distance from the bottom of the screen. Defaults to `TOAST_BOTTOM_OFFSET`. */
+  /**
+   * Distance from the bottom of the screen to the host's lower edge. The app
+   * always passes one, resolved from the route's own chrome; the default only
+   * covers a provider mounted bare (a test, the gallery).
+   */
   bottomOffset?: number;
 }
 
@@ -180,7 +195,11 @@ export function ToastProvider({
     <ToastContext.Provider value={contextValue}>
       {children}
       {/* Oldest at the top, newest nearest the dock and the thumb. */}
-      <View style={[styles.host, { bottom: bottomOffset }]} pointerEvents="box-none">
+      <View
+        style={[styles.host, { bottom: bottomOffset }]}
+        pointerEvents="box-none"
+        testID="toast-host"
+      >
         {visible.map((record) => (
           <Toast
             key={record.toastId}
