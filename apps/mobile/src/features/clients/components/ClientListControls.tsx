@@ -118,11 +118,19 @@ export function ClientListControls({ filters, testID }: ClientListControlsProps)
           accessibilityLiveRegion="polite"
           testID="client-list-count"
         >
-          {describeCount(filters.clients.length, filters.totalCount)}
+          {filters.isArchivedOnly
+            ? describeArchivedCount(filters.clients.length, filters.totalCount)
+            : describeCount(filters.clients.length, filters.totalCount)}
         </Text>
       ) : null}
 
-      {sortAsChips ? (
+      {/* **No sort control under the archived filter.** The three sorts on
+          offer rank by signals the filter has already spent — `attention`
+          most of all, on a list where by definition nothing needs any. The
+          list has one order and the count line above states it, which is
+          the same move the design makes for the adherence lane here:
+          absent, rather than drawn in a state that says nothing. */}
+      {filters.isArchivedOnly ? null : sortAsChips ? (
         <View>
           <Text size="eyebrow" tone="muted" style={styles.facet}>
             SORT
@@ -297,6 +305,26 @@ function activeChips(filters: ClientListFilters): ActiveChip[] {
 function describeCount(shown: number, total: number): string {
   return `${String(shown)} of ${String(total)} ${total === 1 ? 'client' : 'clients'}`;
 }
+
+/**
+ * The archived list's own line, verbatim from the approved design:
+ * "11 archived clients · newest first".
+ *
+ * Two departures from `describeCount`, both deliberate. It names the set
+ * rather than calling them "clients", because the coach asked for exactly
+ * this one and a fraction of itself ("11 of 11") is arithmetic, not an
+ * answer. And it states the order, because this list does not get a sort
+ * control — a list ordered by something invisible is a list a coach has to
+ * guess at. The fraction comes back the moment a search narrows it further,
+ * which is the only time there is a fraction to report.
+ */
+function describeArchivedCount(shown: number, total: number): string {
+  const noun = total === 1 ? 'archived client' : 'archived clients';
+  const count = shown === total ? String(total) : `${String(shown)} of ${String(total)}`;
+  return `${count} ${noun} · ${ARCHIVED_SORT_LABEL}`;
+}
+
+const ARCHIVED_SORT_LABEL = 'newest first';
 
 const styles = StyleSheet.create({
   root: { gap: spacing(8), paddingTop: spacing(12), paddingBottom: spacing(10) },

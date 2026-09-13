@@ -82,7 +82,7 @@ export function CoachDashboardScreen({ onOpenClient, onInviteClient }: CoachDash
   // Archived chip on its own qualifies: the moment it sits beside another
   // status the list is mixed again and every row owes the reader its own
   // (`ClientRow`'s `variant` contract).
-  const variant: ClientRowVariant = isArchivedOnly(filters.statuses) ? 'archived' : 'roster';
+  const variant: ClientRowVariant = filters.isArchivedOnly ? 'archived' : 'roster';
 
   // Stable across renders, so `ClientRow`'s `memo` is not defeated by a new
   // arrow per row (`frontend-performance` §3). `variant` joins the
@@ -332,11 +332,6 @@ function ArchivedListNote() {
 }
 
 const ARCHIVED_NOTE_GLYPH = 16;
-
-/** True only when `archived` is the whole selection, never merely part of it. */
-function isArchivedOnly(statuses: readonly string[]): boolean {
-  return statuses.length === 1 && statuses[0] === 'archived';
-}
 
 const KEY_STATES: readonly AdherenceState[] = ['on-track', 'drifting', 'off-track', 'no-data'];
 

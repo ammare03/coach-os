@@ -33,8 +33,21 @@ function filters(overrides: Partial<ClientListFilters> = {}): ClientListFilters 
     clearAll: jest.fn(),
     activeFilterCount: 0,
     isNarrowed: false,
+    isArchivedOnly: false,
     ...overrides,
   };
+}
+
+/** The archived list as the coach reaches it: one chip on, nothing else. */
+function archivedOnly(shown: number, total = shown): ClientListFilters {
+  return filters({
+    clients: new Array<never>(shown),
+    totalCount: total,
+    statuses: ['archived'],
+    activeFilterCount: 1,
+    isNarrowed: true,
+    isArchivedOnly: true,
+  });
 }
 
 /** Selection is announced, not merely drawn — read from the node the label is on. */
@@ -182,5 +195,65 @@ describe('ClientListControls', () => {
 
     fireEvent.press(screen.getByLabelText('Sort by last active'));
     expect(state.setSort).toHaveBeenCalledWith('last-active');
+  });
+
+  // ── the archived list ─────────────────────────────────────────────────
+
+  describe('under the archived filter', () => {
+    it('names what the list is and the order it is in', () => {
+      render(<ClientListControls filters={archivedOnly(11)} />);
+
+      // Verbatim from the approved design's archived-list frame. Not
+      // "11 of 11 clients": the coach asked for exactly this set, so a
+      // fraction of itself is arithmetic rather than an answer.
+      expect(screen.getByText('11 archived clients · newest first')).toBeTruthy();
+    });
+
+    it('says “1 archived client”, not “1 archived clients”', () => {
+      render(<ClientListControls filters={archivedOnly(1)} />);
+
+      expect(screen.getByText('1 archived client · newest first')).toBeTruthy();
+    });
+
+    it('still reports the fraction once a search narrows the archived list', () => {
+      render(<ClientListControls filters={archivedOnly(3, 11)} />);
+
+      expect(screen.getByText('3 of 11 archived clients · newest first')).toBeTruthy();
+    });
+
+    it('draws no sort control, because the line above the rows states the order', () => {
+      render(<ClientListControls filters={archivedOnly(11)} />);
+
+      expect(screen.queryByTestId('client-sort')).toBeNull();
+      expect(screen.queryByLabelText('Attention, tab 1 of 3')).toBeNull();
+      // The search field and the filter chips are untouched — this is about
+      // the one control the filter has made moot, not about the row.
+      expect(screen.getByLabelText('Search clients')).toBeTruthy();
+      expect(screen.getByLabelText('Show filters, 1 active')).toBeTruthy();
+    });
+
+    it('drops the reflowed sort chips too, not only the segmented control', () => {
+      mockFontScale = 2;
+      render(<ClientListControls filters={archivedOnly(11)} />);
+
+      expect(screen.queryByLabelText('Sort by attention')).toBeNull();
+    });
+
+    it('goes back to the roster’s own count and sort when the list is mixed', () => {
+      render(
+        <ClientListControls
+          filters={filters({
+            clients: new Array<never>(12),
+            totalCount: 38,
+            statuses: ['active', 'archived'],
+            activeFilterCount: 2,
+            isNarrowed: true,
+          })}
+        />,
+      );
+
+      expect(screen.getByText('12 of 38 clients')).toBeTruthy();
+      expect(screen.getByLabelText('Attention, tab 1 of 3')).toBeTruthy();
+    });
   });
 });

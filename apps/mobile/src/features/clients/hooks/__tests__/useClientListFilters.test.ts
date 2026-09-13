@@ -4,9 +4,12 @@ import type { DashboardCounterKey } from '../../components/DashboardCounters.tsx
 import type { CoachDashboardClient } from '../../hooks/useCoachDashboard.ts';
 import { resetClientListPreferencesForTests } from '../../store/client-list-preferences.ts';
 import {
+  CLIENT_SORTS,
+  countStatusUniverse,
   COUNTER_FILTERS,
   DEFAULT_CLIENT_SORT,
   FILTERABLE_STATUSES,
+  isArchivedOnly,
   isCounterFilterable,
   SEARCH_DEBOUNCE_MS,
   selectClients,
@@ -325,6 +328,122 @@ describe('selectClients — the counter filter', () => {
 
     expect(Object.keys(COUNTER_FILTERS).sort()).toEqual([...keys].sort());
   });
+
+  // **The counter and the list it opens have to agree.** The number above
+  // is `COACHED_STATUSES`-guarded on the server (`CLAUDE.md` §15.5), so a
+  // coach tapping "Off plan · 3" must not land on a fourth row — one whose
+  // own adherence dots `ClientRow` deliberately draws grey.
+  it('never lists a paused or archived client under the Off-plan counter', () => {
+    const mixed = [
+      client('Active red', { adherenceColor: 'red', status: 'active' }, 'a'),
+      client('Invited red', { adherenceColor: 'red', status: 'invited' }, 'i'),
+      client('Paused red', { adherenceColor: 'red', status: 'paused' }, 'p'),
+      client('Archived red', { adherenceColor: 'red', status: 'archived' }, 'z'),
+    ];
+
+    const result = selectClients(mixed, {
+      ...BASE,
+      counter: 'offPlan',
+      // Every status asked for by name, so the exclusion under test is the
+      // counter's own and not the default archived one standing in for it.
+      statuses: ['active', 'invited', 'paused', 'archived'],
+    });
+
+    expect(names(result).sort()).toEqual(['Active red', 'Invited red']);
+  });
+
+  it('guards the Off-plan predicate itself, not only the list that calls it', () => {
+    const offPlan = COUNTER_FILTERS.offPlan;
+
+    expect(offPlan).not.toBeNull();
+    expect(offPlan?.(client('A', { adherenceColor: 'red', status: 'active' }))).toBe(true);
+    expect(offPlan?.(client('I', { adherenceColor: 'red', status: 'invited' }))).toBe(true);
+    expect(offPlan?.(client('P', { adherenceColor: 'red', status: 'paused' }))).toBe(false);
+    expect(offPlan?.(client('Z', { adherenceColor: 'red', status: 'archived' }))).toBe(false);
+  });
+});
+
+// ── the archived list ───────────────────────────────────────────────────
+
+describe('selectClients — the archived list', () => {
+  function archived(name: string, on: string | null, overrides = {}): CoachDashboardClient {
+    return client(
+      name,
+      { status: 'archived', archivedAt: on === null ? null : new Date(on), ...overrides },
+      name.toLowerCase(),
+    );
+  }
+
+  it('recognises the archived chip alone, and never merely as part of a selection', () => {
+    expect(isArchivedOnly(['archived'])).toBe(true);
+    expect(isArchivedOnly([])).toBe(false);
+    expect(isArchivedOnly(['active'])).toBe(false);
+    expect(isArchivedOnly(['active', 'archived'])).toBe(false);
+  });
+
+  it('orders newest-archived first, whatever sort the coach last chose', () => {
+    const rows = [
+      archived('Older', '2026-07-30T00:00:00.000Z'),
+      archived('Newest', '2026-09-04T00:00:00.000Z'),
+      archived('Middle', '2026-08-21T00:00:00.000Z'),
+    ];
+
+    // Every sort in the vocabulary, because the point is that none of them
+    // reaches this list: `attention` ranks by a week nobody was asked to
+    // train in, and the approved design pins one order and says so in the
+    // count line above the rows.
+    for (const sort of CLIENT_SORTS) {
+      expect(names(selectClients(rows, { ...BASE, sort, statuses: ['archived'] }))).toEqual([
+        'Newest',
+        'Middle',
+        'Older',
+      ]);
+    }
+  });
+
+  it('sorts a row with no archived date last rather than first', () => {
+    const rows = [archived('Undated', null), archived('Dated', '2026-06-01T00:00:00.000Z')];
+
+    // Absence is not recency, exactly as `null` adherence is not a low
+    // score — the same rule the attention ranking already applies.
+    expect(names(selectClients(rows, { ...BASE, statuses: ['archived'] }))).toEqual([
+      'Dated',
+      'Undated',
+    ]);
+  });
+
+  it('leaves the coach’s sort in force the moment the list is mixed again', () => {
+    const rows = [
+      archived('Bravo', '2026-09-04T00:00:00.000Z'),
+      client('Alpha', { status: 'active' }, 'alpha'),
+    ];
+
+    expect(
+      names(selectClients(rows, { ...BASE, sort: 'name', statuses: ['active', 'archived'] })),
+    ).toEqual(['Alpha', 'Bravo']);
+  });
+});
+
+describe('countStatusUniverse', () => {
+  const mixed = [
+    client('Active', { status: 'active' }, 'a'),
+    client('Invited', { status: 'invited' }, 'i'),
+    client('Paused', { status: 'paused' }, 'p'),
+    client('Archived one', { status: 'archived' }, 'z1'),
+    client('Archived two', { status: 'archived' }, 'z2'),
+  ];
+
+  it('counts the rows the default list can draw, which is never the archived ones', () => {
+    expect(countStatusUniverse(mixed, [])).toBe(3);
+  });
+
+  it('counts only the archived when the archived chip asks for them', () => {
+    expect(countStatusUniverse(mixed, ['archived'])).toBe(2);
+  });
+
+  it('follows an explicit selection exactly', () => {
+    expect(countStatusUniverse(mixed, ['active', 'archived'])).toBe(3);
+  });
 });
 
 // ── the hook ────────────────────────────────────────────────────────────
@@ -435,5 +554,79 @@ describe('useClientListFilters', () => {
     expect(result.current.activeFilterCount).toBe(0);
     // A sort is a preference, not a narrowing — "clear" has nothing to undo.
     expect(result.current.sort).toBe('name');
+  });
+
+  // ── the count line's denominator ──────────────────────────────────────
+  //
+  // "24 of 38 clients" on a roster where 11 of the 38 are archived is a
+  // denominator counting rows that list can never draw. The universe is
+  // whatever the STATUS facet admits — status decides membership, the query
+  // and the goal chips narrow within it.
+
+  describe('totalCount', () => {
+    const mixed = [
+      client('Active', { status: 'active' }, 'a'),
+      client('Invited', { status: 'invited' }, 'i'),
+      client('Paused', { status: 'paused' }, 'p'),
+      client('Archived one', { status: 'archived' }, 'z1'),
+      client('Archived two', { status: 'archived' }, 'z2'),
+    ];
+
+    it('excludes the archived from the default list’s denominator', () => {
+      const { result } = renderHook(() => useClientListFilters(mixed));
+
+      expect(result.current.clients).toHaveLength(3);
+      expect(result.current.totalCount).toBe(3);
+    });
+
+    it('becomes the archived count when the archived chip is the selection', () => {
+      const { result } = renderHook(() => useClientListFilters(mixed));
+
+      act(() => {
+        result.current.toggleStatus('archived');
+      });
+
+      expect(result.current.totalCount).toBe(2);
+    });
+
+    it('stays the universe while a query narrows the list inside it', () => {
+      jest.useFakeTimers();
+      try {
+        const { result } = renderHook(() => useClientListFilters(mixed));
+
+        act(() => {
+          result.current.setQuery('active');
+        });
+        act(() => {
+          jest.advanceTimersByTime(SEARCH_DEBOUNCE_MS);
+        });
+
+        expect(result.current.clients).toHaveLength(1);
+        expect(result.current.totalCount).toBe(3);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
+  it('reports an archived-only selection, and the order that selection forces', () => {
+    const archivedRoster = [
+      client('Older', { status: 'archived', archivedAt: new Date('2026-07-30') }, 'old'),
+      client('Newest', { status: 'archived', archivedAt: new Date('2026-09-04') }, 'new'),
+    ];
+    const { result } = renderHook(() => useClientListFilters(archivedRoster));
+
+    expect(result.current.isArchivedOnly).toBe(false);
+
+    act(() => {
+      result.current.setSort('name');
+      result.current.toggleStatus('archived');
+    });
+
+    expect(result.current.isArchivedOnly).toBe(true);
+    // The persisted preference is untouched — it simply does not reach this
+    // list, and comes back the moment the chip does.
+    expect(result.current.sort).toBe('name');
+    expect(names(result.current.clients)).toEqual(['Newest', 'Older']);
   });
 });
