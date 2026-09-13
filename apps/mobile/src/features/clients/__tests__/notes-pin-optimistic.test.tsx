@@ -268,21 +268,24 @@ describe('groupNotes', () => {
     const pinned = makeNote({ isPinned: true });
     const rest = makeNote({ noteId: OTHER_NOTE_ID });
 
-    expect(groupNotes([rest, pinned]).map((item) => item.key)).toEqual([
+    expect(groupNotes([rest, pinned], [], CLIENT_ID).map((item) => item.key)).toEqual([
       'head-pinned',
-      NOTE_ID,
+      `pinned:${NOTE_ID}`,
       'head-other',
-      OTHER_NOTE_ID,
+      `other:${OTHER_NOTE_ID}`,
     ]);
   });
 
   it('draws no empty group heading', () => {
-    expect(groupNotes([makeNote()]).map((item) => item.key)).toEqual(['head-other', NOTE_ID]);
-    expect(groupNotes([])).toEqual([]);
+    expect(groupNotes([makeNote()], [], CLIENT_ID).map((item) => item.key)).toEqual([
+      'head-other',
+      `other:${NOTE_ID}`,
+    ]);
+    expect(groupNotes([], [], CLIENT_ID)).toEqual([]);
   });
 
   it('only spaces the second heading when a first group sits above it', () => {
-    const grouped = groupNotes([makeNote()]);
+    const grouped = groupNotes([makeNote()], [], CLIENT_ID);
     expect(grouped[0]).toMatchObject({ kind: 'header', spaced: false });
   });
 });

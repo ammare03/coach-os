@@ -9,6 +9,7 @@ import {
   createThemedStyles,
   createThemedValue,
   density,
+  duration,
   fontFamily,
   fontSize,
   radius,
@@ -19,18 +20,25 @@ import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
 import { FileText, Plus, TriangleAlert } from 'lucide-react-native';
 import { useState, type ReactElement } from 'react';
 import { AccessibilityInfo, StyleSheet, TextInput, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { getErrorCode } from '../../../lib/error-code.ts';
 import {
+  compareNotesNewestFirst,
+  pinnedNoteAsNote,
   useClientIdentity,
   useClientNotes,
+  useClientPinnedNotes,
   useDeleteNote,
   useSetNotePinned,
   useWriteNote,
   type CoachClientNote,
+  type PinnedNote,
 } from '../api.ts';
 import { NoteRow } from '../components/NoteRow.tsx';
 import { PrivacyLabel } from '../components/PrivacyLabel.tsx';
+import { useEnterMotion } from '../hooks/useEnterMotion.ts';
+import { useExpiringTicket } from '../hooks/useExpiringTicket.ts';
 
 // §8.3's seventh tab: every private note this coach has written about this
 // client, pinned first, with the pin toggle that decides what Overview
@@ -82,11 +90,63 @@ export function firstNameOf(name: string | undefined): string {
 
 type ComposerTarget = { kind: 'create' } | { kind: 'edit'; note: CoachClientNote };
 
+/** What a composer entrance ticket holds: the note being edited, or `create`. */
+const CREATE_TICKET = 'create';
+
 type NotesListItem =
   | { kind: 'header'; key: string; label: string; spaced: boolean }
   | { kind: 'note'; key: string; note: CoachClientNote };
 
 const EMPTY_NOTES: readonly CoachClientNote[] = [];
+const EMPTY_PINNED: readonly PinnedNote[] = [];
+
+/**
+ * **The one note allowed to play its re-sort cross-fade, and the state it
+ * is moving to.** Held rather than derived because "this row just moved"
+ * is a fact about a *tap*, and the list has no way to know it: a FlashList
+ * v2 cell is reused as the coach scrolls, so anything the row could infer
+ * from its own mount is also true a hundred times during a flick.
+ */
+interface PinEntrance {
+  noteId: string;
+  isPinned: boolean;
+}
+
+/**
+ * **How long a tap stays a reason to animate.** Not an animation duration —
+ * a budget, off the same closed ladder so no second number enters the file.
+ * It has to outlast the gap between the tap and the optimistic patch
+ * (`onMutate` awaits a cache snapshot first), and it must expire, because
+ * an authorisation that never does is one a scroll can eventually claim.
+ */
+export const ENTRANCE_WINDOW_MS = duration.reveal;
+
+/**
+ * The second gate on a live ticket: has the regrouping actually landed?
+ *
+ * `handleTogglePin` issues the ticket synchronously, but `useSetNotePinned`'s
+ * `onMutate` awaits a cache snapshot before it patches, so the row is still
+ * in the group it is *leaving* for a commit or two. Cross-fading on the
+ * ticket alone would play the arrival at the old address.
+ *
+ * `useExpiringTicket` supplies the first gate — the ticket goes inert on its
+ * own, so a cell the recycler mounts during a later scroll has nothing to
+ * claim. That is the whole reason this is not an `entering=` prop, which
+ * would fire for every row on every recycle (`DESIGN.md` §5).
+ *
+ * Pure, because "does this animate" is the one decision in the feature worth
+ * being able to assert exhaustively.
+ */
+export function noteEntranceId(
+  ticket: PinEntrance | null,
+  notes: readonly CoachClientNote[],
+): string | null {
+  if (ticket === null) return null;
+  const landed = notes.some(
+    (note) => note.noteId === ticket.noteId && note.isPinned === ticket.isPinned,
+  );
+  return landed ? ticket.noteId : null;
+}
 
 export function ClientNotesScreen({ clientId, onBack }: ClientNotesScreenProps) {
   const themed = useThemedStyles();
@@ -95,6 +155,9 @@ export function ClientNotesScreen({ clientId, onBack }: ClientNotesScreenProps) 
   const identity = useClientIdentity(clientId);
   const clientFirstName = firstNameOf(identity.data?.name);
   const notes = useClientNotes(clientId);
+  // The same `['clients', id, 'overview']` entry `useClientIdentity` above
+  // already mounted, narrowed to the pinned list — one fetch, two readers.
+  const pinnedNotes = useClientPinnedNotes(clientId);
   const setPinned = useSetNotePinned(clientId);
   const remove = useDeleteNote(clientId);
   const write = useWriteNote(clientId);
@@ -102,8 +165,22 @@ export function ClientNotesScreen({ clientId, onBack }: ClientNotesScreenProps) 
 
   const [composer, setComposer] = useState<ComposerTarget | null>(null);
   const [draft, setDraft] = useState('');
+  // Two entrances, two tickets, one window. Both go inert on their own
+  // rather than being consumed — see `useExpiringTicket`.
+  const [pinEntrance, issuePinEntrance] = useExpiringTicket<PinEntrance>(ENTRANCE_WINDOW_MS);
+  const [composerEntrance, issueComposerEntrance] = useExpiringTicket<string>(ENTRANCE_WINDOW_MS);
 
   const items = notes.data?.pages.flatMap((page) => page.items) ?? EMPTY_NOTES;
+  const entranceNoteId = noteEntranceId(pinEntrance, items);
+
+  function openComposer(target: ComposerTarget): void {
+    setComposer(target);
+    setDraft(target.kind === 'edit' ? target.note.body : '');
+    // Keyed by WHICH composer, not a bare boolean: the edit composer lives
+    // inside the recycler, so a ticket left over from a different note must
+    // not animate the one the coach scrolled back to.
+    issueComposerEntrance(target.kind === 'edit' ? target.note.noteId : CREATE_TICKET);
+  }
 
   function closeComposer(): void {
     setComposer(null);
@@ -113,6 +190,7 @@ export function ClientNotesScreen({ clientId, onBack }: ClientNotesScreenProps) 
   }
 
   function handleTogglePin(note: CoachClientNote, next: boolean): void {
+    issuePinEntrance({ noteId: note.noteId, isPinned: next });
     setPinned.mutate({ note, isPinned: next });
     // An optimistic change with no announcement is invisible to a screen
     // reader — `accessibility` §2's named failure. One per change.
@@ -141,8 +219,7 @@ export function ClientNotesScreen({ clientId, onBack }: ClientNotesScreenProps) 
   }
 
   function handleEdit(note: CoachClientNote): void {
-    setComposer({ kind: 'edit', note });
-    setDraft(note.body);
+    openComposer({ kind: 'edit', note });
   }
 
   function submitComposer(): void {
@@ -201,6 +278,7 @@ export function ClientNotesScreen({ clientId, onBack }: ClientNotesScreenProps) 
             onSubmit={submitComposer}
             saving={write.update.isPending}
             failed={write.update.isError}
+            isEntering={composerEntrance === item.note.noteId}
           />
         </View>
       );
@@ -208,8 +286,16 @@ export function ClientNotesScreen({ clientId, onBack }: ClientNotesScreenProps) 
 
     const note = item.note;
     return (
+      // **The keyed re-mount, and it is load-bearing** (`DESIGN.md` §5, and
+      // the reason this was deferred). `item.key` carries the group, so a
+      // pin changes it and React mounts a fresh row at the destination —
+      // which is what gives `isEntering` a mount to seed from. Scrolling
+      // never changes a note's group, so a recycled cell reconciles against
+      // the same key and updates in place, with nothing to play.
       <NoteRow
+        key={item.key}
         note={note}
+        isEntering={note.noteId === entranceNoteId}
         onTogglePin={(next) => {
           handleTogglePin(note, next);
         }}
@@ -239,22 +325,24 @@ export function ClientNotesScreen({ clientId, onBack }: ClientNotesScreenProps) 
             onSubmit={submitComposer}
             saving={write.create.isPending}
             failed={write.create.isError}
+            isEntering={composerEntrance === CREATE_TICKET}
           />
         ) : (
           <AddNoteGhost
             clientFirstName={clientFirstName}
             onPress={() => {
-              setComposer({ kind: 'create' });
-              setDraft('');
+              openComposer({ kind: 'create' });
             }}
           />
         )}
       </View>
 
       <NotesBody
+        clientId={clientId}
         clientFirstName={clientFirstName}
         notes={notes}
         items={items}
+        pinned={pinnedNotes.data ?? EMPTY_PINNED}
         renderItem={renderItem}
         onBack={onBack}
       />
@@ -263,14 +351,31 @@ export function ClientNotesScreen({ clientId, onBack }: ClientNotesScreenProps) 
 }
 
 interface NotesBodyProps {
+  clientId: string;
   clientFirstName: string;
   notes: ReturnType<typeof useClientNotes>;
   items: readonly CoachClientNote[];
+  /**
+   * Overview's unpaginated pinned list. Empty while that query is still in
+   * flight or failed, which degrades to exactly the pre-S42 behaviour
+   * rather than to an error — the list IS the tab (`screen-composition`
+   * §3), and a pinned note the coach has not scrolled to is not worth
+   * failing it over.
+   */
+  pinned: readonly PinnedNote[];
   renderItem: (info: ListRenderItemInfo<NotesListItem>) => ReactElement;
   onBack: () => void;
 }
 
-function NotesBody({ clientFirstName, notes, items, renderItem, onBack }: NotesBodyProps) {
+function NotesBody({
+  clientId,
+  clientFirstName,
+  notes,
+  items,
+  pinned,
+  renderItem,
+  onBack,
+}: NotesBodyProps) {
   if (notes.isPending) {
     return (
       <View style={styles.state}>
@@ -298,13 +403,18 @@ function NotesBody({ clientFirstName, notes, items, renderItem, onBack }: NotesB
     );
   }
 
-  if (items.length === 0) {
+  const rows = groupNotes(items, pinned, clientId);
+
+  // Over the MERGED list, not the loaded page: a client whose only notes
+  // are pinned and beyond page one has notes, and must not be told they
+  // have none.
+  if (rows.length === 0) {
     return <NotesEmpty clientFirstName={clientFirstName} />;
   }
 
   return (
     <FlashList
-      data={groupNotes(items)}
+      data={rows}
       keyExtractor={keyExtractor}
       getItemType={getItemType}
       renderItem={renderItem}
@@ -331,27 +441,59 @@ function NotesBody({ clientFirstName, notes, items, renderItem, onBack }: NotesB
  * is what makes the optimistic pin free: flipping `isPinned` in the cache
  * moves the row with no refetch.
  *
- * The consequence, on the record: a pinned note that lives on page three is
- * grouped under **Pinned** only once page three has been read. Overview's
- * pinned list is unaffected — it is a separate, unpaginated server query.
+ * **Two sources, one list.** `loaded` is however much of the keyset list
+ * the coach has scrolled through; `pinned` is Overview's unpaginated pinned
+ * read (`useClientPinnedNotes`). The merge rule is the whole fix and it has
+ * exactly two clauses:
+ *
+ *   - **A loaded note speaks for itself.** Its own `isPinned` decides its
+ *     group, so the optimistic pin patch still moves it with no refetch,
+ *     and an unpin that has not reached Overview's cache yet cannot drag it
+ *     back up.
+ *   - **Overview only supplies notes the pagination has not reached.**
+ *     Filtered by `loadedIds`, so a note that is in both sources is
+ *     rendered once, from the loaded copy — and when page three finally
+ *     arrives the synthesised stand-in is simply no longer built.
+ *
+ * `rest` is the loaded notes that are not pinned, so it can never contain
+ * an id the pinned group holds: the two groups are disjoint by
+ * construction rather than by a second pass.
+ *
+ * **Keys carry the group.** `pinned:<id>` / `other:<id>` rather than the
+ * bare id, so moving between groups is a key change and therefore a
+ * re-mount — which is what `NoteRow`'s `isEntering` seeds from, and what
+ * lets the cross-fade exist at all without an `entering=` that would fire
+ * on every recycle.
  */
-export function groupNotes(notes: readonly CoachClientNote[]): NotesListItem[] {
-  const pinned = notes.filter((note) => note.isPinned);
-  const rest = notes.filter((note) => !note.isPinned);
+export function groupNotes(
+  loaded: readonly CoachClientNote[],
+  pinned: readonly PinnedNote[],
+  clientId: string,
+): NotesListItem[] {
+  const loadedIds = new Set(loaded.map((note) => note.noteId));
+  const pinnedNotes = [
+    ...loaded.filter((note) => note.isPinned),
+    ...pinned
+      .filter((note) => !loadedIds.has(note.noteId))
+      .map((note) => pinnedNoteAsNote(note, clientId)),
+  ].sort(compareNotesNewestFirst);
+  const rest = loaded.filter((note) => !note.isPinned);
   const items: NotesListItem[] = [];
 
-  if (pinned.length > 0) {
+  if (pinnedNotes.length > 0) {
     items.push({ kind: 'header', key: 'head-pinned', label: PINNED_GROUP_LABEL, spaced: false });
-    for (const note of pinned) items.push({ kind: 'note', key: note.noteId, note });
+    for (const note of pinnedNotes) {
+      items.push({ kind: 'note', key: `pinned:${note.noteId}`, note });
+    }
   }
   if (rest.length > 0) {
     items.push({
       kind: 'header',
       key: 'head-other',
       label: OTHER_GROUP_LABEL,
-      spaced: pinned.length > 0,
+      spaced: pinnedNotes.length > 0,
     });
-    for (const note of rest) items.push({ kind: 'note', key: note.noteId, note });
+    for (const note of rest) items.push({ kind: 'note', key: `other:${note.noteId}`, note });
   }
 
   return items;
@@ -401,6 +543,12 @@ interface NoteComposerProps {
   onSubmit: () => void;
   saving: boolean;
   failed: boolean;
+  /**
+   * True only on the commit the coach's own tap opened this. The *edit*
+   * composer lives inside the recycler, so a scroll away and back can mount
+   * it again — and that mount must be silent.
+   */
+  isEntering?: boolean;
 }
 
 /**
@@ -426,54 +574,58 @@ function NoteComposer({
   onSubmit,
   saving,
   failed,
+  isEntering = false,
 }: NoteComposerProps) {
   const themed = useThemedStyles();
   const placeholderColor = usePlaceholderColor();
+  const enter = useEnterMotion(isEntering, duration.enter);
 
   return (
-    <Card elevation="raised" density="coach" padded={false} testID="note-composer">
-      <View style={styles.composer}>
-        <TextInput
-          value={value}
-          onChangeText={onChangeText}
-          multiline
-          autoFocus
-          placeholder={`Anything you want to remember about ${clientFirstName}`}
-          placeholderTextColor={placeholderColor}
-          textAlignVertical="top"
-          style={[styles.composerInput, themed.composerInput]}
-          accessibilityLabel={`Note about ${clientFirstName}`}
-          testID="note-composer-input"
-        />
+    <Animated.View style={enter}>
+      <Card elevation="raised" density="coach" padded={false} testID="note-composer">
+        <View style={styles.composer}>
+          <TextInput
+            value={value}
+            onChangeText={onChangeText}
+            multiline
+            autoFocus
+            placeholder={`Anything you want to remember about ${clientFirstName}`}
+            placeholderTextColor={placeholderColor}
+            textAlignVertical="top"
+            style={[styles.composerInput, themed.composerInput]}
+            accessibilityLabel={`Note about ${clientFirstName}`}
+            testID="note-composer-input"
+          />
 
-        {failed ? (
-          <View style={styles.composerFailure} testID="note-composer-error">
-            <Text size="label" className="font-sans-semibold">
-              {"We couldn't save that note"}
-            </Text>
-            <Text size="body-sm" tone="muted" style={styles.composerFailureBody}>
-              Your words are still here. Try again when you are back online.
-            </Text>
+          {failed ? (
+            <View style={styles.composerFailure} testID="note-composer-error">
+              <Text size="label" className="font-sans-semibold">
+                {"We couldn't save that note"}
+              </Text>
+              <Text size="body-sm" tone="muted" style={styles.composerFailureBody}>
+                Your words are still here. Try again when you are back online.
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={styles.composerActions}>
+            <Button variant="secondary" size="md" density="coach" onPress={onCancel}>
+              {failed && mode === 'create' ? 'Discard' : 'Cancel'}
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              density="coach"
+              onPress={onSubmit}
+              disabled={value.trim() === ''}
+              loading={saving}
+            >
+              {failed ? 'Try again' : mode === 'create' ? 'Add note' : 'Save changes'}
+            </Button>
           </View>
-        ) : null}
-
-        <View style={styles.composerActions}>
-          <Button variant="secondary" size="md" density="coach" onPress={onCancel}>
-            {failed && mode === 'create' ? 'Discard' : 'Cancel'}
-          </Button>
-          <Button
-            variant="primary"
-            size="md"
-            density="coach"
-            onPress={onSubmit}
-            disabled={value.trim() === ''}
-            loading={saving}
-          >
-            {failed ? 'Try again' : mode === 'create' ? 'Add note' : 'Save changes'}
-          </Button>
         </View>
-      </View>
-    </Card>
+      </Card>
+    </Animated.View>
   );
 }
 

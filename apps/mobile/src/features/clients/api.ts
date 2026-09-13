@@ -318,18 +318,75 @@ export type CoachClientNote = NonNullable<
   ReturnType<typeof useClientNotes>['data']
 >['pages'][number]['items'][number];
 
+/**
+ * Every pinned note for this client, unpaginated — the Notes tab's second
+ * source, and **not a second request**.
+ *
+ * `notes.listForClient` paginates by `created_at DESC` and knows nothing
+ * about pinning, so a note pinned in March sits on page three and the tab's
+ * **Pinned** group is wrong until the coach scrolls far enough to be told.
+ * Overview already carries the whole pinned list
+ * (`features/coach/client-overview.ts`'s `pinnedNotesQuery`, which has no
+ * `limit`), and this tab is already subscribed to that exact cache entry
+ * for the client's first name (`useClientIdentity`) — so this is the same
+ * `['clients', id, 'overview']` key narrowed by a different `select`, and
+ * TanStack serves both from one fetch.
+ *
+ * That it shares a key with Overview is the point rather than a
+ * coincidence: `useNoteCaches` already patches and invalidates both
+ * entries on every note write, so the tab and Overview cannot drift apart
+ * without a third place to fix.
+ */
+export function useClientPinnedNotes(clientId: string) {
+  const utils = api.useUtils();
+
+  return useQuery({
+    queryKey: clientDetailKeys.tab(clientId, 'overview'),
+    queryFn: () => utils.client.coach.clients.overview.query({ clientId }),
+    staleTime: CLIENT_DETAIL_STALE_TIME_MS,
+    gcTime: QUERY_CACHE_MAX_AGE_MS,
+    select: (data): readonly PinnedNote[] => data.pinnedNotes,
+  });
+}
+
+/**
+ * Overview's projection is four columns (`pinnedNotesQuery`); a row needs
+ * six. `isPinned` is `true` by construction — the query's own `WHERE` — and
+ * `clientId` comes from the route, which is the only caller that has one.
+ */
+export function pinnedNoteAsNote(pinned: PinnedNote, clientId: string): CoachClientNote {
+  return {
+    noteId: pinned.noteId,
+    clientId,
+    body: pinned.body,
+    isPinned: true,
+    createdAt: pinned.createdAt,
+    updatedAt: pinned.updatedAt,
+  };
+}
+
+/**
+ * The server's own order as a comparator — `created_at DESC, id DESC`,
+ * where `id` is a UUIDv7 so it breaks a tie in the direction the timestamp
+ * would have. One definition, because the tab now merges two sources and a
+ * second opinion about "newest" would interleave them wrongly.
+ */
+export function compareNotesNewestFirst(a: CoachClientNote, b: CoachClientNote): number {
+  const delta = b.createdAt.getTime() - a.createdAt.getTime();
+  if (delta !== 0) return delta;
+  if (a.noteId === b.noteId) return 0;
+  return a.noteId < b.noteId ? 1 : -1;
+}
+
 type NotesPage = NonNullable<ReturnType<typeof useClientNotes>['data']>['pages'][number];
 type NotesPages = InfiniteData<NotesPage, string | null>;
 
 /**
- * The server's own tie-break, restated: `created_at DESC, id DESC`, and
- * `id` is a UUIDv7 so it breaks a tie in the direction the timestamp would
- * have. Used to put an undone delete back exactly where it was rather than
- * bookkeeping an index.
+ * Where an undone delete goes back to, off the one ordering definition
+ * above rather than a second copy of the tie-break.
  */
 function isBelow(item: CoachClientNote, note: CoachClientNote): boolean {
-  const delta = item.createdAt.getTime() - note.createdAt.getTime();
-  return delta === 0 ? item.noteId < note.noteId : delta < 0;
+  return compareNotesNewestFirst(item, note) > 0;
 }
 
 export function setPinnedInPages(data: NotesPages, noteId: string, isPinned: boolean): NotesPages {

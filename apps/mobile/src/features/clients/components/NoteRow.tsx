@@ -23,6 +23,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import type { CoachClientNote } from '../api.ts';
+import { useEnterMotion } from '../hooks/useEnterMotion.ts';
 
 // One private note, two tiers: the prose gets the whole content channel and
 // the three controls get their own line under it. A one-tier row would
@@ -112,6 +113,14 @@ export interface NoteRowProps {
   onTogglePin: (next: boolean) => void;
   onEdit: () => void;
   onDelete: () => void;
+  /**
+   * **The re-sort cross-fade, and it is never inferred here.** True only
+   * for the one row a pin just moved between groups, on the one commit it
+   * arrives — `ClientNotesScreen` owns that decision because the row cannot
+   * tell a re-sort from a recycle, and the recycler mounts rows during a
+   * scroll (`DESIGN.md` §5).
+   */
+  isEntering?: boolean;
   /** Injected by tests only; the row reads the clock otherwise. */
   now?: Date;
   testID?: string;
@@ -122,6 +131,7 @@ export const NoteRow = memo(function NoteRow({
   onTogglePin,
   onEdit,
   onDelete,
+  isEntering = false,
   now,
   testID,
 }: NoteRowProps) {
@@ -129,11 +139,14 @@ export const NoteRow = memo(function NoteRow({
   const palette = useDiscPalette();
   const { fontScale } = useWindowDimensions();
   const stacked = fontScale >= STACK_META_ABOVE_FONT_SCALE;
+  // `duration.state` rather than `duration.enter`: the row is not a surface
+  // arriving, it is one whose grouping changed (`DESIGN.md` §5).
+  const enter = useEnterMotion(isEntering, duration.state);
 
   const at = now ?? new Date();
 
   return (
-    <View style={styles.row} testID={testID ?? `note-row-${note.noteId}`}>
+    <Animated.View style={[styles.row, enter]} testID={testID ?? `note-row-${note.noteId}`}>
       {/* L2, even when pinned: `DESIGN.md` §2 reserves L3 for *needs
           attention*, and a pinned note is a preference, not an alert. The
           card owns the surface; the padding is this row's, because 13/14 is
@@ -215,7 +228,7 @@ export const NoteRow = memo(function NoteRow({
           </View>
         </View>
       </Card>
-    </View>
+    </Animated.View>
   );
 });
 
@@ -228,11 +241,12 @@ interface PinDiscProps {
  * tint fill, a *filled* rather than outlined head, and brand ink. Greyscale
  * the screen and the solid head still says pinned (`accessibility` §4).
  *
- * The change cross-fades over `duration.state` and nothing else moves — a
- * pinned row travels from the bottom of a long list to the top, and
- * animating that is motion nobody can follow, so the row simply *is* in its
- * new place on the next commit. Under Reduce Motion this is already a
- * cross-fade, so there is nothing to collapse.
+ * The change cross-fades over `duration.state`, and **the row still does
+ * not travel** — a pinned row crossing from the bottom of a long list to
+ * the top is motion nobody can follow. What it does now is cross-fade in at
+ * its destination over the same 200ms (`isEntering`, `useEnterMotion`),
+ * which is the arrival rather than the journey. Under Reduce Motion this
+ * disc is already a cross-fade, so there is nothing here to collapse.
  */
 function PinDisc({ pinned }: PinDiscProps) {
   const themed = useThemedStyles();
