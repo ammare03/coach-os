@@ -30,7 +30,11 @@ export function syncFailureTitle(count: number): string {
 }
 
 export type SyncFailureBannerProps = {
-  /** Outbox rows at DB§14.4's attempt ceiling. Zero renders nothing. */
+  /**
+   * `readFailedOutboxEntries().totalCount` — rows at DB§14.4's attempt
+   * ceiling *plus* everything transitively stranded behind one (S31), which
+   * is why a one-mutation failure can read "31 items". Zero renders nothing.
+   */
   count: number;
   /** Opens the review surface — `SyncFailureSheet`, where the retry lives. */
   onPress: () => void;
