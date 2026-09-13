@@ -41,6 +41,27 @@ export const billingPlatform = pgEnum('billing_platform', [
 
 export const clientStatus = pgEnum('client_status', ['invited', 'active', 'paused', 'archived']);
 
+/**
+ * `relationship-controls/03` — NOT in DB§4's original list, and the one
+ * enum here that exists to be READ BACK rather than enforced.
+ *
+ * `client_profiles.history_shared_from` is a timestamp, deliberately
+ * (`account-lifecycle/07`'s Risks: never a stored duration), and a
+ * timestamp cannot be inverted to the option that produced it — *nothing*
+ * six weeks ago and *12 weeks* today are two past instants nothing
+ * distinguishes. The settings screen has to show the client the choice
+ * they actually made, so the choice is stored beside the timestamp.
+ *
+ * Value order matches `historySharingInput`'s `z.enum` in
+ * `packages/schemas/src/primitives.ts`, which is the wire contract this
+ * column stores verbatim — one order in the product, not two.
+ */
+export const historySharingChoice = pgEnum('history_sharing_choice', [
+  'twelve_weeks',
+  'everything',
+  'nothing',
+]);
+
 export const trainingGoal = pgEnum('training_goal', [
   'fat_loss',
   'muscle_gain',

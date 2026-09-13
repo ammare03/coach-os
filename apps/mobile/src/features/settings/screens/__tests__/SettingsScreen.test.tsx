@@ -156,6 +156,50 @@ describe('SettingsScreen — the Coaching section', () => {
     expect(screen.getByRole('button', { name: /^Leave coach/ })).toBeTruthy();
   });
 
+  // `relationship-controls/03`, SLOT 1. Order is the contract: the benign,
+  // reversible, navigating row comes first, so a thumb travelling down the
+  // list meets the safe control before the irreversible one.
+  it('puts What {coach} can see above Leave coach, named with the FIRST name', () => {
+    mockCoachQuery = COACHED;
+    renderScreen('client');
+
+    const sharing = screen.getByTestId('settings-history-sharing');
+    expect(sharing.props.accessibilityLabel).toBe(
+      'What Arjun can see, Training history, body metrics, and nutrition',
+    );
+
+    const labels = screen
+      .getAllByRole('button')
+      .map((node) => String(node.props.accessibilityLabel ?? ''));
+    const sharingAt = labels.findIndex((label) => label.startsWith('What Arjun can see'));
+    const leaveAt = labels.findIndex((label) => label.startsWith('Leave coach'));
+    expect(sharingAt).toBeGreaterThanOrEqual(0);
+    expect(sharingAt).toBeLessThan(leaveAt);
+  });
+
+  it('navigates — so it draws a chevron, unlike the destructive row below it', () => {
+    mockCoachQuery = COACHED;
+    renderScreen('client');
+
+    fireEvent.press(screen.getByTestId('settings-history-sharing'));
+
+    expect(mockPush).toHaveBeenCalledWith('/(client)/settings/sharing');
+    // Hidden from the reading order — the affordance, not the control —
+    // so it needs `includeHiddenElements`, same as `ListRow`'s own test.
+    expect(
+      within(screen.getByTestId('settings-history-sharing')).getByTestId('list-row-chevron', {
+        includeHiddenElements: true,
+      }),
+    ).toBeTruthy();
+  });
+
+  it('is absent for a client with no coach — there is nothing to share', () => {
+    mockCoachQuery = NO_COACH;
+    renderScreen('client');
+
+    expect(screen.queryByTestId('settings-history-sharing')).toBeNull();
+  });
+
   it('never shows a coach the section — not even empty-headed', () => {
     // The read is a `clientProcedure`; a coach does not make it, and the
     // section is absent rather than showing its no-coach state.

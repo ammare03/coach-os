@@ -99,6 +99,10 @@ const EXPECTED_ROUTE_FILES = [
   // under `settings/` inherits a header, a title, and a back action.
   '(client)/settings/_layout.tsx',
   '(client)/settings/index.tsx',
+  // Not in §9.1 — `phase-10-coach-review-surfaces/relationship-controls/03`.
+  // Client-only and therefore inside the group rather than flat: a coach
+  // has no coach, and `SettingsStack` is shared by both settings groups.
+  '(client)/settings/sharing.tsx',
   '(client)/workout/[sessionId].tsx',
   '(client)/workout/[sessionId]/summary.tsx',
   '(coach-onboarding)/_layout.tsx', // not in §9.1 — see the note above
@@ -504,6 +508,7 @@ describe('the §9.1 route tree', () => {
     // the client Videos tab, the session review focus mode, the root
     // redirect, and the catch-all.
     expect(uncovered).toEqual([
+      '(client)/settings/sharing',
       '(coach)/(tabs)/more',
       '(coach)/client/[id]/notes',
       '(coach)/client/[id]/videos',
@@ -571,6 +576,22 @@ describe('the §9.1 route tree', () => {
     renderRouter(routeContext(), { initialUrl: '/(coach)/session/s1' });
 
     expect(screen.getByLabelText(SESSION_REVIEW_COPY.closeSpoken)).toBeTruthy();
+  });
+
+  // The sharing screen is real as of `relationship-controls/03`, and it is
+  // NOT substituted: it reads `clientApp.coach` through TanStack Query, so
+  // against this tree's fixture-less transport it renders its documented
+  // read-failure state — which is the honest answer and the one worth
+  // asserting. The never-shared block is the assertion because it is the
+  // one thing true in EVERY state of that screen: before the query
+  // returns, after it succeeds, and after it fails. What the screen
+  // renders on a successful read is
+  // `features/settings/screens/__tests__/HistorySharingScreen.test.tsx`'s.
+  it('renders the sharing screen at /(client)/settings/sharing', () => {
+    signInAsOwnerOf('/(client)/settings/sharing');
+    renderRouter(routeContext(), { initialUrl: '/(client)/settings/sharing' });
+
+    expect(screen.getByTestId('sharing-never-shared')).toBeTruthy();
   });
 
   it('redirects `/` into the tree rather than leaving it on +not-found', () => {

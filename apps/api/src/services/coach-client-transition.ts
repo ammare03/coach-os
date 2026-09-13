@@ -239,6 +239,20 @@ async function applySharingDecision(
     .update(schema.clientProfiles)
     .set({
       historySharedFrom,
+      // `relationship-controls/03` — DISPLAY ONLY, written here so the two
+      // surfaces that make this decision can never disagree about where it
+      // is recorded. `computeHistorySharedFrom` above is lossy in one
+      // direction: *nothing* stores the write instant and *twelve_weeks*
+      // stores the write instant minus twelve weeks, so both land on a past
+      // instant and neither can be inverted back to the option that
+      // produced it. Settings has to show the client the option they
+      // actually chose, so the option is stored beside the timestamp.
+      //
+      // **Nothing in `ownsResource` or `resource-registry.ts` reads it.**
+      // Enforcement stays on the timestamps, which is `03`'s own Risks
+      // section, and `coach-client-transition-attach.test.ts` pins that by
+      // narrowing this column alone and asserting access is unchanged.
+      historySharingChoice: decision.historySharing,
       // Off-by-default polarity (`resource-registry.ts`'s own note): a
       // toggle turned off stores `null`, not a stale timestamp a future
       // re-enable would otherwise resurrect unexpectedly.

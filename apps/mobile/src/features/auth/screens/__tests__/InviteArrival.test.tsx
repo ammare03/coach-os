@@ -134,8 +134,12 @@ describe('InviteArrival', () => {
 
     expect(screen.getByText('Marcus Adeyemi invited you')).toBeTruthy();
     expect(screen.getByText('Training history')).toBeTruthy();
-    expect(screen.getByLabelText('Body metrics')).toBeTruthy();
-    expect(screen.getByLabelText('Nutrition')).toBeTruthy();
+    // `relationship-controls/03` extracted the control into
+    // `SharingControls`, where each toggle row reads as ONE item — label
+    // and hint merged — rather than a bare `Switch` labelled with just its
+    // title (`accessibility` §2, `ListRow.tsx` rule 1).
+    expect(screen.getByTestId('sharing-toggle-metrics')).toBeTruthy();
+    expect(screen.getByTestId('sharing-toggle-nutrition')).toBeTruthy();
   });
 
   it('sends exactly the four fields the procedure takes, each the client’s own value', () => {
@@ -144,7 +148,9 @@ describe('InviteArrival', () => {
     render(<InviteArrival code={CODE} />);
 
     fireEvent.press(screen.getByText('Everything'));
-    fireEvent(screen.getByLabelText('Body metrics'), 'valueChange', true);
+    // The whole row is the switch now, so this is a press rather than a
+    // `valueChange` on a 51×31 thumb (`accessibility` §1's 48 floor).
+    fireEvent.press(screen.getByTestId('sharing-toggle-metrics'));
     fireEvent.press(screen.getByText('Join Marcus Adeyemi'));
 
     expect(mockAcceptAsExisting).toHaveBeenCalledTimes(1);

@@ -1,6 +1,10 @@
-import { Button, Card, ListSection, Text, spacing, type Density } from '@coachos/ui';
+import { Button, Card, ListRow, ListSection, Text, spacing, type Density } from '@coachos/ui';
 import { useRouter } from 'expo-router';
+import { Eye } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
+
+import { coachFirstName } from '../../onboarding/components/SharingControls.tsx';
+import { HISTORY_SHARING_COPY } from '../screens/HistorySharingScreen.tsx';
 
 import { LeaveCoachRow } from './LeaveCoachRow.tsx';
 
@@ -45,6 +49,8 @@ export interface CoachingSectionProps {
 }
 
 export function CoachingSection({ coach, isLoading = false, density }: CoachingSectionProps) {
+  const router = useRouter();
+
   if (isLoading) {
     return null;
   }
@@ -62,12 +68,24 @@ export function CoachingSection({ coach, isLoading = false, density }: CoachingS
   return (
     <ListSection title="Coaching" {...(density ? { density } : {})}>
       {/*
-        SLOT 1 — `relationship-controls/03`'s **What {coach} can see** row
-        goes HERE, as the FIRST child, above Leave coach. It is a `ListRow`
-        with a chevron (it navigates), labelled with the coach's FIRST name,
-        and it takes the same `coach` object this section already holds —
-        it must not query for one.
+        SLOT 1 — `relationship-controls/03`'s **What {coach} can see**. The
+        FIRST child, above Leave coach: rule 1 above, and the first name
+        rather than the full one because the screen it opens is a sentence
+        about a person ("What Arjun can see"), not a record.
+
+        It takes the `coach` this section already resolved and runs no
+        query of its own (rule 2), and it navigates — so `ListRow` draws
+        the chevron, unlike the destructive row beneath it.
       */}
+      <ListRow
+        label={HISTORY_SHARING_COPY.rowLabel(coachFirstName(coach.name))}
+        description={HISTORY_SHARING_COPY.rowDescription}
+        icon={Eye}
+        accessibilityHint={HISTORY_SHARING_COPY.rowHint}
+        onPress={() => router.push('/(client)/settings/sharing')}
+        testID="settings-history-sharing"
+        {...(density ? { density } : {})}
+      />
       <LeaveCoachRow coach={coach} {...(density ? { density } : {})} />
     </ListSection>
   );

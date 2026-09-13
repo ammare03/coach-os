@@ -1,14 +1,12 @@
-import {
-  Button,
-  Divider,
-  LoadingState,
-  SegmentedControl,
-  spacing,
-  Text,
-  type SegmentedOptions,
-} from '@coachos/ui';
-import { StyleSheet, Switch, View } from 'react-native';
+import { Button, LoadingState, spacing, Text } from '@coachos/ui';
+import { StyleSheet, View } from 'react-native';
 
+import {
+  coachFirstName,
+  NeverSharedNote,
+  SharingControls,
+  type HistorySharing,
+} from '../../onboarding/components/SharingControls.tsx';
 import { AuthScreenShell } from '../components/AuthScreenShell.tsx';
 
 // `client-onboarding/01`, case 2 — a client who has left a coach and been
@@ -24,14 +22,23 @@ import { AuthScreenShell } from '../components/AuthScreenShell.tsx';
 // is a real answer — `historySharedFrom` stores a timestamp, and the three
 // options are the three timestamps that mean something (account creation,
 // twelve weeks back, now).
+//
+// **The control itself is no longer here** (`relationship-controls/03`).
+// Settings has to offer the same three options and the same two toggles,
+// and a copy of them would be a second control that drifts — a different
+// shape reads as a different permission. Everything between *Training
+// history* and the accept button now comes from
+// `features/onboarding/components/SharingControls.tsx`, which both surfaces
+// render, and the extraction fixed three defects this screen shipped with:
+// a system-green `Switch` in a palette with no green, a 51×31 tap target
+// under `accessibility` §1's 48 floor, and a "Body metrics" hint that
+// claimed progress photos the server never shares.
+//
+// It also gained the never-shared block, which `account-lifecycle/07` step
+// 2 required here and this screen never rendered.
 
-export type HistorySharing = 'nothing' | 'twelve_weeks' | 'everything';
-
-const HISTORY_OPTIONS: SegmentedOptions<HistorySharing> = [
-  { value: 'nothing', label: 'Nothing' },
-  { value: 'twelve_weeks', label: '12 weeks' },
-  { value: 'everything', label: 'Everything' },
-];
+/** Re-exported: `InviteArrival` holds this decision in state. */
+export type { HistorySharing };
 
 export interface ReturningClientInviteScreenProps {
   /** Absent while `invites.preview` is still in flight. */
@@ -102,32 +109,22 @@ export function ReturningClientInviteScreen({
           Choose what they can see from before today. You can change all three later in Settings.
         </Text>
 
-        <View style={styles.field}>
-          <Text size="label">Training history</Text>
-          <SegmentedControl
-            options={HISTORY_OPTIONS}
-            value={historySharing}
-            onChange={onHistorySharingChange}
-          />
-          <Text size="body-sm" tone="subtle">
-            Workouts and logged sets from before you joined them.
-          </Text>
-        </View>
-
-        <Divider />
-
-        <ShareRow
-          label="Body metrics"
-          hint="Weight, measurements, progress photos."
-          value={shareMetrics}
-          onChange={onShareMetricsChange}
+        <SharingControls
+          // The invite preview may still be resolving the name; the control
+          // reads better addressing "them" than a blank.
+          coachFirstName={coachName === undefined ? 'them' : coachFirstName(coachName)}
+          historySharing={historySharing}
+          onHistorySharingChange={onHistorySharingChange}
+          shareMetrics={shareMetrics}
+          onShareMetricsChange={onShareMetricsChange}
+          shareNutrition={shareNutrition}
+          onShareNutritionChange={onShareNutritionChange}
         />
-        <ShareRow
-          label="Nutrition"
-          hint="Your food diary and macro history."
-          value={shareNutrition}
-          onChange={onShareNutritionChange}
-        />
+
+        {/* `account-lifecycle/07` step 2's standing line, above the accept
+            button rather than pinned to the floor: on this screen the
+            button is the floor. */}
+        <NeverSharedNote />
 
         {acceptError === undefined ? null : (
           <Text size="body-sm" tone="urgent" accessibilityRole="alert">
@@ -142,30 +139,6 @@ export function ReturningClientInviteScreen({
         <SignOutBlock onSignOut={onSignOut} isSigningOut={isSigningOut} />
       </View>
     </AuthScreenShell>
-  );
-}
-
-function ShareRow({
-  label,
-  hint,
-  value,
-  onChange,
-}: {
-  label: string;
-  hint: string;
-  value: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <View style={styles.row}>
-      <View style={styles.rowText}>
-        <Text size="label">{label}</Text>
-        <Text size="body-sm" tone="subtle">
-          {hint}
-        </Text>
-      </View>
-      <Switch value={value} onValueChange={onChange} accessibilityLabel={label} />
-    </View>
   );
 }
 
@@ -190,8 +163,5 @@ function SignOutBlock({
 
 const styles = StyleSheet.create({
   block: { gap: spacing(18), paddingTop: spacing(8) },
-  field: { gap: spacing(8) },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing(14) },
-  rowText: { flex: 1, gap: spacing(3) },
   signOut: { gap: spacing(8), marginTop: spacing(12) },
 });

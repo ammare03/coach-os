@@ -1,0 +1,2 @@
+CREATE TYPE "public"."history_sharing_choice" AS ENUM('twelve_weeks', 'everything', 'nothing');--> statement-breakpoint
+ALTER TABLE "identity"."client_profiles" ADD COLUMN "history_sharing_choice" "history_sharing_choice";
