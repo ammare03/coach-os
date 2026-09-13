@@ -33,6 +33,12 @@ export interface ButtonProps {
   iconRight?: ReactNode;
   children: ReactNode;
   accessibilityLabel?: string;
+  /**
+   * For a label that is unambiguous on screen and not in a reading order —
+   * "Enter an invite code" says what it is, not where it goes. Same prop,
+   * same `Pressable`, as `IconButton`'s; never a restatement of the label.
+   */
+  accessibilityHint?: string | undefined;
   testID?: string;
 }
 
@@ -185,6 +191,7 @@ export function Button({
   iconRight,
   children,
   accessibilityLabel,
+  accessibilityHint,
   testID,
 }: ButtonProps) {
   const theme = useTheme();
@@ -199,6 +206,7 @@ export function Button({
       hitSlop={HIT_SLOP[size]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled, busy: loading }}
       testID={testID}
       containerStyle={[

@@ -78,3 +78,24 @@ describe('resolveButtonVariantVisuals', () => {
     expect(disabledPrimary).toEqual(disabledDanger);
   });
 });
+
+// S45 — a label alone is sometimes ambiguous ("Enter an invite code" does
+// not say where it goes). `IconButton` has carried a hint since P04; this
+// is the same prop on the same `Pressable`, and its absence was the gap.
+describe('Button — accessibilityHint', () => {
+  it('carries a hint when the label alone does not say what happens', () => {
+    render(
+      <Button
+        onPress={jest.fn()}
+        accessibilityLabel="Enter an invite code"
+        accessibilityHint="Opens the screen where you enter a coach's invite code"
+      >
+        Enter an invite code
+      </Button>,
+    );
+
+    expect(screen.getByLabelText('Enter an invite code').props.accessibilityHint).toBe(
+      "Opens the screen where you enter a coach's invite code",
+    );
+  });
+});

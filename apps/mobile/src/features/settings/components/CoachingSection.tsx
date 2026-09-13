@@ -39,6 +39,12 @@ const NO_COACH_TITLE = "You're not currently working with a coach";
 const NO_COACH_BODY =
   "Everything you've logged is still yours. Enter an invite code to work with a new coach.";
 const NO_COACH_ACTION = 'Enter an invite code';
+/**
+ * The label says what the action is about, not where it goes — which is
+ * exactly the gap a hint fills (`accessibility` §2). Not a restatement of
+ * the label, and not read at all by a sighted user.
+ */
+const NO_COACH_ACTION_HINT = "Opens the screen where you enter a coach's invite code";
 
 export interface CoachingSectionProps {
   /** `null` = coachless, which is a real state and not an error. Drives the whole branch. */
@@ -115,6 +121,7 @@ function NoCoachState({ density }: { density?: Density }) {
         <View style={styles.action}>
           <Button
             variant="primary"
+            accessibilityHint={NO_COACH_ACTION_HINT}
             onPress={() =>
               // The one signed-in way into the invite flow
               // (`client-onboarding/01`); `(auth)/invite/[code]` is

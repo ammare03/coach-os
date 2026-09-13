@@ -107,6 +107,14 @@ describe('CoachingSection — which state a client is in', () => {
     expect(screen.queryByTestId('settings-leave-coach')).toBeNull();
   });
 
+  it("says where the empty state's one action goes, which its label does not", () => {
+    renderSection(<CoachingSection coach={null} density="client" />);
+
+    expect(
+      screen.getByRole('button', { name: 'Enter an invite code' }).props.accessibilityHint,
+    ).toBe("Opens the screen where you enter a coach's invite code");
+  });
+
   it("sends the empty state's one action to the invite flow", () => {
     renderSection(<CoachingSection coach={null} density="client" />);
 
@@ -254,15 +262,43 @@ describe('LeaveCoachRow — leaving', () => {
     renderSection(<CoachingSection coach={COACH} density="client" />);
     const dialog = openDialog();
 
+    // Said on open, before the word is typed: asking somebody to type LEAVE
+    // and only then telling them it cannot be sent wastes their attention.
+    expect(dialog.getByText(/needs a connection/)).toBeTruthy();
+
     typeTheWord(dialog);
+
+    // Inert even with the word typed — offline is a standing condition, so
+    // the match alone no longer enables the action. Disabled for a screen
+    // reader too, not merely dimmed.
+    expect(
+      dialog.getByRole('button', { name: 'Leave coach' }).props.accessibilityState,
+    ).toMatchObject({ disabled: true });
+
     fireEvent.press(dialog.getByText('Leave coach'));
 
     // Releasing a seat and starting a clock on somebody else's access must
     // never fire days late against a relationship that has since changed.
     expect(mockMutate).not.toHaveBeenCalled();
-    expect(
-      within(screen.getByTestId('leave-coach-confirm')).getByText(/needs a connection/),
-    ).toBeTruthy();
+  });
+
+  it('keeps every message out of the body — it is a slot, not a fourth paragraph', () => {
+    renderSection(<CoachingSection coach={COACH} density="client" />);
+    const dialog = openDialog();
+
+    typeTheWord(dialog);
+    fireEvent.press(dialog.getByText('Leave coach'));
+    act(() => handlersOfCall(0).onError(new Error('network')));
+
+    const reopened = within(screen.getByTestId('leave-coach-confirm'));
+    // The failure is on screen…
+    expect(reopened.getByText(/Something went wrong/)).toBeTruthy();
+    // …and the body is still the transition table and nothing else, so a
+    // screen reader hears one statement rather than a statement plus a
+    // failure it cannot tell apart from it.
+    const said = String(reopened.getByText(/keeps read-only access/).props.children);
+    expect(said).not.toContain('Something went wrong');
+    expect(said).not.toContain('needs a connection');
   });
 });
 

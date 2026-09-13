@@ -21,6 +21,27 @@ export type ConfirmModalProps = {
   /** `DESIGN.md` §10.8 — the action label says what happens, not "OK". */
   actionLabel: string;
   isConfirming?: boolean;
+  /**
+   * An inline failure or notice, rendered in `FormField`'s **reserved**
+   * message row with FormField's own error treatment — leading glyph, never
+   * colour alone, and read as the field's hint.
+   *
+   * It belongs under the field rather than appended to `body` because the
+   * row is already held open whether or not a message is present, so one
+   * appearing shifts nothing above it, and it lands where the user is
+   * already looking: the thing they are about to retype into.
+   */
+  message?: string | undefined;
+  /**
+   * Blocks the action even when the typed text matches — for a **standing
+   * condition**, like having no connection, that no amount of typing fixes.
+   *
+   * Separate from `message` on purpose. A failure a retry could fix supplies
+   * `message` alone and leaves the action pressable, so retrying costs one
+   * tap rather than the whole word again; folding the two together would
+   * take that button away.
+   */
+  isActionDisabled?: boolean;
   testID?: string | undefined;
 };
 
@@ -55,6 +76,8 @@ export function ConfirmModal({
   confirmationText,
   actionLabel,
   isConfirming = false,
+  message,
+  isActionDisabled = false,
   testID,
 }: ConfirmModalProps) {
   const [typed, setTyped] = useState('');
@@ -86,7 +109,9 @@ export function ConfirmModal({
         </Text>
       </View>
 
-      <FormField label={`Type ${confirmationText} to confirm`} density="client">
+      {/* `error`, not `hint`: every message this slot carries is a failure
+          or a blocked condition, and `error` is what gives it the glyph. */}
+      <FormField label={`Type ${confirmationText} to confirm`} error={message} density="client">
         <Input
           value={typed}
           onChangeText={setTyped}
@@ -107,7 +132,7 @@ export function ConfirmModal({
           variant="danger"
           size="md"
           onPress={onConfirm}
-          disabled={!matches}
+          disabled={!matches || isActionDisabled}
           loading={isConfirming}
         >
           {actionLabel}
