@@ -15,6 +15,7 @@ import archiver from 'archiver';
 import { eq } from 'drizzle-orm';
 
 import { logger } from '../lib/logger.ts';
+import { exportKey } from '../lib/r2-keys.ts';
 import {
   getR2ObjectStream,
   getSignedDownloadUrl,
@@ -43,17 +44,6 @@ const MIME_EXTENSIONS: Record<string, string> = {
 
 function extensionFor(mimeType: string): string {
   return MIME_EXTENSIONS[mimeType] ?? 'bin';
-}
-
-/**
- * `exports/{userId}/{exportId}.zip` — DATABASE.md DB§16's exact keyspace.
- * Deterministic from the two ids alone, which is what makes the upload
- * half of this job idempotent under a retried/re-enqueued attempt
- * (Approach step 7): a second run overwrites the same object rather than
- * producing a second archive.
- */
-function objectKeyFor(userId: string, exportId: string): string {
-  return `exports/${userId}/${exportId}.zip`;
 }
 
 async function markFailed(db: DbClient, exportId: string, errorCode: string): Promise<void> {
@@ -240,7 +230,7 @@ export async function buildDataExport(db: DbClient, exportId: string): Promise<v
     });
 
     const { size: bytes } = fs.statSync(tempPath);
-    const objectKey = objectKeyFor(request.userId, exportId);
+    const objectKey = exportKey(request.userId, exportId);
     await uploadFileToR2(tempPath, objectKey, 'application/zip');
 
     const expiresAt = new Date(Date.now() + ARCHIVE_LIFETIME_MS);

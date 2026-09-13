@@ -8,6 +8,7 @@ import {
   avatarKey,
   brandLogoKey,
   exportKey,
+  exportPrefix,
   mediaHlsManifestKey,
   mediaHlsSegmentKey,
   mediaOriginalKey,
@@ -80,6 +81,16 @@ describe('non-media keys', () => {
 
   it('exportKey — exports/{userId}/{exportId}.zip', () => {
     expect(exportKey(USER, EXPORT)).toBe(`exports/${USER}/${EXPORT}.zip`);
+  });
+
+  it('exportPrefix — exports/{userId}/', () => {
+    expect(exportPrefix(USER)).toBe(`exports/${USER}/`);
+  });
+
+  // The purge deletes by this prefix, so an exportKey landing outside it
+  // would survive a delete that reported success.
+  it('exportPrefix contains every exportKey for that user', () => {
+    expect(exportKey(USER, EXPORT).startsWith(exportPrefix(USER))).toBe(true);
   });
 });
 

@@ -100,3 +100,14 @@ export function brandLogoKey(coachId: string): string {
 export function exportKey(userId: string, exportId: string): string {
   return `exports/${userId}/${exportId}.zip`;
 }
+
+/**
+ * The folder half of `exportKey`, for the delete-by-prefix path that removes
+ * every archive a user ever requested (DB§19.2 step 8). Not one of DB§16's
+ * nine object shapes — it names no object — but it is the same grammar, and
+ * a prefix built by hand somewhere else is how the purge silently misses a
+ * folder.
+ */
+export function exportPrefix(userId: string): string {
+  return `exports/${userId}/`;
+}
