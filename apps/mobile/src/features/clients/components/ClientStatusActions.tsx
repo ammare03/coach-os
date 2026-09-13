@@ -156,7 +156,14 @@ export function ClientStatusActions({
           it is the same class of act as archival, irreversible in a way a
           five-second window cannot honestly cover, and `ui-conventions` §5
           would otherwise force it into an undo toast that promises a
-          take-back which does not exist. */}
+          take-back which does not exist.
+
+          Neither dialog passes `message`. Both are optimistic and close
+          before the write lands, so there is no open dialog for a failure
+          to land in — `useClientStatus` rolls the two cache entries back
+          instead, silently. Giving them the slot means first deciding that
+          a coach should wait on the network here, which is a behaviour
+          change to a shipped flow rather than a use of a new prop. */}
       <ConfirmModal
         isOpen={confirming === 'archive'}
         onCancel={() => {

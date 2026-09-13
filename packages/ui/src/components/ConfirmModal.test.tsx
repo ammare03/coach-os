@@ -67,3 +67,84 @@ describe('ConfirmModal', () => {
     expect(base.onConfirm).not.toHaveBeenCalled();
   });
 });
+
+// S44 — the message slot and the disabled-action path. Both exist because
+// `LeaveCoachRow` had to append its failure as a fourth paragraph of `body`
+// and guard offline inside `onConfirm`; every assertion here is a way that
+// workaround could come back.
+describe('ConfirmModal — the message slot', () => {
+  const base = {
+    isOpen: true,
+    onCancel: jest.fn(),
+    onConfirm: jest.fn(),
+    title: 'Leave Arjun Mehta',
+    body: 'Arjun keeps read-only access for 30 days.',
+    confirmationText: 'LEAVE',
+    actionLabel: 'Leave coach',
+  };
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('renders the message under the field, not inside the body', () => {
+    render(<ConfirmModal {...base} message="Something went wrong." />);
+
+    expect(screen.getByText('Something went wrong.')).toBeTruthy();
+    // The body is one Text node and stays one statement — the message is a
+    // sibling of the field, never a fourth paragraph appended to it.
+    expect(screen.getByText(base.body).props.children).toBe(base.body);
+  });
+
+  it('gives the message to the field as its hint, so the reason is announced', () => {
+    render(<ConfirmModal {...base} message="Something went wrong." />);
+
+    expect(screen.getByPlaceholderText('LEAVE').props.accessibilityHint).toBe(
+      'Something went wrong.',
+    );
+  });
+
+  it('leaves the action pressable with a message alone — retrying is one tap', () => {
+    render(<ConfirmModal {...base} message="Something went wrong." />);
+
+    fireEvent.changeText(screen.getByPlaceholderText('LEAVE'), 'LEAVE');
+    fireEvent.press(screen.getByText('Leave coach'));
+    expect(base.onConfirm).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ConfirmModal — the disabled-action path', () => {
+  const base = {
+    isOpen: true,
+    onCancel: jest.fn(),
+    onConfirm: jest.fn(),
+    title: 'Leave Arjun Mehta',
+    body: 'Arjun keeps read-only access for 30 days.',
+    confirmationText: 'LEAVE',
+    actionLabel: 'Leave coach',
+  };
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('blocks the action even when the typed text matches', () => {
+    render(<ConfirmModal {...base} isActionDisabled />);
+
+    fireEvent.changeText(screen.getByPlaceholderText('LEAVE'), 'LEAVE');
+    fireEvent.press(screen.getByText('Leave coach'));
+    expect(base.onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('is disabled for a screen reader too, not only dimmed', () => {
+    render(<ConfirmModal {...base} isActionDisabled />);
+    fireEvent.changeText(screen.getByPlaceholderText('LEAVE'), 'LEAVE');
+
+    expect(
+      screen.getByRole('button', { name: 'Leave coach' }).props.accessibilityState,
+    ).toMatchObject({ disabled: true });
+  });
+
+  it('still lets the dialog be cancelled', () => {
+    render(<ConfirmModal {...base} isActionDisabled message="Offline." />);
+    fireEvent.press(screen.getByText('Cancel'));
+
+    expect(base.onCancel).toHaveBeenCalledTimes(1);
+  });
+});

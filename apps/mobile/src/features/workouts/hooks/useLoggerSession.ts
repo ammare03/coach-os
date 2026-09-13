@@ -182,9 +182,12 @@ export function useLoggerSession(sessionLocalId: string): UseLoggerSessionResult
   }, [sessionLocalId]);
 
   // An effect with a cancellation flag, the same shape `lib/prefetch` and
-  // `useTodaySession` use. No skeleton gate: this is one indexed SELECT on
-  // an already-open handle, so it resolves inside a frame, and the header
-  // reserves its own slots either way.
+  // `useTodaySession` use.
+  //
+  // It is NOT free: two selects, of which the set-log one is unindexed, and
+  // on a cold deep link `getLocalDb()` is the caller that opens the file and
+  // runs the bootstrap DDL. `loading` is a state the screen has to draw, not
+  // a frame it can skip — `SessionLoggerScreen` renders a skeleton for it.
   useEffect(() => {
     let alive = true;
     void read().then(

@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { schema, type DbClient } from '@coachos/db';
 import { and, eq } from 'drizzle-orm';
 
+import { exportPrefix } from '../lib/r2-keys.ts';
 import { deleteR2Objects, deleteR2ObjectsByPrefix } from '../lib/storage/r2-client.ts';
 
 // DEFERRED — DB§19.2 step 7 touches tables that don't exist in this
@@ -21,15 +22,6 @@ import { deleteR2Objects, deleteR2ObjectsByPrefix } from '../lib/storage/r2-clie
 // ban-reset button (DB§19.2's own warning, CLAUDE.md §21.4).
 //
 // Step 8 is now closed, both halves — see `purgeAccount`'s own doc.
-
-// `exports/{userId}/{exportId}.zip` is DB§16's keyspace; the folder half
-// of it is all this function needs. The key half lives in
-// `./data-export.ts` (`objectKeyFor`), which is deliberately not imported
-// here — it pulls archiver, the export collectors, and the email client
-// into a job that needs one string.
-function exportArchivePrefix(userId: string): string {
-  return `exports/${userId}/`;
-}
 
 function hashUserId(userId: string): string {
   // SHA-256 hex, same pattern as `../features/auth/password-reset.ts`'s
@@ -114,7 +106,7 @@ async function collectMediaAssetKeys(db: DbClient, userId: string): Promise<stri
 export async function purgeAccount(db: DbClient, userId: string): Promise<void> {
   const mediaKeys = await collectMediaAssetKeys(db, userId);
   await deleteR2Objects(mediaKeys);
-  await deleteR2ObjectsByPrefix(exportArchivePrefix(userId));
+  await deleteR2ObjectsByPrefix(exportPrefix(userId));
 
   await db.transaction(async (tx) => {
     // Step 9 — verified foods are excluded; they're reference data once

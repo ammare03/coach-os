@@ -14,10 +14,12 @@ import {
 // query cache. Same shape as `useSchemaVersionGate`, the other P08 surface
 // reading the local database.
 //
-// It does not poll. Nothing can add a permanently-failed row except a
-// flush, so a screen refreshes on foreground and after its own flush — a
-// timer here would wake the device to re-read a table that almost never
-// changes.
+// It does not poll; a screen refreshes on focus and after its own flush. A
+// timer here would wake the device to re-read a table that changes only
+// when the client acts. Note since S31 the count can also grow WITHOUT a
+// flush — enqueueing a set behind an already-exhausted session strands it
+// immediately — so a surface that both shows this banner and enqueues
+// mutations must `refresh()` on focus, not rely on the flush alone.
 
 const EMPTY: FailedOutboxSummary = { totalCount: 0, groups: [] };
 

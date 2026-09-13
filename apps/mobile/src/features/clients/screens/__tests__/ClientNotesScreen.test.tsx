@@ -41,6 +41,9 @@ jest.mock('../../api.ts', () => {
     ...actual,
     useClientIdentity: () => ({ data: { name: 'Priya Sharma' } }),
     useClientNotes: () => mockNotes,
+    // Overview's unpaginated pinned list (S42). Empty here: this file's
+    // subject is the four states and the write, not the merge.
+    useClientPinnedNotes: () => ({ data: [] }),
     useSetNotePinned: () => ({ mutate: mockSetPinned }),
     useDeleteNote: () => ({ hide: mockHide, restore: mockRestore, commit: mockCommit }),
     useWriteNote: () => ({

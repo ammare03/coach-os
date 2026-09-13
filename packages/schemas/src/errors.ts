@@ -246,6 +246,22 @@ export const APP_ERROR_CODES = [
   // and trip `client_status_timestamps`.
   'CLIENT_ARCHIVED',
   'CLIENT_STATUS_TRANSITION_INVALID',
+  // `phase-11-media-pipeline/upload-server/01` — ERRORS.md ER§1.6. A clip
+  // past `CLAUDE.md` §8.6's 90-second ceiling, refused before any row is
+  // written or any URL presigned. Its own code rather than the existing
+  // `PAYLOAD_TOO_LARGE`: the two limits are different sentences with
+  // different payloads ("up to 90 seconds" vs "up to 200 MB"), and a client
+  // that cannot tell them apart cannot offer the right fix — trimming is
+  // not the same action as re-encoding. Same PAYLOAD_TOO_LARGE transport,
+  // because it is the same refusal to the wire.
+  'MEDIA_DURATION_TOO_LONG',
+  // `phase-11-media-pipeline/upload-server/02` — ERRORS.md ER§1.6. R2
+  // refused to assemble the multipart upload: a part never landed, an ETag
+  // does not match, or the upload id has been aborted. The bytes the client
+  // thinks it sent are not there, so the only recovery is a fresh upload —
+  // which is exactly why it must not be thrown for a transport failure
+  // reaching R2, where retrying the same confirm is the right move.
+  'MEDIA_UPLOAD_INCOMPLETE',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -329,6 +345,11 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   // is simply not the one the caller assumed.
   CLIENT_ARCHIVED: 'CONFLICT',
   CLIENT_STATUS_TRANSITION_INVALID: 'CONFLICT',
+  MEDIA_DURATION_TOO_LONG: 'PAYLOAD_TOO_LARGE',
+  // Not BAD_REQUEST: the parts the client named are well-formed, and the
+  // usual cause is an upload R2 has already aborted or expired — a state
+  // clash, not a malformed request.
+  MEDIA_UPLOAD_INCOMPLETE: 'CONFLICT',
 };
 
 /**
@@ -479,6 +500,15 @@ export interface AppErrorPayloads {
     from: 'invited' | 'active' | 'paused' | 'archived';
     to: 'active' | 'paused' | 'archived';
   };
+  // The ceiling only, never the clip's own duration — the client already
+  // knows what it measured, and the limit is what the copy needs ("Videos
+  // can be up to 90 seconds"). Same shape and same reasoning as
+  // `PAYLOAD_TOO_LARGE`'s `maxBytes` directly above.
+  MEDIA_DURATION_TOO_LONG: { maxDurationSeconds: number };
+  // Empty deliberately. Which part failed, what R2 called it, and the key
+  // it was under are all either DB§18 values or operator detail — the
+  // client's one action is the same whatever the answer.
+  MEDIA_UPLOAD_INCOMPLETE: EmptyErrorPayload;
 }
 
 /**

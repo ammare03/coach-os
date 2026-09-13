@@ -22,8 +22,9 @@ import { api } from '../../../lib/trpc.ts';
 //    someone", and the client is the one leaving.
 //
 // 3. **Never an outbox mutation.** A queued copy of this could fire days
-//    later against a relationship that has since changed. The action is
-//    gated on `useConnectivity()` and says so rather than queueing.
+//    later against a relationship that has since changed. Offline the
+//    action is disabled outright and the dialog says why, rather than
+//    looking pressable and queueing nothing.
 //
 // 4. **The row takes the coach, it does not fetch one.** `CoachingSection`
 //    resolves the name once for both its rows (task 03's included), so no
@@ -62,18 +63,12 @@ export interface LeaveCoachRowProps {
  * experiences it; "the seat is released" is billing vocabulary aimed at
  * somebody who is not in this room.
  */
-export function leaveCoachDialogBody(coachFirstName: string, message?: string | undefined): string {
-  const lines = [
+export function leaveCoachDialogBody(coachFirstName: string): string {
+  return [
     `${coachFirstName} keeps read-only access to your sessions, check-ins, videos, comments and messages for 30 days. After that, nothing.`,
     'They lose access to your meals, measurements and photos straight away.',
     'You keep everything, forever. Your place on their client list is freed now.',
-  ];
-  // Appended rather than given its own slot: `ConfirmModal` is deliberately
-  // narrow and this task may not widen its API. A failure therefore lands
-  // directly above the field the client is about to retype into, which is
-  // where they are already looking.
-  if (message !== undefined) lines.push(message);
-  return lines.join('\n\n');
+  ].join('\n\n');
 }
 
 /** The one place a coach's first name is derived — the dialog's only interpolation. */
@@ -112,10 +107,6 @@ export function LeaveCoachRow({ coach, density }: LeaveCoachRowProps) {
   }
 
   function handleConfirm() {
-    if (!isConnected) {
-      setMessage(OFFLINE_MESSAGE);
-      return;
-    }
     setMessage(undefined);
     leaveCoach.mutate(undefined, {
       onSuccess: () => land(true),
@@ -154,10 +145,14 @@ export function LeaveCoachRow({ coach, density }: LeaveCoachRowProps) {
         onCancel={close}
         onConfirm={handleConfirm}
         title={`Leave ${coach.name}`}
-        body={leaveCoachDialogBody(coachFirstName(coach.name), message)}
+        body={leaveCoachDialogBody(coachFirstName(coach.name))}
         confirmationText={LEAVE_CONFIRMATION_WORD}
         actionLabel="Leave coach"
         isConfirming={leaveCoach.isPending}
+        // Offline outranks a stale request failure: it is the condition
+        // still true right now, and the only one the client can act on.
+        message={isConnected ? message : OFFLINE_MESSAGE}
+        isActionDisabled={!isConnected}
         testID="leave-coach-confirm"
       />
     </>

@@ -7,10 +7,13 @@ import fs from 'node:fs';
 import type { Readable } from 'node:stream';
 
 import {
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   ListObjectsV2Command,
   S3Client,
+  UploadPartCommand,
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -152,6 +155,93 @@ export async function uploadFileToR2(
     queueSize: 4,
   });
   await upload.done();
+}
+
+/**
+ * Opens a multipart upload and returns its id (`phase-11-media-pipeline/
+ * upload-server/01`). The client PUTs its parts straight to R2 against the
+ * presigned URLs {@link getSignedUploadPartUrl} mints, so this and
+ * `upload-server/02`'s completion are the only two moments the API is in
+ * the path at all — no byte ever passes through it (`api-conventions` §8).
+ *
+ * Not `@aws-sdk/lib-storage`'s `Upload`, which {@link uploadFileToR2} uses:
+ * that one streams bytes from this process. This one hands the upload to
+ * somebody else's network.
+ */
+export async function createMultipartUpload(key: string, contentType: string): Promise<string> {
+  const result = await client.send(
+    new CreateMultipartUploadCommand({
+      Bucket: env.R2_BUCKET_NAME,
+      Key: key,
+      ContentType: contentType,
+    }),
+  );
+  // Every later part URL and the eventual completion are keyed on this, so
+  // an absent id is a dead upload — fail here rather than mint URLs that
+  // sign `uploadId=undefined`. The key stays out of the message (DB§18).
+  if (!result.UploadId) {
+    throw new Error('R2 opened a multipart upload without returning an upload id');
+  }
+  return result.UploadId;
+}
+
+/**
+ * A signed PUT URL for one part of an open multipart upload. Pure local
+ * SigV4 signing — no network call — which is what makes minting forty of
+ * them for a 200MB clip cheap enough to do inside one procedure.
+ *
+ * `expiresInSeconds` is bounded by the caller against security-and-privacy
+ * §4's ≤1h ceiling, the same ceiling {@link getSignedDownloadUrl} carries:
+ * a URL is a live credential whether it reads or writes.
+ */
+export async function getSignedUploadPartUrl(
+  key: string,
+  uploadId: string,
+  partNumber: number,
+  expiresInSeconds: number,
+): Promise<string> {
+  return getSignedUrl(
+    client,
+    new UploadPartCommand({
+      Bucket: env.R2_BUCKET_NAME,
+      Key: key,
+      UploadId: uploadId,
+      PartNumber: partNumber,
+    }),
+    { expiresIn: expiresInSeconds },
+  );
+}
+
+/** One uploaded part, as the client read it back from R2's own `ETag` header. */
+export interface CompletedUploadPart {
+  partNumber: number;
+  etag: string;
+}
+
+/**
+ * Assembles an open multipart upload into a single object
+ * (`phase-11-media-pipeline/upload-server/02`) — the second and last moment
+ * the API is in an upload's path.
+ *
+ * The parts are forwarded exactly as given, in the order given. R2 checks
+ * every tag and requires ascending part numbers; re-sorting or de-duping
+ * here would turn a client bug into a silently different object.
+ */
+export async function completeMultipartUpload(
+  key: string,
+  uploadId: string,
+  parts: CompletedUploadPart[],
+): Promise<void> {
+  await client.send(
+    new CompleteMultipartUploadCommand({
+      Bucket: env.R2_BUCKET_NAME,
+      Key: key,
+      UploadId: uploadId,
+      MultipartUpload: {
+        Parts: parts.map((part) => ({ PartNumber: part.partNumber, ETag: part.etag })),
+      },
+    }),
+  );
 }
 
 /**

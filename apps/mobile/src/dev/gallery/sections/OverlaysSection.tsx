@@ -21,7 +21,7 @@ type Overlay =
   | { kind: 'none' }
   | { kind: 'sheet'; snap: SheetSnap; isDismissible: boolean }
   | { kind: 'modal'; isDismissible: boolean }
-  | { kind: 'confirm' };
+  | { kind: 'confirm'; message?: string; isActionDisabled?: boolean };
 
 const CLOSED: Overlay = { kind: 'none' };
 
@@ -78,6 +78,32 @@ export function OverlaysSection() {
         <Button variant="danger" size="sm" onPress={() => setOverlay({ kind: 'confirm' })}>
           Delete account
         </Button>
+        {/* The message lands in `FormField`'s reserved row, so both of these
+            open at the same height as the one above. `isActionDisabled` is
+            for a standing condition only — a failure a retry could fix
+            leaves the action pressable. */}
+        <Button
+          variant="secondary"
+          size="sm"
+          onPress={() =>
+            setOverlay({ kind: 'confirm', message: 'Something went wrong. Try again.' })
+          }
+        >
+          With a message
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onPress={() =>
+            setOverlay({
+              kind: 'confirm',
+              message: "This needs a connection. Try again when you're back online.",
+              isActionDisabled: true,
+            })
+          }
+        >
+          Message + blocked action
+        </Button>
       </Specimen>
 
       <Sheet
@@ -122,6 +148,8 @@ export function OverlaysSection() {
         body="Your data is removed after a 7-day grace period. Type DELETE to confirm."
         confirmationText="DELETE"
         actionLabel="Delete account"
+        message={overlay.kind === 'confirm' ? overlay.message : undefined}
+        isActionDisabled={overlay.kind === 'confirm' ? overlay.isActionDisabled === true : false}
       />
     </GallerySection>
   );
