@@ -83,6 +83,8 @@ function describeCode(code: AppErrorCode): string {
     case 'ACCOUNT_PENDING_DELETION':
     case 'CLIENT_ARCHIVED':
     case 'CLIENT_STATUS_TRANSITION_INVALID':
+    case 'MEDIA_DURATION_TOO_LONG':
+    case 'MEDIA_UPLOAD_INCOMPLETE':
       return code;
     default:
       return assertNever(code);

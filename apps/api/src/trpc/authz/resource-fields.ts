@@ -49,6 +49,13 @@ export const RESOURCE_FIELD_KIND: Record<string, ResourceKind> = {
   // so it is guarded like any other cross-boundary id, not exempted as "a
   // value the caller sets on their own row" (pre-phase-09 audit, S2).
   avatarAssetId: 'mediaAsset',
+  // `media.confirmUpload` (`upload-server/02`), and every later `media.*`
+  // procedure that names the row `createUploadUrl` returned. A third alias
+  // for the same kind, the way `sessionId`/`workoutSessionId` already are:
+  // under a router called `media`, `mediaAssetId` says the word twice, and
+  // the field has to match what `createUploadUrl` hands back or the client
+  // renames it in flight.
+  assetId: 'mediaAsset',
   // Plural. `assignments.bulkCreate` (`assignment/03`) takes a batch, and
   // `ownsResource`'s selector already returns `string[]` for exactly this —
   // partial ownership is total failure. Registered so the enumeration test
@@ -64,6 +71,11 @@ export const RESOURCE_FIELD_KIND: Record<string, ResourceKind> = {
  * be named here rather than silently passing.
  */
 export const NON_RESOURCE_ID_FIELDS: Record<string, string> = {
+  // `media.confirmUpload` (`upload-server/02`). R2's own handle for an open
+  // multipart upload, not a row in this database — the asset it belongs to
+  // travels in the same input as `assetId` and IS guarded, and a forged
+  // handle can only name an upload under a key the caller already owns.
+  uploadId: "R2's multipart upload handle, not a CoachOS row id.",
   // A global exercise-library row (`training.exercises`) — coach-authored
   // but not owned by any one client; every coach may reference any
   // exercise (`CLAUDE.md` §8.3).
