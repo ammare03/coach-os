@@ -227,6 +227,25 @@ export const APP_ERROR_CODES = [
   // is what makes the state recoverable rather than a lockout (CLAUDE.md
   // §21.3, §21.4).
   'ACCOUNT_PENDING_DELETION',
+  // `phase-10-coach-review-surfaces/relationship-controls/01` — ERRORS.md
+  // ER§1.1. The two refusals `coach.clients.setStatus` can produce, kept
+  // apart because their recovery actions are different sentences.
+  //
+  // `CLIENT_ARCHIVED` is the terminal state: archiving keeps the
+  // relationship on record and releases the seat, and nothing moves out of
+  // it — a coach who wants to work with that person again sends a new
+  // invite. Thrown for EVERY target status once the row is archived,
+  // including `archived` itself, so there is one sentence for "this client
+  // was archived" rather than three.
+  //
+  // `CLIENT_STATUS_TRANSITION_INVALID` is every other illegal move, of
+  // which `invited -> paused` is the one a coach can actually walk into: a
+  // pending invite is cancelled, not paused. `invited -> active` is the
+  // invite-acceptance path and is refused here for the same reason —
+  // allowing it would also write an `active` row with no `activated_at`
+  // and trip `client_status_timestamps`.
+  'CLIENT_ARCHIVED',
+  'CLIENT_STATUS_TRANSITION_INVALID',
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -304,6 +323,12 @@ export const APP_ERROR_TRPC_CODE: Record<AppErrorCode, TRPCErrorCodeName> = {
   PROGRAM_COPY_CROSS_PROGRAM: 'BAD_REQUEST',
   CLIENT_ALREADY_HAS_ACTIVE_ASSIGNMENT: 'CONFLICT',
   ACCOUNT_PENDING_DELETION: 'FORBIDDEN',
+  // CONFLICT, not NOT_FOUND: the row is the caller's own and
+  // `coach.clients.overview` returns it happily, so there is no existence
+  // to conceal (ERRORS.md ER§2.1's test applied, not skipped) — the state
+  // is simply not the one the caller assumed.
+  CLIENT_ARCHIVED: 'CONFLICT',
+  CLIENT_STATUS_TRANSITION_INVALID: 'CONFLICT',
 };
 
 /**
@@ -441,6 +466,19 @@ export interface AppErrorPayloads {
   // statement of the same fact, in the server's timezone, that the client
   // would then have to reconcile with the first.
   ACCOUNT_PENDING_DELETION: EmptyErrorPayload;
+  // Nothing to carry. "Archived" is the whole of it, and the client
+  // refetches the row to resync — echoing the status back would be a
+  // second statement of the same fact.
+  CLIENT_ARCHIVED: EmptyErrorPayload;
+  // The two statuses, and nothing else. Statuses are DB§18 operational
+  // data, and a client whose picture is stale needs `from` to know what it
+  // got wrong without a second round trip. `from` carries the full
+  // `client_status` enum; `to` carries only what `setClientStatusInput`
+  // accepts (`invited` is never a target — invite acceptance owns it).
+  CLIENT_STATUS_TRANSITION_INVALID: {
+    from: 'invited' | 'active' | 'paused' | 'archived';
+    to: 'active' | 'paused' | 'archived';
+  };
 }
 
 /**

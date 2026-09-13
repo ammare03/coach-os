@@ -47,6 +47,9 @@ function client(
     nutritionAdherence: 90,
     overallAdherence: 84,
     adherenceColor: 'amber',
+    pausedAt: null,
+    archivedAt: null,
+    coachSince: null,
     ...overrides,
   } as CoachDashboardClient;
 }
@@ -215,14 +218,38 @@ describe('selectClients — status and goal filters', () => {
     );
   }
 
-  it('returns the whole roster when no chip is on', () => {
-    expect(selectClients(roster(), BASE)).toHaveLength(12);
+  it('returns the roster minus the archived when no chip is on', () => {
+    // `archived` is EXCLUDED by default rather than merely unselected
+    // (`relationship-controls/01`): an archived client is bookkeeping, not
+    // this week's work, and eleven of them at the top of a roster is a
+    // dashboard that lies about how many clients a coach has.
+    const result = selectClients(roster(), BASE);
+
+    expect(result).toHaveLength(18);
+    expect(result.some((entry) => entry.status === 'archived')).toBe(false);
+    expect(result.some((entry) => entry.status === 'paused')).toBe(true);
+  });
+
+  it('shows the archived only when the chip asks for them', () => {
+    const result = selectClients(roster(), { ...BASE, statuses: ['archived'] });
+
+    expect(result).toHaveLength(6);
+    expect(result.every((entry) => entry.status === 'archived')).toBe(true);
+  });
+
+  it('keeps the default exclusion out of the way of an explicit selection', () => {
+    const result = selectClients(roster(), { ...BASE, statuses: ['active', 'archived'] });
+
+    expect(result).toHaveLength(12);
   });
 
   it('treats several chips within one facet as OR', () => {
     const result = selectClients(roster(), { ...BASE, goals: ['fat_loss', 'health'] });
 
-    expect(result).toHaveLength(4);
+    // Two goals across the three statuses a default roster shows — the
+    // archived pair is out for the reason the first case in this block
+    // states, not because of the goal filter.
+    expect(result).toHaveLength(6);
     expect(result.every((entry) => entry.goal === 'fat_loss' || entry.goal === 'health')).toBe(
       true,
     );
@@ -241,7 +268,7 @@ describe('selectClients — status and goal filters', () => {
   it('excludes a client whose goal is unset from every goal filter', () => {
     const result = selectClients(roster(), { ...BASE, goals: ['other'] });
 
-    expect(names(result)).toEqual(['active-other', 'invited-other']);
+    expect(names(result).sort()).toEqual(['active-other', 'invited-other', 'paused-other']);
   });
 
   it('keeps a client whose goal is unset when only status is filtered', () => {

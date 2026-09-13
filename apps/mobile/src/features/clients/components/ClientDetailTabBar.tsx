@@ -16,7 +16,14 @@ import { type ComponentProps } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { CLIENT_DETAIL_TABS, useClientIdentity, type ClientDetailTab } from '../api.ts';
+import {
+  CLIENT_DETAIL_TABS,
+  useClientIdentity,
+  type ClientDetailTab,
+  type ClientIdentity,
+} from '../api.ts';
+
+import { ClientStatusChip, type MarkableClientStatus } from './ClientStatusChip.tsx';
 
 // The chrome above §8.3's seven tabs: a way back, who this is, and the facet
 // row. Handed to `<Tabs tabBar={…}>` with `tabBarPosition: 'top'`, so it is
@@ -100,9 +107,26 @@ export function ClientDetailTabBar({
               <Text size="h1" numberOfLines={1}>
                 {identity.data.name}
               </Text>
-              <Text size="caption" tone="muted" numberOfLines={1} style={styles.meta}>
-                {describeIdentity(identity.data.status, identity.data.goal)}
-              </Text>
+              {/* The chip and the goal share the meta line, and the chip
+                  REPLACES the status word rather than repeating it — see
+                  `describeIdentity`. `flexWrap` because "Archived" plus a
+                  long goal is wider than the line at 200% text. */}
+              <View style={styles.meta}>
+                {isMarkableStatus(identity.data.status) ? (
+                  <ClientStatusChip
+                    status={identity.data.status}
+                    // `coach.clients.overview` does not return `paused_at`
+                    // or `archived_at` today, so the chip speaks the status
+                    // without a date rather than inventing one.
+                    since={null}
+                  />
+                ) : null}
+                {describeIdentity(identity.data.status, identity.data.goal) === '' ? null : (
+                  <Text size="caption" tone="muted" numberOfLines={1} testID="client-detail-meta">
+                    {describeIdentity(identity.data.status, identity.data.goal)}
+                  </Text>
+                )}
+              </View>
             </>
           )}
         </View>
@@ -181,13 +205,28 @@ export function ClientDetailTabBar({
  * "Active · Fat loss", or just "Invited". Two facts, never a judgement
  * (`product-copy` §1) — and no "no goal set", which would read as a
  * reprimand for an onboarding step the client may not have reached.
+ *
+ * **The status word is dropped when a chip is carrying it**
+ * (`relationship-controls/01`): a paused client's header would otherwise
+ * read "Paused" twice on one line, once as a mark and once as prose. The
+ * result is then the goal alone — or an empty string when there is no
+ * goal either, which is the caller's cue to draw no meta line at all
+ * rather than an empty one that still takes up 17px.
  */
 export function describeIdentity(
   status: 'invited' | 'active' | 'paused' | 'archived',
   goal: string | null,
 ): string {
+  if (isMarkableStatus(status)) {
+    return goal === null ? '' : GOAL_LABEL(goal);
+  }
   const statusLabel = STATUS_LABEL[status];
   return goal === null ? statusLabel : `${statusLabel} · ${GOAL_LABEL(goal)}`;
+}
+
+/** The two statuses `ClientStatusChip` renders. `invited` is not one: the word IS the fact. */
+function isMarkableStatus(status: ClientIdentity['status']): status is MarkableClientStatus {
+  return status === 'paused' || status === 'archived';
 }
 
 const STATUS_LABEL: Record<'invited' | 'active' | 'paused' | 'archived', string> = {
@@ -216,7 +255,13 @@ const styles = StyleSheet.create({
     paddingBottom: spacing(12),
   },
   identityText: { flex: 1, minWidth: 0 },
-  meta: { marginTop: spacing(3) },
+  meta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing(8),
+    marginTop: spacing(3),
+  },
   facets: { paddingHorizontal: GUTTER, gap: FACET_GAP },
   // `minHeight` and padding, never `height`: at 200% text the label grows
   // and a fixed row would clip it (`accessibility` §3).

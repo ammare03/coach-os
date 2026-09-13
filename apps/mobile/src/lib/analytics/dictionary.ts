@@ -90,6 +90,9 @@ export const ANALYTICS_EVENT_DICTIONARY = {
   client_invited: ['invite_id'],
   client_activated: ['client_id', 'hours_to_accept'],
   coach_note_created: ['client_id'],
+  client_paused: ['client_id'],
+  client_archived: ['client_id'],
+  client_released: ['client_id'],
 
   // AN§3.6 Messaging and live — never a message body
   message_sent: ['conversation_id', 'has_attachment', 'was_offline'],

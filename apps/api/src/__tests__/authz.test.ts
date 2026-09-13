@@ -336,6 +336,36 @@ describe('authorization enumeration', () => {
     expect(paths).toContain('coach.clients.list');
   });
 
+  // `phase-10-coach-review-surfaces/relationship-controls/01` — the §18.3
+  // case for `coach.clients.setStatus`, named rather than left to the
+  // reflective `it.each` above.
+  //
+  // The walk does cover it: it takes a `clientId`, so branches 3/4 probe it
+  // as coach A and as client A1 against coach B's client, exactly like
+  // `release`. But `it.each` over a reflected list is silent about what it
+  // did NOT find — renaming the procedure, or moving it off `coach.clients`
+  // onto a builder with no guard, would leave this file passing with one
+  // fewer case in it. This asserts the case exists, and that the probe is
+  // refused with nothing written.
+  it('covers coach.clients.setStatus through ownsResource', async () => {
+    const procedure = WALKED_PROCEDURES.find((p) => p.path === 'coach.clients.setStatus');
+    if (!procedure?.inputSchema) {
+      throw new Error('coach.clients.setStatus is missing from the walk, or takes no input');
+    }
+    expect(topLevelFieldNames(procedure.inputSchema)).toContain('clientId');
+
+    const outcome = await withRolledBackTx((tx) =>
+      classifyProbe(() =>
+        callProcedure(callerFor(tx, coachAUser()), 'coach.clients.setStatus', {
+          clientId: fixture.clientB1.profileId,
+          status: 'paused',
+        }),
+      ),
+    );
+
+    expect(outcome.verdict).toBe('refused');
+  });
+
   // `05-public-allowlist.md` step 3/4 — the two checks that keep the
   // allowlist honest. Both run over every entry in one assertion each,
   // rather than per-entry `it.each`, since a stale or redundant entry is a

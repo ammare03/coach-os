@@ -23,6 +23,15 @@ const onBack = jest.fn();
 
 let mockIdentity: { data?: ClientIdentity };
 
+/** The default this file's `beforeEach` installs, named so a case can vary one field. */
+const ACTIVE_IDENTITY: ClientIdentity = {
+  name: 'Priya Sharma',
+  status: 'active',
+  goal: 'fat_loss',
+  avatarAssetId: null,
+  coachSince: new Date('2026-03-01T00:00:00.000Z'),
+};
+
 jest.mock('../../api.ts', () => {
   const actual = jest.requireActual('../../api.ts') as Record<string, unknown>;
   return { ...actual, useClientIdentity: () => mockIdentity };
@@ -67,15 +76,7 @@ beforeEach(() => {
   emit.mockClear();
   navigate.mockClear();
   onBack.mockClear();
-  mockIdentity = {
-    data: {
-      name: 'Priya Sharma',
-      status: 'active',
-      goal: 'fat_loss',
-      avatarAssetId: null,
-      coachSince: new Date('2026-03-01T00:00:00.000Z'),
-    },
-  };
+  mockIdentity = { data: ACTIVE_IDENTITY };
 });
 
 describe('ClientDetailTabBar', () => {
@@ -122,6 +123,45 @@ describe('ClientDetailTabBar', () => {
 
     expect(screen.getByText('Priya Sharma')).toBeTruthy();
     expect(screen.getByText('Active · Fat loss')).toBeTruthy();
+    // No chip for an active client: the unmarked case is the whole roster,
+    // and a badge on every header says nothing.
+    expect(screen.queryByText('Paused')).toBeNull();
+  });
+
+  describe('a client who is not currently being coached', () => {
+    it('marks a paused client with a chip and says "Paused" exactly once', () => {
+      mockIdentity = { data: { ...ACTIVE_IDENTITY, status: 'paused' } };
+      renderBar();
+
+      expect(screen.getByText('Paused')).toBeTruthy();
+      // `describeIdentity` drops the status word when a chip carries it —
+      // otherwise the header reads "Paused" twice on one line.
+      expect(screen.getByText('Fat loss')).toBeTruthy();
+      expect(screen.queryByText('Paused · Fat loss')).toBeNull();
+    });
+
+    it('marks an archived client the same way', () => {
+      mockIdentity = { data: { ...ACTIVE_IDENTITY, status: 'archived' } };
+      renderBar();
+
+      expect(screen.getByText('Archived')).toBeTruthy();
+      expect(screen.getByText('Fat loss')).toBeTruthy();
+    });
+
+    it('draws no empty meta line when there is no goal to put beside the chip', () => {
+      mockIdentity = { data: { ...ACTIVE_IDENTITY, status: 'paused', goal: null } };
+      renderBar();
+
+      expect(screen.getByText('Paused')).toBeTruthy();
+      expect(screen.queryByTestId('client-detail-meta')).toBeNull();
+    });
+
+    it('leaves an invited client unchipped — the word is still the whole fact', () => {
+      mockIdentity = { data: { ...ACTIVE_IDENTITY, status: 'invited' } };
+      renderBar();
+
+      expect(screen.getByText('Invited · Fat loss')).toBeTruthy();
+    });
   });
 
   it('keeps the way out working before the client has loaded', () => {

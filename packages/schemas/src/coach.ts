@@ -14,6 +14,40 @@ export const releaseClientInput = strictObject({
 export type ReleaseClientInput = z.infer<typeof releaseClientInput>;
 
 /**
+ * The three statuses `coach.clients.setStatus` (`relationship-controls/01`)
+ * can move a client TO. `invited` is deliberately absent: it is the state a
+ * client starts in and only invite acceptance leaves, so offering it as a
+ * target would let a coach un-accept a live client.
+ *
+ * Declared here rather than imported from the Drizzle `client_status` enum
+ * — `packages/schemas` must not import `packages/db` (`code-conventions`
+ * §1's package table) — and deliberately narrower than that enum, which is
+ * the point.
+ */
+export const CLIENT_STATUS_TARGETS = ['active', 'paused', 'archived'] as const;
+export const clientStatusTarget = z.enum(CLIENT_STATUS_TARGETS);
+export type ClientStatusTarget = z.infer<typeof clientStatusTarget>;
+
+/**
+ * `coach.clients.setStatus` (`relationship-controls/01`) — pause, resume,
+ * archive. The target status, never a delta ("pause this client"): the
+ * legality of a move depends on the status the row is actually in, and a
+ * verb-shaped input would make the server guess what the caller thought it
+ * was. Which moves are legal is `apps/api/src/features/clients/set-status.ts`'s
+ * job, not this schema's — it cannot know the current status.
+ *
+ * No `clientLocalId`: this is a coach-app action on a connected screen, not
+ * an offline-writable mutation (`api-conventions` §4). A replay is made safe
+ * by the transition being idempotent instead — asking for the status a row
+ * already has is a no-op, not a refusal.
+ */
+export const setClientStatusInput = strictObject({
+  clientId: id,
+  status: clientStatusTarget,
+});
+export type SetClientStatusInput = z.infer<typeof setClientStatusInput>;
+
+/**
  * `coach.clients.overview` (`client-detail/01`) — §8.3's Overview tab, in
  * one call. `clientId` and nothing else: every window the response covers
  * (6 months of weight, 8 weeks of adherence) is a product decision that

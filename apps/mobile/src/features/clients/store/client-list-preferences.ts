@@ -33,11 +33,35 @@ export const CLIENT_SORTS = [
 export const DEFAULT_CLIENT_SORT: ClientSort = 'attention';
 
 /**
- * The only two statuses `coach.dashboard` can return: the resolver's roster
- * is `active` + `invited` (§15.5's seat definition), so offering a `paused`
- * or `archived` chip would be offering a filter that always yields nothing.
+ * Every value of `client_status`, in the order the panel draws them.
+ *
+ * This read `['active', 'invited']` until `relationship-controls/01`, on the
+ * grounds that the dashboard's roster was those two and a `paused` chip
+ * would always yield nothing. That task gives a coach a way to pause and to
+ * archive, so both are now states a roster can be in and both are worth
+ * filtering to — a coach's first question after a holiday is "who did I
+ * pause".
+ *
+ * ⚠️ **`archived` is the one value EXCLUDED BY DEFAULT** rather than merely
+ * unselected — see `selectClients`. It is the only member here whose
+ * absence from this array would change what an unfiltered list shows.
  */
-export const FILTERABLE_STATUSES = ['active', 'invited'] as const satisfies readonly ClientStatus[];
+export const FILTERABLE_STATUSES = [
+  'active',
+  'invited',
+  'paused',
+  'archived',
+] as const satisfies readonly ClientStatus[];
+
+/**
+ * The status a roster hides unless it is asked for.
+ *
+ * Archiving is bookkeeping: the client keeps everything, the seat is
+ * released, and the relationship is on record rather than in progress
+ * (`CLAUDE.md` §15.5). Eleven of them at the top of a list is a dashboard
+ * that lies about how many clients a coach is carrying.
+ */
+export const DEFAULT_EXCLUDED_STATUS = 'archived' satisfies ClientStatusFilter;
 
 export type ClientStatus = CoachDashboardClient['status'];
 export type ClientStatusFilter = (typeof FILTERABLE_STATUSES)[number];

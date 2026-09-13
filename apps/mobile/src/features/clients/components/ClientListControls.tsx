@@ -42,6 +42,8 @@ const SORT_LABEL: Record<ClientSort, string> = {
 const STATUS_LABEL: Record<ClientStatusFilter, string> = {
   active: 'Active',
   invited: 'Invited',
+  paused: 'Paused',
+  archived: 'Archived',
 };
 
 const GOAL_LABEL: Record<ClientGoalFilter, string> = {

@@ -4,6 +4,7 @@ import { useDebounced } from '../../../hooks/useDebounced.ts';
 import type { DashboardCounterKey } from '../components/DashboardCounters.tsx';
 import {
   DEFAULT_CLIENT_SORT,
+  DEFAULT_EXCLUDED_STATUS,
   useClientListPreferences,
   type ClientGoalFilter,
   type ClientSort,
@@ -31,6 +32,7 @@ import type { CoachDashboardClient } from './useCoachDashboard.ts';
 export {
   CLIENT_SORTS,
   DEFAULT_CLIENT_SORT,
+  DEFAULT_EXCLUDED_STATUS,
   FILTERABLE_GOALS,
   FILTERABLE_STATUSES,
   type ClientGoalFilter,
@@ -203,9 +205,7 @@ export function selectClients(
 
   const matched = clients.filter((client) => {
     if (needle !== '' && !client.name.toLocaleLowerCase().includes(needle)) return false;
-    if (selection.statuses.length > 0 && !includesStatus(selection.statuses, client.status)) {
-      return false;
-    }
+    if (!matchesStatus(selection.statuses, client.status)) return false;
     if (selection.goals.length > 0 && !includesGoal(selection.goals, client.goal)) return false;
     if (counterPredicate !== null && !counterPredicate(client)) return false;
     return true;
@@ -216,10 +216,23 @@ export function selectClients(
   return matched.sort(COMPARATORS[selection.sort]);
 }
 
-function includesStatus(
+/**
+ * **No chip on is not "no filter" — it is "everything except archived".**
+ *
+ * `relationship-controls/01`: archiving is a coach's bookkeeping, so an
+ * archived client is on the record rather than on the roster, and a
+ * hundred-row list that quietly grows by every client a coach ever finished
+ * with is the failure. Selecting the `Archived` chip is how they are asked
+ * for, and selecting it beside another chip widens rather than replaces.
+ *
+ * Paused is NOT excluded: a paused client is still this coach's client, and
+ * the coach decided they would be back.
+ */
+function matchesStatus(
   statuses: readonly ClientStatusFilter[],
   status: CoachDashboardClient['status'],
 ): boolean {
+  if (statuses.length === 0) return status !== DEFAULT_EXCLUDED_STATUS;
   return statuses.some((entry) => entry === status);
 }
 

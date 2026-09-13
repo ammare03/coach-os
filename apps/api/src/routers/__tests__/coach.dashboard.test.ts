@@ -756,7 +756,13 @@ async function seedWorld(): Promise<void> {
   await seedOtherCoachesAtScale();
 }
 
-const ROSTER_STATUSES = new Set(['active', 'invited']);
+/**
+ * `CLAUDE.md` §15.5's seat-bearing set, and NOT the set of rows the payload
+ * carries — `relationship-controls/01` widened that to all four statuses so
+ * the dashboard's Paused chip and Archived filter have something to act on.
+ * Every expectation below has to say which of the two it means.
+ */
+const COACHED_STATUSES = new Set(['active', 'invited']);
 
 /** DB§22's three branches, summed from the seed plans — not from a query. */
 function expectedNeedsReview(plans: readonly ClientPlan[]): number {
@@ -772,8 +778,14 @@ function expectedCheckinsDue(plans: readonly ClientPlan[]): number {
   return plans.filter((plan) => plan.hasPendingCheckin).length;
 }
 
-function expectedRoster(plans: readonly ClientPlan[]): ClientPlan[] {
-  return plans.filter((plan) => ROSTER_STATUSES.has(plan.status));
+/** Every client the coach has, which is now every client the payload carries. */
+function expectedRows(plans: readonly ClientPlan[]): ClientPlan[] {
+  return [...plans];
+}
+
+/** The subset that costs a seat, and the only subset `offTrack` may count. */
+function expectedCoached(plans: readonly ClientPlan[]): ClientPlan[] {
+  return plans.filter((plan) => COACHED_STATUSES.has(plan.status));
 }
 
 /** `0.6 * training + 0.4 * nutrition`, weighting only the side that exists. */
@@ -787,7 +799,7 @@ function expectedOverall(plan: ClientPlan): number | null {
 }
 
 function expectedOffTrack(plans: readonly ClientPlan[]): number {
-  return expectedRoster(plans).filter((plan) => {
+  return expectedCoached(plans).filter((plan) => {
     const overall = expectedOverall(plan);
     return overall !== null && overall < 70;
   }).length;
@@ -935,22 +947,125 @@ describe('coach.dashboard — counters', () => {
     for (const row of noData) {
       expect(row.adherenceColor).toBe('grey');
     }
-    // Ten grey clients, and the off-track count is still only the red ones.
-    expect(result.offTrack).toBe(result.clients.filter((r) => r.adherenceColor === 'red').length);
+    // Ten grey clients, and the off-track count is still only the red ones
+    // among the clients who cost a seat.
+    expect(result.offTrack).toBe(
+      result.clients.filter((r) => COACHED_STATUSES.has(r.status) && r.adherenceColor === 'red')
+        .length,
+    );
+  });
+
+  /**
+   * **`CLAUDE.md` §15.5, pinned.** `relationship-controls/01` widened the
+   * payload from two statuses to four so the dashboard's chip and its
+   * filters have rows to act on. The seed's bucket 9 — every paused and
+   * archived client — is deliberately shaped 1-of-2 sessions and 40
+   * nutrition, which scores ~46 and is unambiguously red. If `offTrack`
+   * counted the rows it is handed rather than the rows that cost a seat,
+   * this number would jump by ten the moment the payload widened, and a
+   * coach would be told that pausing a client put them off plan.
+   */
+  it('leaves the off-track count exactly where it was when the payload widened', async () => {
+    const result = await callDashboard(coachA);
+
+    const nonCoachedAndRed = result.clients.filter(
+      (row) => !COACHED_STATUSES.has(row.status) && row.adherenceColor === 'red',
+    );
+    // Not vacuous: the seed really does produce red paused and red archived
+    // clients, so the guard in `getCoachDashboard` is load-bearing here.
+    expect(nonCoachedAndRed).toHaveLength(10);
+    expect(nonCoachedAndRed.some((row) => row.status === 'paused')).toBe(true);
+    expect(nonCoachedAndRed.some((row) => row.status === 'archived')).toBe(true);
+
+    // The pre-widening number, unmoved.
+    expect(result.offTrack).toBe(30);
+    expect(result.offTrack).toBe(expectedOffTrack(coachA.plans));
+  });
+
+  /**
+   * The other two counters read `coach_id` directly rather than the client
+   * list, so neither could move when the list widened — and neither ever
+   * excluded a paused client's unreviewed session in the first place. Work
+   * is work whoever it belongs to; the seat rule is about seats.
+   */
+  it('leaves the needs-review and check-ins-due counters untouched by the widening', async () => {
+    const result = await callDashboard(coachA);
+
+    expect(result.needsReview).toBe(expectedNeedsReview(coachA.plans));
+    expect(result.checkinsDue).toBe(expectedCheckinsDue(coachA.plans));
+    // Both references sum over every plan, paused and archived included —
+    // which is what they summed over before this task too.
+    expect(expectedCheckinsDue(coachA.plans)).toBeGreaterThan(
+      expectedCheckinsDue(expectedCoached(coachA.plans)),
+    );
   });
 });
 
 describe('coach.dashboard — client rows', () => {
-  it('returns one row per rostered client, excluding paused and archived', async () => {
+  it('returns one row per client, paused and archived included', async () => {
     const result = await callDashboard(coachA);
 
-    expect(result.clients).toHaveLength(expectedRoster(coachA.plans).length);
-    expect(result.clients).toHaveLength(90);
-    expect(result.clients.map((row) => row.status).sort()).toEqual(
-      expect.arrayContaining(['active', 'invited']),
-    );
-    expect(result.clients.some((row) => row.status === 'paused')).toBe(false);
-    expect(result.clients.some((row) => row.status === 'archived')).toBe(false);
+    expect(result.clients).toHaveLength(expectedRows(coachA.plans).length);
+    expect(result.clients).toHaveLength(100);
+    // All four, because the dashboard's status filter offers all four and a
+    // chip over a set the server never sent yields nothing
+    // (`relationship-controls/01`).
+    expect([...new Set(result.clients.map((row) => row.status))].sort()).toEqual([
+      'active',
+      'archived',
+      'invited',
+      'paused',
+    ]);
+  });
+
+  /**
+   * Archived clients are returned and the DEVICE drops them from the
+   * default list (`useClientListFilters`'s `matchesStatus`). Server-side
+   * exclusion was the alternative and it is the wrong one: a roster is
+   * bounded by a tier's seat limit, the whole sort/search/filter surface is
+   * an in-memory pass over one payload, and filtering here would turn
+   * selecting the Archived chip into a second round trip — the one thing
+   * `coach-dashboard/02`'s acceptance criterion forbids.
+   */
+  it('carries the archived clients the default list is expected to hide', async () => {
+    const result = await callDashboard(coachA);
+
+    const archived = result.clients.filter((row) => row.status === 'archived');
+    expect(archived.length).toBeGreaterThan(0);
+    for (const row of archived) {
+      expect(row.archivedAt).toBeInstanceOf(Date);
+    }
+  });
+
+  it('dates the paused and archived rows from client_profiles, and nothing else', async () => {
+    const result = await callDashboard(coachA);
+    const byStatus = (status: string) => result.clients.filter((row) => row.status === status);
+
+    for (const row of byStatus('paused')) {
+      expect(row.pausedAt).toBeInstanceOf(Date);
+      expect(row.archivedAt).toBeNull();
+    }
+    for (const row of byStatus('archived')) {
+      expect(row.archivedAt).toBeInstanceOf(Date);
+    }
+    // `client_status_timestamps` never lets an active row carry either, so
+    // the chip has nothing to date and correctly says the bare word.
+    for (const row of byStatus('active')) {
+      expect(row.pausedAt).toBeNull();
+      expect(row.archivedAt).toBeNull();
+    }
+    expect(byStatus('paused').length).toBeGreaterThan(0);
+    expect(byStatus('archived').length).toBeGreaterThan(0);
+  });
+
+  it('carries coach_since, which the archived row measures weeks-together from', async () => {
+    const result = await callDashboard(coachA);
+
+    // Nullable by design — a first-ever coach has none (DB§5.1) — so the
+    // assertion is that the column is SELECTED, not that it is populated.
+    for (const row of result.clients) {
+      expect(row.coachSince === null || row.coachSince instanceof Date).toBe(true);
+    }
   });
 
   it('carries the same two figures the off-track counter used, parsed as numbers', async () => {
@@ -972,7 +1087,7 @@ describe('coach.dashboard — client rows', () => {
     // The same soft-deleted session the needs-review counter must ignore is
     // seeded for every client with sessions, and the view has to ignore it
     // too — the two counters sit on one screen and must agree.
-    for (const plan of expectedRoster(coachA.plans)) {
+    for (const plan of expectedRows(coachA.plans)) {
       expect(byId.get(plan.profileId)?.unreviewedSessions).toBe(plan.unreviewedSessions);
     }
     // Not vacuous: the seed produced both kinds of client.
@@ -988,7 +1103,7 @@ describe('coach.dashboard — client rows', () => {
     // soft-deleted scheduled one inside the window. A view that ignored
     // `deleted_at` would report one more completed and two more scheduled
     // for each of them, and a training adherence to match (UNFORGET A14).
-    for (const plan of expectedRoster(coachA.plans)) {
+    for (const plan of expectedRows(coachA.plans)) {
       const row = byId.get(plan.profileId);
       expect(row?.sessionsCompleted7d).toBe(plan.completedSessions);
       expect(row?.sessionsScheduled7d).toBe(plan.scheduledSessions);
@@ -1010,10 +1125,10 @@ describe('coach.dashboard — client rows', () => {
     // has to ignore it exactly as the needs-review inbox does (UNFORGET
     // A10). The commented, processing, and soft-deleted video controls
     // seeded alongside still must not count.
-    for (const plan of expectedRoster(coachA.plans)) {
+    for (const plan of expectedRows(coachA.plans)) {
       expect(byId.get(plan.profileId)?.unreviewedVideos).toBe(plan.unreviewedVideos);
     }
-    const withWithdrawn = expectedRoster(coachA.plans).filter(
+    const withWithdrawn = expectedRows(coachA.plans).filter(
       (plan) => plan.hasVideoWithWithdrawnComment,
     );
     expect(withWithdrawn.length).toBeGreaterThan(0);
@@ -1026,7 +1141,7 @@ describe('coach.dashboard — client rows', () => {
     const result = await callDashboard(coachA);
     const byId = new Map(result.clients.map((row) => [row.clientId, row]));
 
-    for (const plan of expectedRoster(coachA.plans)) {
+    for (const plan of expectedRows(coachA.plans)) {
       expect(byId.get(plan.profileId)?.goal).toBe(plan.goal);
     }
     // Not vacuous: the seed has to have produced both a set goal and a null
@@ -1039,7 +1154,7 @@ describe('coach.dashboard — client rows', () => {
     const result = await callDashboard(coachA);
     const byId = new Map(result.clients.map((row) => [row.clientId, row]));
 
-    for (const plan of expectedRoster(coachA.plans)) {
+    for (const plan of expectedRows(coachA.plans)) {
       const row = byId.get(plan.profileId);
       if (plan.hasAvatar) {
         expect(typeof row?.avatarAssetId).toBe('string');
@@ -1053,14 +1168,14 @@ describe('coach.dashboard — client rows', () => {
     const result = await callDashboard(coachA);
     const byId = new Map(result.clients.map((row) => [row.clientId, row]));
 
-    for (const plan of expectedRoster(coachA.plans)) {
+    for (const plan of expectedRows(coachA.plans)) {
       const expected = Math.min(plan.unreadFromClient, UNREAD_BADGE_CAP + 1);
       expect(byId.get(plan.profileId)?.unreadMessages).toBe(expected);
     }
     // Every threaded client also carries a read message, a coach-sent one,
     // and a soft-deleted one. A client seeded with a thread and zero unread
     // proves all three are excluded rather than merely outnumbered.
-    const threadedButSilent = expectedRoster(coachA.plans).filter(
+    const threadedButSilent = expectedRows(coachA.plans).filter(
       (plan) => plan.unreadFromClient === 0 && plan.index % 5 === 2,
     );
     expect(threadedButSilent.length).toBeGreaterThan(0);
@@ -1083,7 +1198,7 @@ describe('coach.dashboard — client rows', () => {
   it('reports zero unread for a client with no conversation at all', async () => {
     const result = await callDashboard(coachA);
 
-    const unthreaded = expectedRoster(coachA.plans).filter(
+    const unthreaded = expectedRows(coachA.plans).filter(
       (plan) => plan.unreadFromClient === 0 && plan.index % 5 !== 2,
     );
     expect(unthreaded.length).toBeGreaterThan(0);
@@ -1098,7 +1213,7 @@ describe('coach.dashboard — client rows', () => {
 
     const foreign = new Set(coachB.plans.map((plan) => plan.profileId));
     expect(result.clients.some((row) => foreign.has(row.clientId))).toBe(false);
-    expect(result.clients).toHaveLength(90);
+    expect(result.clients).toHaveLength(100);
   });
 
   it('scopes every counter to the calling coach', async () => {
@@ -1224,10 +1339,13 @@ describe('coach.dashboard — query plans at 100-client scale', () => {
   it('reaches the client roster through a DB§7 coach index, never a sequential scan of the table', async () => {
     const nodes = await explain(clientOverviewQuery(db, coachA.profileId));
 
-    // Either of DB§7's two coach-leading indexes is a pass. The planner
-    // picks `client_profiles_active_seats` here — the partial one, whose
-    // predicate is `status IN ('active','invited')`, which is this query's
-    // roster filter exactly — over the wider `client_profiles_coach`.
+    // Either of DB§7's two coach-leading indexes is a pass, and which one
+    // serves this moved with `relationship-controls/01`: the query used to
+    // filter `status IN ('active','invited')`, matching
+    // `client_profiles_active_seats`'s partial predicate exactly, and now
+    // asks for all four — which that partial index cannot serve, leaving
+    // the wider `client_profiles_coach`. Both stay accepted; what this test
+    // defends is that neither becomes a sequential scan.
     const used = nodes.map((n) => n.index).filter((name): name is string => name !== null);
     expect(
       used.some((name) => ['client_profiles_coach', 'client_profiles_active_seats'].includes(name)),
@@ -1244,19 +1362,29 @@ describe('coach.dashboard — query plans at 100-client scale', () => {
     }
   });
 
-  it('sequentially scans only what v_client_overview leaves no index for', async () => {
+  it('sequentially scans nothing at all', async () => {
     const nodes = await explain(clientOverviewQuery(db, coachA.profileId));
 
-    // `users` is the whole list now. `media_assets` left it when
-    // `0033_fat_mentor` added the `client_id` FK index (A9) it had been
-    // missing, and `comments` left it when the view's `NOT EXISTS` started
-    // repeating `deleted_at IS NULL` (A10) — `comments_target` is PARTIAL on
-    // that predicate, so the planner could not prove the index covered the
-    // rows without it.
+    // **The list is empty now, and `users` was the last one on it.**
     //
-    // Pinned by name so a newly sequentially-scanned table fails this test
-    // rather than arriving unnoticed.
-    expect(sequentiallyScanned(nodes)).toEqual(['users']);
+    // `media_assets` left when `0033_fat_mentor` added the `client_id` FK
+    // index (A9) it had been missing, and `comments` left when the view's
+    // `NOT EXISTS` started repeating `deleted_at IS NULL` (A10) —
+    // `comments_target` is PARTIAL on that predicate, so the planner could
+    // not prove the index covered the rows without it.
+    //
+    // `users` left with `relationship-controls/01`. Joining
+    // `client_profiles` for the status timestamps, WITH the coach scope
+    // repeated on the join condition, gives the planner a selective entry
+    // point it did not have before: it walks `client_profiles_coach` to this
+    // coach's hundred rows and nested-loops into `users` by primary key,
+    // instead of hashing all ten thousand. Written without that repeated
+    // predicate, the same join costs a second sequential scan rather than
+    // removing one — see `clientOverviewQuery`'s own note on it.
+    //
+    // Pinned as an exact list so a newly sequentially-scanned table fails
+    // this test rather than arriving unnoticed.
+    expect(sequentiallyScanned(nodes)).toEqual([]);
   });
 
   it('reads the needs-review inbox through an index, never a sequential scan', async () => {

@@ -46,6 +46,9 @@ function client(index: number, overrides: Partial<CoachDashboardClient> = {}) {
     nutritionAdherence: 90,
     overallAdherence: 84,
     adherenceColor: 'amber',
+    pausedAt: null,
+    archivedAt: null,
+    coachSince: null,
     ...overrides,
   } as CoachDashboardClient;
 }
@@ -297,5 +300,177 @@ describe('CoachDashboardScreen — sort, search, and filter', () => {
 
     expect(screen.queryByLabelText('Search clients')).toBeNull();
     expect(screen.getByTestId('dashboard-empty')).toBeTruthy();
+  });
+});
+
+/**
+ * `relationship-controls/01` put all four statuses in the payload, which
+ * gave this screen two jobs it did not have: summarising a roster that is no
+ * longer all-active, and drawing a list that is all-archived.
+ */
+describe('CoachDashboardScreen \u2014 paused and archived clients', () => {
+  function mixedRoster() {
+    return [
+      client(1, { clientId: 'a1', name: 'Active One' }),
+      client(2, { clientId: 'a2', name: 'Active Two' }),
+      client(3, {
+        clientId: 'p1',
+        name: 'Paused One',
+        status: 'paused',
+        pausedAt: new Date('2026-09-11T09:00:00.000Z'),
+      }),
+      client(4, { clientId: 'i1', name: 'Invited One', status: 'invited' }),
+      client(5, {
+        clientId: 'z1',
+        name: 'Archived One',
+        status: 'archived',
+        archivedAt: new Date('2026-09-04T12:00:00.000Z'),
+        coachSince: new Date('2025-11-12T12:00:00.000Z'),
+      }),
+    ];
+  }
+
+  function showMixed() {
+    setQuery({ data: { needsReview: 1, offTrack: 0, checkinsDue: 0, clients: mixedRoster() } });
+    return renderScreen();
+  }
+
+  function selectStatus(...statuses: ('active' | 'invited' | 'paused' | 'archived')[]) {
+    act(() => {
+      for (const status of statuses) {
+        useClientListPreferences.getState().toggleStatus(status);
+      }
+    });
+  }
+
+  /**
+   * **`CLAUDE.md` \u00a715.5 on the one line a coach reads as their seat count.**
+   *
+   * The summary was `clients.length - invited` while the payload held two
+   * statuses, where it was exact. With four it would report this coach's
+   * paused and archived clients as active \u2014 two active clients rendered as
+   * four.
+   */
+  it('counts the roster summary per status, never as \u201cthe rest are active\u201d', () => {
+    showMixed();
+
+    expect(screen.getByText('2 active \u00b7 1 paused \u00b7 1 invited')).toBeTruthy();
+  });
+
+  it('leaves archived out of the summary entirely rather than reporting it at zero', () => {
+    setQuery({
+      data: {
+        needsReview: 0,
+        offTrack: 0,
+        checkinsDue: 0,
+        clients: [client(1), client(2, { clientId: 'a2' })],
+      },
+    });
+    renderScreen();
+
+    // No "0 archived" on a coach who has never archived anyone \u2014 that is a
+    // prompt to do it, not a fact worth stating.
+    expect(screen.getByText('2 active')).toBeTruthy();
+    expect(screen.queryByText(/archived/i)).toBeNull();
+  });
+
+  it('keeps paused clients in the default list and drops archived ones', () => {
+    showMixed();
+
+    // A paused client is still this coach's client and the coach decided
+    // they would be back; an archived one is on the record rather than on
+    // the roster (`useClientListFilters`'s `matchesStatus`).
+    expect(renderedIds()).toEqual(['a1', 'a2', 'i1', 'p1']);
+  });
+
+  describe('the archived filter', () => {
+    it('shows the archived clients, and only them', () => {
+      showMixed();
+      selectStatus('archived');
+
+      expect(renderedIds()).toEqual(['z1']);
+    });
+
+    it('answers the question a coach comes here to ask, above the list', () => {
+      showMixed();
+      selectStatus('archived');
+
+      // The typed confirmation said this once, under pressure, to someone
+      // deciding. This is read calmly by someone checking whether they lost
+      // anything (`ArchivedListNote`).
+      expect(screen.getByTestId('archived-list-note')).toBeTruthy();
+      expect(
+        screen.getByLabelText(
+          'Archived clients keep everything they logged. They do not count against your plan. Send a new invite to work with someone again.',
+        ),
+      ).toBeTruthy();
+    });
+
+    it('draws no adherence key, because it draws no dots', () => {
+      showMixed();
+      selectStatus('archived');
+
+      expect(screen.queryByTestId('adherence-key', { includeHiddenElements: true })).toBeNull();
+      // The row's own lane is gone with it \u2014 the two must agree.
+      expect(screen.queryByText('T', { includeHiddenElements: true })).toBeNull();
+    });
+
+    it('drops the per-row chip, which the filter has already said', () => {
+      showMixed();
+      selectStatus('archived');
+
+      // By testID, not by the word: "Archived" is also the filter chip's
+      // own label, and the point of this case is the ROW's chip.
+      expect(
+        screen.queryByTestId('client-status-chip-archived', { includeHiddenElements: true }),
+      ).toBeNull();
+      expect(screen.getByText('Archived 4 Sep \u00b7 42 weeks together')).toBeTruthy();
+    });
+
+    /**
+     * The variant is about the LIST, not the status. The moment a second
+     * status shares the list, every row owes the reader its own again.
+     */
+    it('goes back to the full row treatment as soon as the list is mixed', () => {
+      showMixed();
+      selectStatus('archived', 'active');
+
+      expect(renderedIds()).toEqual(['a1', 'a2', 'z1']);
+      expect(
+        screen.getByTestId('client-status-chip-archived', { includeHiddenElements: true }),
+      ).toBeTruthy();
+      expect(screen.getByTestId('adherence-key', { includeHiddenElements: true })).toBeTruthy();
+      expect(screen.queryByTestId('archived-list-note')).toBeNull();
+    });
+
+    it('has its own empty state, not \u201cno clients match\u201d', () => {
+      setQuery({
+        data: { needsReview: 0, offTrack: 0, checkinsDue: 0, clients: [client(1), client(2)] },
+      });
+      renderScreen();
+      selectStatus('archived');
+
+      // Nothing was narrowed away here \u2014 there is simply nothing to show
+      // yet, and answering with "clear your filters" would be answering a
+      // question the coach did not ask.
+      expect(screen.getByTestId('dashboard-no-archived')).toBeTruthy();
+      expect(screen.queryByTestId('dashboard-no-results')).toBeNull();
+      expect(screen.getByText('No archived clients')).toBeTruthy();
+    });
+
+    it('offers the way back out of a filter with nothing behind it', () => {
+      setQuery({
+        data: { needsReview: 0, offTrack: 0, checkinsDue: 0, clients: [client(1), client(2)] },
+      });
+      renderScreen();
+      selectStatus('archived');
+
+      fireEvent.press(screen.getByText('Back to your clients'));
+
+      expect(renderedIds()).toEqual([
+        '01924f2c-0000-7000-8000-000000000001',
+        '01924f2c-0000-7000-8000-000000000002',
+      ]);
+    });
   });
 });
