@@ -10,6 +10,7 @@ import {
   createMultipartUpload,
   getSignedUploadPartUrl,
 } from '../lib/storage/r2-client.ts';
+import { checkStorageQuota } from '../lib/storage-quota.ts';
 import { recordAssetStored } from '../lib/storage-usage.ts';
 import { enqueueMediaTranscode } from '../queues/enqueue.ts';
 import type { AuthenticatedContext } from '../trpc/context.ts';
@@ -222,33 +223,36 @@ export const mediaRouter = router({
 
       const tenant = await resolveTenant(ctx, input);
 
-      // ── 2. Quota check — `upload-server/03`'s seam ─────────────────────
-      //
-      // TASK 03 FILLS THIS. Nothing else in this procedure moves.
-      //
-      //   import { checkStorageQuota } from '../lib/storage-quota.ts';
-      //
-      //   const quota = await checkStorageQuota(tenant.coachUserId, input.sizeBytes);
-      //   if (!quota.ok) {
-      //     throw appError('STORAGE_QUOTA_EXCEEDED', '<copy>', {
-      //       usedBytes: quota.bytesUsed,
-      //       limitBytes: quota.bytesLimit,
-      //     });
-      //   }
-      //
-      // Three things this seam's placement is load-bearing about:
+      // ── 2. Quota check (`upload-server/03`) ────────────────────────────
+      // Three things this call's placement is load-bearing about:
       //   • It sits AFTER the per-clip limits and BEFORE the insert, so a
       //     request that fails either gate leaves no `uploading` row behind
-      //     (`upload-server/01`'s Approach step 2).
+      //     (`upload-server/01`'s Approach step 2) and no live presigned
+      //     credential to clean up.
       //   • It takes `tenant.coachUserId` — the COACH's `users.id`, which
       //     is what `platform.storage_usage` is keyed on and what the P11
       //     README's tenant-meter resolution names. Never the uploading
       //     client's id, and never a `coach_profiles.id`.
       //   • The payload keys are `usedBytes`/`limitBytes`, matching the
       //     shipped catalogue (`@coachos/schemas`' `AppErrorPayloads`), not
-      //     the `bytesUsed`/`bytesLimit` names task 03's own prose uses for
-      //     `checkStorageQuota`'s return shape. The two differ; both are
-      //     correct in their own place.
+      //     the `bytesUsed`/`bytesLimit` names `checkStorageQuota` returns.
+      //     The two differ; both are correct in their own place.
+      const quota = await checkStorageQuota(ctx.db, tenant.coachUserId, input.sizeBytes);
+      if (!quota.ok) {
+        // One fact, two voices (`product-copy` §3, §15.4). The coach owns
+        // the plan and can act on it, so they get ER§1.3's catalogued line.
+        // A client has no plan to be out of, and handing them their coach's
+        // commercial state would be both confusing and none of their
+        // business — they get the fact and the one route out of it.
+        const message =
+          ctx.user.role === 'coach'
+            ? "You're out of storage on your plan. Free some space or upgrade to keep uploading."
+            : "There's no room to store this right now. Your coach can free up space.";
+        throw appError('STORAGE_QUOTA_EXCEEDED', message, {
+          usedBytes: quota.bytesUsed,
+          limitBytes: quota.bytesLimit,
+        });
+      }
 
       // ── 3. The row, before any presigned URL ──────────────────────────
       // The ordering is the acceptance criterion, not an implementation

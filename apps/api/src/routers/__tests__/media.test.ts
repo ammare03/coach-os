@@ -23,6 +23,7 @@ import {
 import { createTestContext } from '../../__tests__/test-context.ts';
 import { mediaOriginalKey } from '../../lib/r2-keys.ts';
 import { createMultipartUpload, completeMultipartUpload } from '../../lib/storage/r2-client.ts';
+import { TIER_STORAGE_BYTES } from '../../lib/storage-quota.ts';
 import { recordAssetStored } from '../../lib/storage-usage.ts';
 import { enqueueMediaTranscode } from '../../queues/enqueue.ts';
 import type { Context, ContextUser } from '../../trpc/context.ts';
@@ -308,6 +309,118 @@ describe('media.createUploadUrl — per-clip limits are checked before any write
   });
 });
 
+describe('media.createUploadUrl — the storage quota', () => {
+  /**
+   * The fixture counter is shared with every `confirmUpload` test below, so
+   * each case here snapshots it, overrides it, and puts it back. Restoring a
+   * `{0, 0}` row where none existed is indistinguishable downstream —
+   * `usageFor` reads both as zero.
+   */
+  async function withUsage(
+    userId: string,
+    bytesUsed: number,
+    run: () => Promise<void>,
+  ): Promise<void> {
+    const snapshot = await usageFor(userId);
+    await setUsage(userId, bytesUsed, 1);
+    try {
+      await run();
+    } finally {
+      await setUsage(userId, snapshot.bytesUsed, snapshot.assetCount);
+    }
+  }
+
+  it('refuses an upload that would take the coach past their tier limit, and leaves no row behind', async () => {
+    // coachA is on the default Starter tier (3 GB, §15.2), so one byte of
+    // headroom under a 12MB clip is over.
+    await withUsage(
+      fixture.coachA.userId,
+      TIER_STORAGE_BYTES.starter - VIDEO.sizeBytes + 1,
+      async () => {
+        const before = await assetCountFor(fixture.clientA1.userId);
+
+        await expect(
+          callerFor(clientA1User()).media.createUploadUrl({
+            ...VIDEO,
+            workoutSessionId: fixture.clientA1.workoutSessionId,
+          }),
+        ).rejects.toMatchObject({
+          cause: {
+            appCode: 'STORAGE_QUOTA_EXCEEDED',
+            details: {
+              usedBytes: TIER_STORAGE_BYTES.starter - VIDEO.sizeBytes + 1,
+              limitBytes: TIER_STORAGE_BYTES.starter,
+            },
+          },
+        });
+
+        // Refused before the insert and before any presigning, so there is no
+        // orphan row and no live credential to clean up.
+        expect(await assetCountFor(fixture.clientA1.userId)).toBe(before);
+        expect(createMultipartUploadMock).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  it('allows an upload that exactly reaches the limit — a ceiling, not an exclusion', async () => {
+    await withUsage(
+      fixture.coachA.userId,
+      TIER_STORAGE_BYTES.starter - VIDEO.sizeBytes,
+      async () => {
+        await expect(
+          callerFor(clientA1User()).media.createUploadUrl({
+            ...VIDEO,
+            workoutSessionId: fixture.clientA1.workoutSessionId,
+          }),
+        ).resolves.toMatchObject({ partSizeBytes: media.UPLOAD_PART_SIZE_BYTES });
+      },
+    );
+  });
+
+  it("gates a coach's own upload too, and tells them about their plan", async () => {
+    await withUsage(fixture.coachA.userId, TIER_STORAGE_BYTES.starter, async () => {
+      await expect(callerFor(coachAUser()).media.createUploadUrl(VIDEO)).rejects.toMatchObject({
+        cause: { appCode: 'STORAGE_QUOTA_EXCEEDED' },
+        message: expect.stringContaining('your plan'),
+      });
+    });
+  });
+
+  // `product-copy` §3's asymmetry, and §15.4's "never gate anything the
+  // client experiences" softened to its enforceable form: storage IS gated,
+  // so the client can be refused — but never by being handed their coach's
+  // commercial state.
+  it("never tells a client about their coach's plan", async () => {
+    await withUsage(fixture.coachA.userId, TIER_STORAGE_BYTES.starter, async () => {
+      const error = await callerFor(clientA1User())
+        .media.createUploadUrl({ ...VIDEO, workoutSessionId: fixture.clientA1.workoutSessionId })
+        .catch((caught: unknown) => caught);
+
+      expect(error).toMatchObject({ cause: { appCode: 'STORAGE_QUOTA_EXCEEDED' } });
+      const { message } = error as { message: string };
+      expect(message).not.toMatch(/plan|upgrade/i);
+      expect(message).toContain('Your coach');
+    });
+  });
+
+  // The tenant meter (P11 README, "Resolved ambiguities"), asserted through
+  // the procedure rather than the library: the client's own row is full and
+  // the coach's is empty, so an implementation metering the uploader would
+  // refuse this.
+  it("meters a client's upload against the coach's row, never the client's own", async () => {
+    await withUsage(fixture.coachA.userId, 0, async () => {
+      await withUsage(fixture.clientA1.userId, TIER_STORAGE_BYTES.starter, async () => {
+        await expect(
+          callerFor(clientA1User()).media.createUploadUrl({
+            ...VIDEO,
+            workoutSessionId: fixture.clientA1.workoutSessionId,
+          }),
+        ).resolves.toMatchObject({ partSizeBytes: media.UPLOAD_PART_SIZE_BYTES });
+      });
+    });
+  });
+});
+
 describe('media.createUploadUrl — the row exists before the URLs do', () => {
   it('leaves a discoverable uploading row when presigning fails', async () => {
     createMultipartUploadMock.mockRejectedValueOnce(new Error('R2 unreachable'));
@@ -391,6 +504,17 @@ async function usageFor(userId: string): Promise<{ bytesUsed: number; assetCount
     .from(schema.storageUsage)
     .where(eq(schema.storageUsage.userId, userId));
   return row ?? { bytesUsed: 0, assetCount: 0 };
+}
+
+/** Puts a counter row at an exact value — the quota tests above drive it directly. */
+async function setUsage(userId: string, bytesUsed: number, assetCount: number): Promise<void> {
+  await db
+    .insert(schema.storageUsage)
+    .values({ userId, bytesUsed, assetCount })
+    .onConflictDoUpdate({
+      target: schema.storageUsage.userId,
+      set: { bytesUsed, assetCount },
+    });
 }
 
 async function statusOf(assetId: string): Promise<string | undefined> {
