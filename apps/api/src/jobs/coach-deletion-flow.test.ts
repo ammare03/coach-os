@@ -25,6 +25,7 @@ jest.mock('../lib/email/client.ts', () => ({
 
 jest.mock('../lib/storage/r2-client.ts', () => ({
   deleteR2Objects: jest.fn().mockResolvedValue(undefined),
+  deleteR2ObjectsByPrefix: jest.fn().mockResolvedValue(0),
 }));
 
 let container: StartedTestContainer;
