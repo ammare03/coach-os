@@ -1,8 +1,6 @@
 import {
   GlassSurface,
   Metric,
-  Pressable,
-  Text,
   createThemedStyles,
   duration,
   easing,
@@ -21,16 +19,15 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { DockItem, DockSelectionPill } from '../dock/index.ts';
+
 import {
   COACH_DOCK_BADGE_BORDER_WIDTH,
   COACH_DOCK_BADGE_RIGHT,
   COACH_DOCK_BADGE_SIZE,
   COACH_DOCK_BADGE_TOP,
   COACH_DOCK_HEIGHT,
-  COACH_DOCK_ICON_SIZE,
-  COACH_DOCK_ICON_STROKE_WIDTH,
-  COACH_DOCK_ITEM_GAP,
-  COACH_DOCK_ITEM_HEIGHT,
+  COACH_DOCK_ITEM,
   COACH_DOCK_PADDING_X,
   COACH_DOCK_SIDE_INSET,
   resolveCoachDockBottom,
@@ -43,22 +40,11 @@ import { COACH_TABS } from './coach-tabs.ts';
 type CoachTabBarRenderer = NonNullable<ComponentProps<typeof Tabs>['tabBar']>;
 export type CoachTabBarProps = Parameters<CoachTabBarRenderer>[0];
 
-// The prototype's own `style-active="transform:scale(.94)"`, inside
-// `DESIGN.md` §5's sanctioned `.92-.98` press range.
-const PRESS_SCALE = 0.94;
-
 // §5's fills / sliding-pill curve, which is what the prototype's
 // `transition: background 220ms cubic-bezier(.2,.8,.2,1)` names. The
 // duration comes from `duration.state` (200ms) — inside §5's own 180-220ms
 // band, and the closed set has no 220.
 const PILL_EASING = Easing.bezier(easing.fill[0], easing.fill[1], easing.fill[2], easing.fill[3]);
-
-// `accessibility` §3: a tab-bar label is the one place a scale cap is the
-// right answer rather than a cop-out — the dock's height is a fixed design
-// value, the icon carries the meaning visually, and every item still exposes
-// its full name to a screen reader through `accessibilityLabel`. 1.4 keeps
-// the label inside the 52px item at the largest OS text size.
-const LABEL_MAX_FONT_SCALE = 1.4;
 
 const GRADIENT_TOP = { x: 0, y: 0 } as const;
 const GRADIENT_BOTTOM = { x: 0, y: 1 } as const;
@@ -85,9 +71,11 @@ const GRADIENT_BOTTOM = { x: 0, y: 1 } as const;
  * outright. The only motion is the selection pill's cross-fade, which the
  * prototype specifies, plus the shared press scale.
  *
- * Deliberately self-contained rather than shared with the client dock
- * (`router-skeleton/04`, four items, built in parallel with this). Whether
- * the two collapse into one primitive is a decision for after both exist.
+ * The item itself is `dock/DockItem` — shared with the client dock, drawn
+ * from `COACH_DOCK_ITEM` rather than from a shared default, because §9
+ * states the dock as ranges and the two apps sit at their ends (UNFORGET
+ * S11). The BAR is still this file's: five items in a designed order, a
+ * cross-faded per-item pill, and a badge anchored to the item box.
  */
 export function CoachTabBar({ state, descriptors, navigation, insets }: CoachTabBarProps) {
   const styles = useDockStyles();
@@ -183,6 +171,10 @@ function CoachDockItem({
   // the pill's opacity. Nothing else about the item animates: the icon and
   // label swap colour instantly, exactly as the prototype's `transition` list
   // — which names `background` and `transform`, and not `color` — specifies.
+  //
+  // The MOVEMENT stays here and the MATERIAL is `DockSelectionPill`'s,
+  // because the client dock slides one pill across its row instead and both
+  // readings are the design.
   const pillOpacity = useSharedValue(focused ? 1 : 0);
   useEffect(() => {
     pillOpacity.value = withTiming(focused ? 1 : 0, {
@@ -197,72 +189,45 @@ function CoachDockItem({
     accessibilityLabel ?? (badgeText === undefined ? label : `${label}, ${badgeText} new`);
 
   return (
-    <Pressable
-      accessibilityRole="tab"
+    <DockItem
+      geometry={COACH_DOCK_ITEM}
+      Icon={Icon}
+      label={label}
+      focused={focused}
       accessibilityLabel={resolvedLabel}
-      accessibilityState={{ selected: focused }}
       onPress={onPress}
       onLongPress={onLongPress}
-      pressScale={PRESS_SCALE}
-      containerStyle={layout.itemContainer}
-      style={layout.item}
       testID={`coach-tab-${routeName}`}
-    >
-      <Animated.View style={[layout.pill, styles.pillShadow, pillStyle]} pointerEvents="none">
-        <View style={layout.pillClip}>
-          <LinearGradient
-            colors={theme.selectionPill.gradient}
-            start={GRADIENT_TOP}
-            end={GRADIENT_BOTTOM}
-            style={StyleSheet.absoluteFill}
-          />
-          {/* §12 — React Native has no inset box-shadow, so the pill's
-              `inset 0 1px 0 rgba(255,255,255,.4)` is a 1px hairline, clipped
-              to the pill's own radius by the wrapper around it. */}
-          <View style={[layout.pillHighlight, styles.pillHighlight]} />
-        </View>
-      </Animated.View>
-
-      {/* Wrapped because Lucide maps its own `testID` prop to the web-only
-          `data-testid`, which never reaches a React Native node. */}
-      <View testID={`coach-tab-icon-${routeName}`}>
-        <Icon
-          size={COACH_DOCK_ICON_SIZE}
-          strokeWidth={COACH_DOCK_ICON_STROKE_WIDTH}
-          color={focused ? theme.colors.fg.bright : theme.colors.fg.muted}
-        />
-      </View>
-      <Text
-        size="micro"
-        tone={focused ? 'bright' : 'muted'}
-        numberOfLines={1}
-        maxFontSizeMultiplier={LABEL_MAX_FONT_SCALE}
-      >
-        {label}
-      </Text>
-
-      {badgeText === undefined ? null : (
-        // The count is already announced as part of the item's
-        // `accessibilityLabel`, so the badge stays out of the reading order
-        // rather than repeating the number as a bare digit
-        // (`accessibility` §2).
-        <View
-          style={[layout.badge, styles.badge]}
-          pointerEvents="none"
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-          testID={`coach-tab-badge-${routeName}`}
-        >
-          <LinearGradient
-            colors={[theme.colors.brand.DEFAULT, theme.colors.brand.mid]}
-            start={GRADIENT_TOP}
-            end={GRADIENT_BOTTOM}
-            style={StyleSheet.absoluteFill}
-          />
-          <Metric value={badgeText} size="micro" tone="bright" maxFontSizeMultiplier={1} />
-        </View>
-      )}
-    </Pressable>
+      iconTestID={`coach-tab-icon-${routeName}`}
+      pill={
+        <Animated.View style={[layout.pill, pillStyle]} pointerEvents="none">
+          <DockSelectionPill cornerRadius={radius.full} />
+        </Animated.View>
+      }
+      itemAccessory={
+        badgeText === undefined ? null : (
+          // The count is already announced as part of the item's
+          // `accessibilityLabel`, so the badge stays out of the reading order
+          // rather than repeating the number as a bare digit
+          // (`accessibility` §2).
+          <View
+            style={[layout.badge, styles.badge]}
+            pointerEvents="none"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            testID={`coach-tab-badge-${routeName}`}
+          >
+            <LinearGradient
+              colors={[theme.colors.brand.DEFAULT, theme.colors.brand.mid]}
+              start={GRADIENT_TOP}
+              end={GRADIENT_BOTTOM}
+              style={StyleSheet.absoluteFill}
+            />
+            <Metric value={badgeText} size="micro" tone="bright" maxFontSizeMultiplier={1} />
+          </View>
+        )
+      }
+    />
   );
 }
 
@@ -283,23 +248,11 @@ const useDockStyles = createThemedStyles((theme) => ({
     // owns the tier-1 drop along with the gradient, the border and both
     // inset hairlines, on every one of its three paths.
   },
-  pillShadow: theme.selectionPill.shadow,
-  pillHighlight: { backgroundColor: theme.selectionPill.highlight },
   // §9's `1.5px border rgba(22,30,47,.6)` — `bg.DEFAULT` at 60%, which is
   // `control.ring`: the ring a dock badge wears so it reads against glass of
   // any brightness.
   badge: { borderColor: theme.control.ring },
 }));
-
-// React Native 0.86 no longer types `StyleSheet.absoluteFillObject`; the four
-// properties it stood for are spelled out once here.
-const ABSOLUTE_FILL = {
-  position: 'absolute',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-} as const;
 
 // Everything scheme-invariant — flex, size, radius, position within an item.
 // At module scope, where it costs nothing.
@@ -310,31 +263,14 @@ const layout = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: COACH_DOCK_PADDING_X,
   },
-  itemContainer: {
-    flex: 1,
-  },
-  item: {
-    height: COACH_DOCK_ITEM_HEIGHT,
-    borderRadius: radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: COACH_DOCK_ITEM_GAP,
-  },
+  // The box the pill is faded in and out of. Its radius, its gradient, its
+  // hairline and its drop all belong to `DockSelectionPill`.
   pill: {
-    ...ABSOLUTE_FILL,
-    borderRadius: radius.full,
-  },
-  pillClip: {
-    ...ABSOLUTE_FILL,
-    borderRadius: radius.full,
-    overflow: 'hidden',
-  },
-  pillHighlight: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 1,
+    bottom: 0,
   },
   badge: {
     position: 'absolute',

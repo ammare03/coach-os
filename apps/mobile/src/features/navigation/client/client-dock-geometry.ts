@@ -2,6 +2,8 @@ import { radius, spacing, tapTarget } from '@coachos/ui/theme';
 import { useContext } from 'react';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
+import type { DockItemGeometry } from '../dock/dock-item-geometry.ts';
+
 /**
  * `DESIGN.md` §9's Dock row, read in its CLIENT column, plus the four
  * values `CoachOS-Client.dc.html` (the floating dock, lines 680–689) sets
@@ -76,6 +78,39 @@ export const CLIENT_DOCK_ITEM_HIT_SLOP = {
   left: CLIENT_DOCK.padding / 2,
   right: CLIENT_DOCK.padding / 2,
 } as const;
+
+/** The client dock's `letter-spacing: .01em`, at `micro`'s 11px. The coach dock sets none. */
+export const CLIENT_DOCK_LABEL_TRACKING = 0.11;
+
+/**
+ * `accessibility` §3 accepts a tab bar's labels being lost at 200% text
+ * ("icons carry it, and every tab has a label for screen readers"). Capping
+ * is strictly better than losing them: at 1.6 the label grows 11 → 17.6px
+ * and the item's content still measures 21 + 3 + 24 = 48px inside its 52px
+ * box, so nothing clips and the bar never has to grow. The screen reader
+ * reads `accessibilityLabel`, which no font scale truncates.
+ */
+export const CLIENT_DOCK_LABEL_MAX_FONT_SCALE = 1.6;
+
+/**
+ * The client half of the two records `DockItem` is parameterised by. The
+ * coach half is `COACH_DOCK_ITEM` in `coach/coach-dock-metrics.ts`.
+ *
+ * Four of these values are the divergence this file's header table names,
+ * and they are the reason there are two records rather than one shared
+ * default — see `dock/dock-item-geometry.ts` and the test beside it. Do not
+ * "unify" them with the coach dock's.
+ */
+export const CLIENT_DOCK_ITEM = {
+  itemHeight: CLIENT_DOCK.itemHeight,
+  itemGap: CLIENT_DOCK.itemGap,
+  iconSize: CLIENT_DOCK.iconSize,
+  iconStrokeWidth: CLIENT_DOCK.iconStrokeWidth,
+  pressScale: CLIENT_DOCK.pressScale,
+  labelTracking: CLIENT_DOCK_LABEL_TRACKING,
+  labelMaxFontScale: CLIENT_DOCK_LABEL_MAX_FONT_SCALE,
+  hitSlop: CLIENT_DOCK_ITEM_HIT_SLOP,
+} as const satisfies DockItemGeometry;
 
 /**
  * Where the bar's bottom edge actually sits. §9's 26px is measured from the
