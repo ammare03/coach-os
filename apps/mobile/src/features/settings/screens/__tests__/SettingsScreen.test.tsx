@@ -1,3 +1,4 @@
+import { ToastProvider } from '@coachos/ui';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -59,15 +60,38 @@ jest.mock('../../../auth/token-store.ts', () => ({
   clearTokens: jest.fn(async () => undefined),
 }));
 
+// `relationship-controls/02` — the Coaching section's one read. Its own
+// behaviour is `components/__tests__/LeaveCoachRow.test.tsx`'s; here it only
+// decides which of the section's three states this screen paints.
+type CoachQuery = { data: { id: string; name: string } | null | undefined; isSuccess: boolean };
+
+const COACHED: CoachQuery = {
+  data: { id: '018f4b1e-0000-7000-8000-0000000000c1', name: 'Arjun Mehta' },
+  isSuccess: true,
+};
+const NO_COACH: CoachQuery = { data: null, isSuccess: true };
+const COACH_UNKNOWN: CoachQuery = { data: undefined, isSuccess: false };
+
+let mockCoachQuery: CoachQuery = COACH_UNKNOWN;
+
+jest.mock('../../../../lib/connectivity/useConnectivity.ts', () => ({
+  useConnectivity: () => ({ isConnected: true }),
+}));
+
 jest.mock('../../../../lib/trpc.ts', () => ({
   api: {
     me: {
       get: { useQuery: () => mockMeQuery },
       updatePreferences: { useMutation: () => ({ mutate: jest.fn() }) },
     },
+    clientApp: {
+      coach: { useQuery: () => mockCoachQuery },
+      leaveCoach: { useMutation: () => ({ mutate: jest.fn(), isPending: false }) },
+    },
     auth: { signOut: { useMutation: () => ({ mutateAsync: jest.fn() }) } },
     useUtils: () => ({
       invalidate: jest.fn(),
+      clientApp: { invalidate: jest.fn() },
       me: {
         get: {
           cancel: jest.fn(),
@@ -92,7 +116,11 @@ function renderScreen(role: 'coach' | 'client', ui: ReactElement = <SettingsScre
     role,
     isOnboarded: true,
   });
-  return render(<SafeAreaProvider initialMetrics={INSETS}>{ui}</SafeAreaProvider>);
+  return render(
+    <SafeAreaProvider initialMetrics={INSETS}>
+      <ToastProvider>{ui}</ToastProvider>
+    </SafeAreaProvider>,
+  );
 }
 
 /**
@@ -103,7 +131,6 @@ function renderScreen(role: 'coach' | 'client', ui: ReactElement = <SettingsScre
 const UNSHIPPED_ROWS = [
   'Notifications',
   'Availability',
-  'Coaching',
   'Blocked people',
   'Privacy & safety',
   'Terms',
@@ -116,7 +143,53 @@ const UNSHIPPED_ROWS = [
 beforeEach(() => {
   mockPush.mockClear();
   mockMeQuery = mockLoaded;
+  mockCoachQuery = COACH_UNKNOWN;
   mockWipeLocalDatabase.mockClear();
+});
+
+describe('SettingsScreen — the Coaching section', () => {
+  it('gives a coached client the Leave coach row, under the Coaching eyebrow', () => {
+    mockCoachQuery = COACHED;
+    renderScreen('client');
+
+    expect(screen.getByText('Coaching')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Leave coach/ })).toBeTruthy();
+  });
+
+  it('never shows a coach the section — not even empty-headed', () => {
+    // The read is a `clientProcedure`; a coach does not make it, and the
+    // section is absent rather than showing its no-coach state.
+    mockCoachQuery = COACHED;
+    renderScreen('coach');
+
+    expect(screen.queryByText('Coaching')).toBeNull();
+    expect(screen.queryByText('Leave coach')).toBeNull();
+  });
+
+  it('gives a client with no coach the empty state instead of the row', () => {
+    mockCoachQuery = NO_COACH;
+    renderScreen('client');
+
+    expect(screen.getByText("You're not currently working with a coach")).toBeTruthy();
+    expect(screen.queryByText('Leave coach')).toBeNull();
+  });
+
+  it('draws nothing at all until the coach is known', () => {
+    mockCoachQuery = COACH_UNKNOWN;
+    renderScreen('client');
+
+    expect(screen.queryByText('Coaching')).toBeNull();
+  });
+
+  it('keeps Delete account above the fold — Coaching never displaces it', () => {
+    mockCoachQuery = NO_COACH;
+    renderScreen('client');
+
+    // `CLAUDE.md` §21.4 puts deletion ≤3 taps from settings, which is why
+    // the empty state is built at section scale rather than reusing the
+    // full-screen `EmptyState`.
+    expect(screen.getByRole('button', { name: 'Delete account' })).toBeTruthy();
+  });
 });
 
 describe('SettingsScreen — the row set, per role', () => {
