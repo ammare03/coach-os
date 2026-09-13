@@ -11,7 +11,13 @@
 // No `ownsResource`: the client profile is addressed by
 // `ctx.user.clientProfileId` and never by caller input, the same reasoning
 // `leaveCoach` states one file over.
-import { schema, type CoachProfile, type DbClient, type User } from '@coachos/db';
+import {
+  schema,
+  type ClientProfile,
+  type CoachProfile,
+  type DbClient,
+  type User,
+} from '@coachos/db';
 import { and, eq, isNull } from 'drizzle-orm';
 
 /**
@@ -20,8 +26,25 @@ import { and, eq, isNull } from 'drizzle-orm';
  * user row's. `id` is `coach_profiles.id`, not the coach's `users.id` —
  * the id every coach-scoped resource is keyed on. `businessName` is null
  * until the coach fills it in at their own onboarding (`coach-onboarding/02`).
+ *
+ * The four sharing columns are `relationship-controls/03`'s widening, and
+ * they are here rather than on `me.get` for the reason this file's own
+ * header gives: `get-me.ts` returns `identity.users` columns only, and all
+ * four are `client_profiles` columns. **Settings → What {coach} can see**
+ * therefore reads one query and has no waterfall (`UI-UX.md` §UX8) — the
+ * coach's name and the client's current setting arrive together, so the
+ * screen never draws a control claiming a state it does not yet know.
+ *
+ * `historySharingChoice` is the display half and `history_shared_from` the
+ * enforcement half; see the column's own comment in `schema/identity.ts`
+ * for why both exist.
  */
-export type MyCoach = Pick<CoachProfile, 'id' | 'businessName'> & Pick<User, 'name'>;
+export type MyCoach = Pick<CoachProfile, 'id' | 'businessName'> &
+  Pick<User, 'name'> &
+  Pick<
+    ClientProfile,
+    'historySharingChoice' | 'historySharedFrom' | 'metricsSharedFrom' | 'nutritionSharedFrom'
+  >;
 
 export async function getMyCoach(db: DbClient, clientProfileId: string): Promise<MyCoach | null> {
   const [row] = await db
@@ -29,6 +52,10 @@ export async function getMyCoach(db: DbClient, clientProfileId: string): Promise
       id: schema.coachProfiles.id,
       name: schema.users.name,
       businessName: schema.coachProfiles.businessName,
+      historySharingChoice: schema.clientProfiles.historySharingChoice,
+      historySharedFrom: schema.clientProfiles.historySharedFrom,
+      metricsSharedFrom: schema.clientProfiles.metricsSharedFrom,
+      nutritionSharedFrom: schema.clientProfiles.nutritionSharedFrom,
     })
     .from(schema.clientProfiles)
     // An INNER join, so a coachless client (`coach_id IS NULL`, the

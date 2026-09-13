@@ -275,6 +275,20 @@ export interface AnalyticsEventRegistry {
   client_invited: { invite_id: Uuid };
   client_activated: { client_id: Uuid; hours_to_accept: number };
   coach_note_created: { client_id: Uuid };
+  /**
+   * `relationship-controls/01`. All three carry `client_id` and nothing
+   * else — AN§3.0's automatic `user_id` is the coach on these surfaces, so
+   * the pair is already `coach_id`-keyed. A name, a status word, a
+   * timestamp or a reason would each be the thing AN§2.1 forbids.
+   *
+   * `client_paused` fires on **commit**, not on tap: the pause is deferred
+   * behind a five-second undo window, and an undone pause never happened.
+   * There is no `client_resumed` — a resume inside the window is the undo,
+   * and a resume outside it is derivable from the committed pair.
+   */
+  client_paused: { client_id: Uuid };
+  client_archived: { client_id: Uuid };
+  client_released: { client_id: Uuid };
 
   // AN§3.6 Messaging and live — never a message body
   message_sent: { conversation_id: Uuid; has_attachment: boolean; was_offline: boolean };
@@ -386,6 +400,9 @@ export const ANALYTICS_EVENT_NAMES = [
   'client_invited',
   'client_activated',
   'coach_note_created',
+  'client_paused',
+  'client_archived',
+  'client_released',
   'message_sent',
   'live_session_joined',
   'live_session_ended',

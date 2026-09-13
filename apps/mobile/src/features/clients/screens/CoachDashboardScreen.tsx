@@ -7,17 +7,18 @@ import {
   createThemedStyles,
   createThemedValue,
   density,
+  radius,
   spacing,
 } from '@coachos/ui';
 import { type AdherenceState } from '@coachos/utils';
 import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
-import { SearchX, TriangleAlert, UserPlus } from 'lucide-react-native';
+import { Archive, SearchX, TriangleAlert, UserPlus } from 'lucide-react-native';
 import { useCallback } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ClientListControls } from '../components/ClientListControls.tsx';
-import { ClientRow } from '../components/ClientRow.tsx';
+import { ClientRow, type ClientRowVariant } from '../components/ClientRow.tsx';
 import { DashboardCounters } from '../components/DashboardCounters.tsx';
 import { useClientListFilters } from '../hooks/useClientListFilters.ts';
 import { useCoachDashboard, type CoachDashboardClient } from '../hooks/useCoachDashboard.ts';
@@ -77,13 +78,22 @@ export function CoachDashboardScreen({ onOpenClient, onInviteClient }: CoachDash
   // one request (`coach-dashboard/02`).
   const filters = useClientListFilters(roster);
 
+  // **The whole list is archived, so no row has to say so.** Only an
+  // Archived chip on its own qualifies: the moment it sits beside another
+  // status the list is mixed again and every row owes the reader its own
+  // (`ClientRow`'s `variant` contract).
+  const variant: ClientRowVariant = filters.isArchivedOnly ? 'archived' : 'roster';
+
   // Stable across renders, so `ClientRow`'s `memo` is not defeated by a new
-  // arrow per row (`frontend-performance` §3).
+  // arrow per row (`frontend-performance` §3). `variant` joins the
+  // dependency list rather than being read inside: it changes once, when a
+  // chip is tapped, and a re-render of a hundred rows is exactly what
+  // should happen then.
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<CoachDashboardClient>) => (
-      <ClientRow client={item} onPress={onOpenClient} />
+      <ClientRow client={item} onPress={onOpenClient} variant={variant} />
     ),
-    [onOpenClient],
+    [onOpenClient, variant],
   );
 
   return (
@@ -115,8 +125,12 @@ export function CoachDashboardScreen({ onOpenClient, onInviteClient }: CoachDash
 
             {roster.length > 0 ? (
               <>
-                <AdherenceKey />
+                {/* No key under the Archived filter: the rows there draw no
+                    dots, so a legend for a graphic that is not on screen is
+                    four items of pure preamble. */}
+                {variant === 'archived' ? null : <AdherenceKey />}
                 <ClientListControls filters={filters} />
+                {variant === 'archived' ? <ArchivedListNote /> : null}
               </>
             ) : null}
           </View>
@@ -124,6 +138,7 @@ export function CoachDashboardScreen({ onOpenClient, onInviteClient }: CoachDash
         ListEmptyComponent={
           <DashboardBody
             hasRoster={roster.length > 0}
+            variant={variant}
             onClearFilters={filters.clearAll}
             isPending={dashboard.isPending}
             isError={dashboard.isError}
@@ -157,6 +172,7 @@ export function CoachDashboardScreen({ onOpenClient, onInviteClient }: CoachDash
 interface DashboardBodyProps {
   /** The coach HAS clients; the list is empty because their own controls emptied it. */
   hasRoster: boolean;
+  variant: ClientRowVariant;
   onClearFilters: () => void;
   isPending: boolean;
   isError: boolean;
@@ -172,6 +188,7 @@ interface DashboardBodyProps {
  */
 function DashboardBody({
   hasRoster,
+  variant,
   onClearFilters,
   isPending,
   isError,
@@ -204,6 +221,29 @@ function DashboardBody({
     );
   }
 
+  // **A coach who has never archived anyone, asking for the archived list.**
+  // Its own state, ahead of the generic one below, because "No clients
+  // match / clear your filters" would be answering a question they did not
+  // ask: nothing is narrowed away here, there is simply nothing to show
+  // yet. And because the sentence that belongs here is the reassuring one —
+  // archiving is the action a coach hesitates over (`COPY.md` §CO4.1).
+  if (hasRoster && variant === 'archived') {
+    return (
+      <EmptyState
+        icon={<Archive size={22} color={iconColor} />}
+        title="No archived clients"
+        body="Clients you archive move here and keep everything they logged."
+        // The way out of a filter that has nothing behind it
+        // (`ui-conventions` §4: an empty state gets one clear next step).
+        // "Back to your clients", not "Clear filters": the coach set one
+        // chip deliberately and is being returned somewhere, not corrected.
+        primaryAction={{ label: 'Back to your clients', onPress: onClearFilters }}
+        density="coach"
+        testID="dashboard-no-archived"
+      />
+    );
+  }
+
   // The coach's own search and filters emptied the list. Stating the fact
   // and offering the one action that undoes it (`product-copy` §5) — never
   // "no results found", which reads as a failure of the roster rather than
@@ -232,6 +272,66 @@ function DashboardBody({
     />
   );
 }
+
+/** On screen, and the two lines are one thought split where the design splits it. */
+export const ARCHIVED_NOTE_TITLE = 'Archived clients keep everything they logged';
+export const ARCHIVED_NOTE_BODY =
+  'They do not count against your plan. Send a new invite to work with someone again.';
+
+/**
+ * The one-paragraph answer to what archiving actually did, at the head of
+ * the list of people it was done to.
+ *
+ * **It is here because this is where a coach comes back to check.** The
+ * typed confirmation said all of this at the moment of archiving; a
+ * confirmation is read once, under pressure, by someone deciding. This is
+ * read calmly, by someone who already decided and wants to know whether
+ * they lost anything — and the answer, twice over, is no.
+ *
+ * An L1 well and not a card: `PrivacyLabel`'s register, for the same reason
+ * it gives — a statement the product makes, never a control. Nothing here
+ * is tappable, and "send a new invite" names the path rather than offering
+ * it, because the invite is per client and this note is about all of them.
+ *
+ * ⚠️ **Never a per-row chip.** Every row under this filter is archived, so
+ * a chip on each repeats one sentence until it is texture — `coach-notes/02`'s
+ * own argument, applied to a status.
+ */
+function ArchivedListNote() {
+  const themed = useThemedStyles();
+  const iconColor = useArchivedNoteIconColor();
+
+  return (
+    // One node in the reading order, not three: the glyph is decoration and
+    // the two lines are one sentence to a screen reader.
+    <View
+      style={[styles.note, themed.note]}
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={`${ARCHIVED_NOTE_TITLE}. ${ARCHIVED_NOTE_BODY}`}
+      testID="archived-list-note"
+    >
+      <Archive
+        size={ARCHIVED_NOTE_GLYPH}
+        color={iconColor}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      />
+      <View style={styles.noteText}>
+        {/* The Medium face by name — `fontWeight` does nothing useful on
+            Android (`Text`'s own contract). */}
+        <Text size="body-sm" className="font-sans-medium">
+          {ARCHIVED_NOTE_TITLE}
+        </Text>
+        <Text size="micro" tone="muted" style={styles.noteBody}>
+          {ARCHIVED_NOTE_BODY}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const ARCHIVED_NOTE_GLYPH = 16;
 
 const KEY_STATES: readonly AdherenceState[] = ['on-track', 'drifting', 'off-track', 'no-data'];
 
@@ -275,11 +375,34 @@ function describeRoster(clients: readonly CoachDashboardClient[] | undefined): s
   // reads as a bug.
   if (clients === undefined || clients.length === 0) return ' ';
 
-  const invited = clients.filter((client) => client.status === 'invited').length;
-  const active = clients.length - invited;
-  const activePart = `${String(active)} active`;
+  // **Counted per status, never as "the rest are active".**
+  //
+  // This read `clients.length - invited` while the payload was two
+  // statuses, where it was exact. `relationship-controls/01` widened it to
+  // four, and the same expression would now report a coach's paused and
+  // archived clients as active — on the one line of this screen a coach
+  // reads as their seat count (`CLAUDE.md` §15.5: paused and archived cost
+  // nothing).
+  //
+  // Archived is absent rather than zero: those clients are off the roster
+  // entirely and out of the default list, and a "0 archived" on a coach who
+  // has never archived anyone is a prompt to do it.
+  const counts = { active: 0, invited: 0, paused: 0 };
+  for (const client of clients) {
+    if (client.status === 'active') counts.active += 1;
+    else if (client.status === 'invited') counts.invited += 1;
+    else if (client.status === 'paused') counts.paused += 1;
+  }
 
-  return invited === 0 ? activePart : `${activePart} · ${String(invited)} invited`;
+  // Active first because it is the number a coach is looking for; paused
+  // before invited because it is about someone already on the book.
+  const parts = [
+    `${String(counts.active)} active`,
+    counts.paused === 0 ? null : `${String(counts.paused)} paused`,
+    counts.invited === 0 ? null : `${String(counts.invited)} invited`,
+  ].filter((part): part is string => part !== null);
+
+  return parts.join(' · ');
 }
 
 const GUTTER = density.coach.gutter;
@@ -298,11 +421,34 @@ const styles = StyleSheet.create({
     paddingBottom: spacing(10),
     borderBottomWidth: 1,
   },
+  note: {
+    flexDirection: 'row',
+    // `flex-start`, not `center`: at 200% text the body wraps to three
+    // lines and a centred glyph floats in the middle of them.
+    alignItems: 'flex-start',
+    gap: spacing(10),
+    borderRadius: radius.card,
+    borderWidth: 1,
+    paddingVertical: spacing(10),
+    paddingHorizontal: spacing(12),
+    marginBottom: spacing(4),
+  },
+  noteText: { flex: 1, minWidth: 0 },
+  noteBody: { marginTop: spacing(3) },
 });
 
 const useThemedStyles = createThemedStyles((t) => ({
   screen: { backgroundColor: t.colors.bg.DEFAULT },
   keyBorder: { borderBottomColor: t.colors.border.soft },
+  note: {
+    // L1, the recessed-well fill — the same register `PrivacyLabel` and
+    // Overview's injuries banner use for a statement the product makes
+    // (`DESIGN.md` §2).
+    backgroundColor: t.elevation.inset.backgroundColor,
+    borderColor: t.colors.border.soft,
+  },
 }));
 
 const useEmptyIconColor = createThemedValue((t) => t.colors.fg.muted);
+
+const useArchivedNoteIconColor = createThemedValue((t) => t.colors.fg['warm-muted']);

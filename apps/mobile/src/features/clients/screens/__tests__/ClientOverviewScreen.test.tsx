@@ -32,6 +32,19 @@ jest.mock('../../api.ts', () => {
 
 jest.mock('../../../../hooks/useWeightUnit.ts', () => ({ useWeightUnit: () => 'kg' }));
 
+// The relationship rows own a real mutation and a real toast; both have
+// their own files. This screen's share of the feature is WHERE the block
+// goes, and that is all this file asserts about it.
+jest.mock('../../hooks/useClientStatus.ts', () => ({
+  useClientStatus: () => ({
+    pause: jest.fn(),
+    resume: jest.fn(),
+    archive: jest.fn(),
+    release: jest.fn(),
+    isPending: false,
+  }),
+}));
+
 function makeOverview(overrides: Partial<ClientOverview> = {}): ClientOverview {
   return {
     clientId: CLIENT_ID,
@@ -40,6 +53,8 @@ function makeOverview(overrides: Partial<ClientOverview> = {}): ClientOverview {
     goal: 'fat_loss',
     avatarAssetId: null,
     coachSince: new Date('2026-03-01T00:00:00.000Z'),
+    pausedAt: null,
+    archivedAt: null,
     injuries: [],
     weightTrend: [
       { weekStartISO: '2026-08-03', weightKg: 81 },
@@ -85,11 +100,29 @@ function settle(data: ClientOverview): void {
 }
 
 const onBack = jest.fn();
+const onReleased = jest.fn();
 
 beforeEach(() => {
   onBack.mockClear();
+  onReleased.mockClear();
   settle(makeOverview());
 });
+
+function renderScreen() {
+  return render(
+    <ClientOverviewScreen clientId={CLIENT_ID} onBack={onBack} onReleased={onReleased} />,
+  );
+}
+
+/**
+ * Where a testID sits in the rendered tree. Crude on purpose: the ONE
+ * thing this task asks the screen to decide is document order, and every
+ * less crude way of asking (a children array, a layout measurement) is
+ * either fragile against a wrapper view or unavailable without a device.
+ */
+function positionOf(testID: string): number {
+  return JSON.stringify(screen.toJSON()).indexOf(`"${testID}"`);
+}
 
 describe('ClientOverviewScreen', () => {
   it('shows a skeleton, not a spinner, on the first load', () => {
@@ -99,13 +132,13 @@ describe('ClientOverviewScreen', () => {
       error: null,
       refetch: jest.fn(),
     };
-    render(<ClientOverviewScreen clientId={CLIENT_ID} onBack={onBack} />);
+    renderScreen();
 
     expect(screen.getByLabelText("Loading this client's week")).toBeTruthy();
   });
 
   it('renders every section §8.3 names, in one pass', () => {
-    render(<ClientOverviewScreen clientId={CLIENT_ID} onBack={onBack} />);
+    renderScreen();
 
     expect(screen.getByTestId('weight-trend')).toBeTruthy();
     expect(screen.getByTestId('adherence-summary')).toBeTruthy();
@@ -119,7 +152,7 @@ describe('ClientOverviewScreen', () => {
   });
 
   it('omits the injuries banner unless the client has injuries', () => {
-    render(<ClientOverviewScreen clientId={CLIENT_ID} onBack={onBack} />);
+    renderScreen();
     expect(screen.queryByTestId('injuries-banner')).toBeNull();
 
     settle(
@@ -127,7 +160,9 @@ describe('ClientOverviewScreen', () => {
         injuries: [{ area: 'left knee', notes: null, since: null, severity: null }],
       }),
     );
-    screen.rerender(<ClientOverviewScreen clientId={CLIENT_ID} onBack={onBack} />);
+    screen.rerender(
+      <ClientOverviewScreen clientId={CLIENT_ID} onBack={onBack} onReleased={onReleased} />,
+    );
     expect(screen.getByTestId('injuries-banner')).toBeTruthy();
   });
 
@@ -149,7 +184,7 @@ describe('ClientOverviewScreen', () => {
         },
       }),
     );
-    render(<ClientOverviewScreen clientId={CLIENT_ID} onBack={onBack} />);
+    renderScreen();
 
     expect(screen.getByText('No weigh-ins yet')).toBeTruthy();
     expect(screen.getByText('Nothing scheduled yet')).toBeTruthy();
@@ -167,7 +202,7 @@ describe('ClientOverviewScreen', () => {
       error: new Error('offline'),
       refetch: jest.fn(),
     };
-    render(<ClientOverviewScreen clientId={CLIENT_ID} onBack={onBack} />);
+    renderScreen();
 
     expect(screen.getByTestId('client-overview-error')).toBeTruthy();
     expect(screen.getByText('Try again')).toBeTruthy();
@@ -180,7 +215,7 @@ describe('ClientOverviewScreen', () => {
       error: notYourClientError(),
       refetch: jest.fn(),
     };
-    render(<ClientOverviewScreen clientId={CLIENT_ID} onBack={onBack} />);
+    renderScreen();
 
     expect(screen.getByTestId('client-overview-not-found')).toBeTruthy();
     expect(screen.queryByText(NOT_FOUND_COPY.title)).toBeNull(); // overridden with the client wording
@@ -198,3 +233,64 @@ function notYourClientError(): TRPCClientError<never> {
   });
   return error;
 }
+
+describe('where the relationship block goes', () => {
+  it('puts it last for an active client, after every piece of evidence', () => {
+    renderScreen();
+
+    // The actions come AFTER the reasons: a coach arrives at "pause this
+    // client" having just read the week that made them consider it.
+    expect(positionOf('pinned-notes')).toBeGreaterThan(-1);
+    expect(positionOf('client-status-actions')).toBeGreaterThan(positionOf('pinned-notes'));
+  });
+
+  it('puts it first for a paused client, under the injuries banner', () => {
+    settle(
+      makeOverview({
+        status: 'paused',
+        injuries: [
+          { area: 'Right shoulder', severity: 'moderate', since: 'Jan 2026', notes: null },
+        ],
+      }),
+    );
+    renderScreen();
+
+    // Injuries keep their unconditional first slot — `client-detail/01`'s
+    // rule, which this task does not get to break.
+    expect(positionOf('injuries-banner')).toBeLessThan(positionOf('client-status-actions'));
+    expect(positionOf('client-status-actions')).toBeLessThan(positionOf('weight-trend'));
+  });
+
+  it('puts it first for an archived client too', () => {
+    settle(makeOverview({ status: 'archived' }));
+    renderScreen();
+
+    expect(positionOf('client-status-actions')).toBeLessThan(positionOf('weight-trend'));
+  });
+
+  it('never moves it once the screen is up', () => {
+    const view = renderScreen();
+    const before = positionOf('client-status-actions') < positionOf('weight-trend');
+
+    settle(makeOverview({ status: 'paused' }));
+    view.rerender(
+      <ClientOverviewScreen clientId={CLIENT_ID} onBack={onBack} onReleased={onReleased} />,
+    );
+
+    // Sliding the card eleven hundred pixels under an open undo window
+    // would put Archive where Pause was, mid-gesture.
+    expect(positionOf('client-status-actions') < positionOf('weight-trend')).toBe(before);
+  });
+
+  it('dims nothing on a paused client', () => {
+    settle(makeOverview({ status: 'paused' }));
+    renderScreen();
+
+    // The week is reported in full: 82% is still what happened in the seven
+    // days before they stopped, and greying it would say otherwise.
+    expect(screen.getByText('4 of 5 sessions · nutrition 95%')).toBeTruthy();
+    // No card on this screen carries an opacity — the only `opacity` the
+    // feature owns is the inert row's, and no row is inert here.
+    expect(JSON.stringify(screen.toJSON())).not.toContain('"opacity"');
+  });
+});

@@ -40,12 +40,35 @@ function findMetric(metrics: CollectedMetric[], name: string): CollectedMetric |
 export function detectFiringConditions(metrics: CollectedMetric[]): Alert[] {
   const firing: Alert[] = [];
 
+  // OB§4.1's P1 is "**any** integrity metric non-zero", and `evaluateAlerts`
+  // below dispatches at most one alert per id per cycle — so every integrity
+  // reason folds into one P1 naming all of them. Two P1 objects would mean
+  // the second reason is silently dropped on a week where both are true.
+  const integrityReasons: string[] = [];
+
   const duplicateSessions = findMetric(metrics, 'integrity.duplicate_sessions');
   if (duplicateSessions && duplicateSessions.value > 0) {
-    firing.push({
-      alertId: 'P1',
-      summary: `${duplicateSessions.value} duplicate workout session(s) detected for the same client and program day.`,
-    });
+    integrityReasons.push(
+      `${duplicateSessions.value} duplicate workout session(s) detected for the same client and program day.`,
+    );
+  }
+
+  // `exercise-reconcile` pass 3, now sourced from the metric rather than
+  // dispatched from inside the pass — see `services/exercises/reconcile.ts`'s
+  // `assertReferentialIntegrity` for why (S23).
+  const orphanedExerciseRefs = findMetric(metrics, 'integrity.orphaned_exercise_refs');
+  if (orphanedExerciseRefs && orphanedExerciseRefs.value > 0) {
+    const setLogs = Number(orphanedExerciseRefs.dimensions?.setLogs ?? 0);
+    const personalRecords = Number(orphanedExerciseRefs.dimensions?.personalRecords ?? 0);
+    integrityReasons.push(
+      `${orphanedExerciseRefs.value} row(s) reference a missing exercise ` +
+        `(${setLogs} in training.set_logs, ${personalRecords} in training.personal_records). ` +
+        `A foreign key to training.exercises is missing or was dropped.`,
+    );
+  }
+
+  if (integrityReasons.length > 0) {
+    firing.push({ alertId: 'P1', summary: integrityReasons.join(' ') });
   }
 
   const errorRate = findMetric(metrics, 'service.error_rate_5m');

@@ -4,6 +4,7 @@ import { useDebounced } from '../../../hooks/useDebounced.ts';
 import type { DashboardCounterKey } from '../components/DashboardCounters.tsx';
 import {
   DEFAULT_CLIENT_SORT,
+  DEFAULT_EXCLUDED_STATUS,
   useClientListPreferences,
   type ClientGoalFilter,
   type ClientSort,
@@ -31,6 +32,7 @@ import type { CoachDashboardClient } from './useCoachDashboard.ts';
 export {
   CLIENT_SORTS,
   DEFAULT_CLIENT_SORT,
+  DEFAULT_EXCLUDED_STATUS,
   FILTERABLE_GOALS,
   FILTERABLE_STATUSES,
   type ClientGoalFilter,
@@ -73,9 +75,30 @@ type CounterPredicate = (client: CoachDashboardClient) => boolean;
  */
 export const COUNTER_FILTERS: Record<DashboardCounterKey, CounterPredicate | null> = {
   needsReview: (client) => client.unreviewedSessions + client.unreviewedVideos > 0,
-  offPlan: (client) => client.adherenceColor === 'red',
+  offPlan: (client) => COACHED_STATUSES.has(client.status) && client.adherenceColor === 'red',
   checkinsDue: null,
 };
+
+/**
+ * **`CLAUDE.md` §15.5, mirrored from the one site that owns it** —
+ * `apps/api/src/features/coach/dashboard.ts`'s `COACHED_STATUSES`, which is
+ * what the `offTrack` number this drills into is already filtered by.
+ *
+ * A paused client still carries last week's half-finished sessions in the
+ * view's seven-day window, so their score is genuinely red — and red about
+ * a week they were not asked to train in. The server refuses to count them;
+ * without this the drill-down would list them anyway, and a coach tapping
+ * "Off plan · 3" would get four rows, the extra one drawn with the grey
+ * dots `ClientRow` forces on any client who is not currently being coached.
+ *
+ * Duplicated across the wire rather than shared because the API package is
+ * not importable from the app; the server stays authoritative, and
+ * `relationship-controls/01`'s counter tests pin its half.
+ */
+export const COACHED_STATUSES: ReadonlySet<CoachDashboardClient['status']> = new Set([
+  'active',
+  'invited',
+]);
 
 export function isCounterFilterable(counter: DashboardCounterKey): boolean {
   return COUNTER_FILTERS[counter] !== null;
@@ -176,6 +199,25 @@ function rankNewestFirst(value: Date | null): number {
   return value === null ? Number.NEGATIVE_INFINITY : value.getTime();
 }
 
+/**
+ * **The archived list's one order: most recently archived first.**
+ *
+ * Not a `ClientSort` and not reachable from the control, because it is not
+ * a choice. The three sorts a coach can pick rank by signals this filter
+ * has already made moot — `attention` above all, which would rank a list on
+ * which nothing needs attention — so the approved design gives the archived
+ * list a single order and states it in the count line rather than offering
+ * three that cannot mean anything here.
+ *
+ * A row with no `archived_at` sorts last: absence is not recency, the same
+ * rule `rankNumberAscending` applies to a missing adherence score.
+ */
+function compareArchivedNewestFirst(a: CoachDashboardClient, b: CoachDashboardClient): number {
+  const recency = compareRanks(rankNewestFirst(b.archivedAt), rankNewestFirst(a.archivedAt));
+  if (recency !== 0) return recency;
+  return compareIdentity(a, b);
+}
+
 const COMPARATORS: Record<
   ClientSort,
   (a: CoachDashboardClient, b: CoachDashboardClient) => number
@@ -203,9 +245,7 @@ export function selectClients(
 
   const matched = clients.filter((client) => {
     if (needle !== '' && !client.name.toLocaleLowerCase().includes(needle)) return false;
-    if (selection.statuses.length > 0 && !includesStatus(selection.statuses, client.status)) {
-      return false;
-    }
+    if (!matchesStatus(selection.statuses, client.status)) return false;
     if (selection.goals.length > 0 && !includesGoal(selection.goals, client.goal)) return false;
     if (counterPredicate !== null && !counterPredicate(client)) return false;
     return true;
@@ -213,13 +253,61 @@ export function selectClients(
 
   // `filter` already copied; sorting it in place never touches the caller's
   // array, which is the query cache's own and must not be reordered.
-  return matched.sort(COMPARATORS[selection.sort]);
+  return matched.sort(
+    isArchivedOnly(selection.statuses) ? compareArchivedNewestFirst : COMPARATORS[selection.sort],
+  );
 }
 
-function includesStatus(
+/**
+ * True only when `archived` is the WHOLE selection, never merely part of
+ * it: beside any other chip the list is mixed again, and a mixed list is
+ * the coach's own sort and the roster's own count line.
+ */
+export function isArchivedOnly(statuses: readonly ClientStatusFilter[]): boolean {
+  return statuses.length === 1 && statuses[0] === DEFAULT_EXCLUDED_STATUS;
+}
+
+/**
+ * **How many clients this selection could draw, which is the count line's
+ * denominator.**
+ *
+ * The status facet decides membership; the query, the goal chips, and the
+ * counter narrow within it. So the universe is the status facet alone —
+ * including its default archived exclusion, which is the product's choice
+ * rather than the coach's.
+ *
+ * Before `relationship-controls/01` this was `clients.length` and the two
+ * agreed, because the payload was the roster. Now the payload is the whole
+ * book: searching a 27-client roster with 11 archived behind it read
+ * "24 of 38 clients", and 38 counts rows that list can never show.
+ */
+export function countStatusUniverse(
+  clients: readonly CoachDashboardClient[],
+  statuses: readonly ClientStatusFilter[],
+): number {
+  return clients.reduce(
+    (total, client) => (matchesStatus(statuses, client.status) ? total + 1 : total),
+    0,
+  );
+}
+
+/**
+ * **No chip on is not "no filter" — it is "everything except archived".**
+ *
+ * `relationship-controls/01`: archiving is a coach's bookkeeping, so an
+ * archived client is on the record rather than on the roster, and a
+ * hundred-row list that quietly grows by every client a coach ever finished
+ * with is the failure. Selecting the `Archived` chip is how they are asked
+ * for, and selecting it beside another chip widens rather than replaces.
+ *
+ * Paused is NOT excluded: a paused client is still this coach's client, and
+ * the coach decided they would be back.
+ */
+function matchesStatus(
   statuses: readonly ClientStatusFilter[],
   status: CoachDashboardClient['status'],
 ): boolean {
+  if (statuses.length === 0) return status !== DEFAULT_EXCLUDED_STATUS;
   return statuses.some((entry) => entry === status);
 }
 
@@ -233,8 +321,14 @@ function includesGoal(
 export interface ClientListFilters extends ClientListSelection {
   /** The array the list renders — filtered and sorted. */
   clients: CoachDashboardClient[];
-  /** Before any narrowing, so the count line can say "3 of 26". */
+  /**
+   * The rows this selection could draw — `countStatusUniverse`, not the
+   * payload length — so the count line can say "3 of 26" about a list that
+   * could actually hold 26.
+   */
   totalCount: number;
+  /** The archived list: its own count line, and an order it does not choose. */
+  isArchivedOnly: boolean;
   /** What the coach is still typing, echoed immediately; `query` is its debounced twin. */
   draftQuery: string;
   setQuery: (query: string) => void;
@@ -301,7 +395,8 @@ export function useClientListFilters(clients: readonly CoachDashboardClient[]): 
   return {
     ...selection,
     clients: visible,
-    totalCount: clients.length,
+    totalCount: countStatusUniverse(clients, statuses),
+    isArchivedOnly: isArchivedOnly(statuses),
     draftQuery,
     setQuery,
     setSort,

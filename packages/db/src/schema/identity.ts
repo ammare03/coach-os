@@ -29,6 +29,7 @@ import {
   billingPlatform,
   clientStatus,
   experienceLevel,
+  historySharingChoice,
   subscriptionStatus,
   subscriptionTier,
   trainingGoal,
@@ -337,6 +338,21 @@ export const clientProfiles = identitySchema.table(
     // for nutrition (`meal`) — wired into `ownsResource` now, since `meal`
     // already exists as a resource kind.
     nutritionSharedFrom: timestamp('nutrition_shared_from', { withTimezone: true }),
+    // `relationship-controls/03` — DISPLAY ONLY. The option the client
+    // picked, stored beside the timestamps above because a timestamp
+    // cannot be inverted back to it: `everything` is recoverable
+    // (`<= users.created_at`), but a *nothing* chosen six weeks ago and a
+    // *12 weeks* chosen today are two past instants nothing tells apart.
+    // The settings screen has to show the choice the client actually made
+    // rather than a default, so it reads this.
+    //
+    // **Nothing in any authorisation path may read this column.**
+    // `ownsResource` and `resource-registry.ts` compare `*_shared_from`
+    // timestamps and only those — the enforcement column stays a
+    // timestamp, which is `03`'s own Risks section. Null for every row
+    // written before this column existed and for a client who has never
+    // made the decision.
+    historySharingChoice: historySharingChoice('history_sharing_choice'),
     status: clientStatus('status').notNull().default('invited'),
     invitedAt: timestamp('invited_at', { withTimezone: true }).notNull().defaultNow(),
     activatedAt: timestamp('activated_at', { withTimezone: true }),

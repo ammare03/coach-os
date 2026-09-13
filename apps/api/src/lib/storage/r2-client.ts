@@ -6,7 +6,12 @@
 import fs from 'node:fs';
 import type { Readable } from 'node:stream';
 
-import { DeleteObjectsCommand, GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectsCommand,
+  GetObjectCommand,
+  ListObjectsV2Command,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
@@ -47,13 +52,76 @@ export async function deleteR2Objects(keys: string[]): Promise<void> {
   if (keys.length === 0) return;
 
   for (const batch of chunk(keys, MAX_KEYS_PER_BATCH)) {
-    await client.send(
+    const result = await client.send(
       new DeleteObjectsCommand({
         Bucket: env.R2_BUCKET_NAME,
         Delete: { Objects: batch.map((Key) => ({ Key })), Quiet: true },
       }),
     );
+
+    // `DeleteObjects` answers 200 even when individual keys failed — the
+    // failures come back in `Errors`, and `Quiet: true` suppresses only the
+    // *successes*, never these. Ignoring them is how a purge reports
+    // success while the bytes survive (DB§19.2), so they end the call
+    // loudly instead. The keys themselves stay out of the message (DB§18);
+    // the count and the store's own codes are what an operator acts on.
+    const failures = result.Errors ?? [];
+    if (failures.length > 0) {
+      const codes = [...new Set(failures.map((failure) => failure.Code ?? 'unknown'))].sort();
+      throw new Error(`R2 refused to delete ${failures.length} object(s): ${codes.join(', ')}`);
+    }
   }
+}
+
+/**
+ * Deletes every object under one key prefix, paging the listing to its end
+ * — `ListObjectsV2` returns at most 1000 keys per call and signals more
+ * with `IsTruncated`, so a single unpaged call would silently leave
+ * object 1001 onward in place. `account-lifecycle/04`'s purge uses this
+ * for `exports/{userId}/`, which R2 holds as many objects under as the
+ * user made export requests; DB§19.2 requires all of them gone, not the
+ * first page of them.
+ *
+ * Returns how many keys were deleted, so a caller can record a magnitude
+ * (`observability-ops` §3 — counts, never contents).
+ *
+ * **The prefix must name a folder** — non-empty and `/`-terminated. An
+ * empty prefix lists the whole bucket, and `exports/user-a` (no slash)
+ * would also match a hypothetical `exports/user-abc/`. Both are
+ * catastrophic in a delete path and neither is worth allowing for the sake
+ * of a caller's convenience.
+ */
+export async function deleteR2ObjectsByPrefix(prefix: string): Promise<number> {
+  if (prefix.length === 0 || !prefix.endsWith('/')) {
+    throw new Error('R2 prefix delete requires a non-empty, "/"-terminated prefix');
+  }
+
+  let continuationToken: string | undefined;
+  let deletedCount = 0;
+
+  do {
+    const listed = await client.send(
+      new ListObjectsV2Command({
+        Bucket: env.R2_BUCKET_NAME,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+        MaxKeys: MAX_KEYS_PER_BATCH,
+      }),
+    );
+
+    const keys = (listed.Contents ?? [])
+      .map((object) => object.Key)
+      .filter((key): key is string => key !== undefined);
+
+    await deleteR2Objects(keys);
+    deletedCount += keys.length;
+
+    // Only `IsTruncated` says there is more; a `NextContinuationToken`
+    // read without that check can loop on a final page.
+    continuationToken = listed.IsTruncated === true ? listed.NextContinuationToken : undefined;
+  } while (continuationToken !== undefined);
+
+  return deletedCount;
 }
 
 /**

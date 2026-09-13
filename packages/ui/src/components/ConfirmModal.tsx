@@ -25,17 +25,26 @@ export type ConfirmModalProps = {
 };
 
 /**
- * The typed-confirmation dialog, for the two stopping points `CLAUDE.md`
- * §7.5 permits: account deletion (§21.4) and client archival.
+ * The typed-confirmation dialog, for the **three** stopping points
+ * `CLAUDE.md` §7.5 permits: account deletion (§21.4), client archival, and
+ * a client leaving their coach.
  *
  * Deliberately narrow. There is no `variant` prop, no "are you sure" mode
  * without typing, and no countdown-then-enable shortcut — each of those
  * defeats the only purpose of the pattern, which is to interrupt autopilot.
  * There is also no "don't ask again".
  *
- * If a third consumer appears, that is a design review rather than an
- * import: `screen-states/03`'s undo toast is the pattern for everything
- * else, including deletes.
+ * This doc comment used to say two consumers, and that a third was "a
+ * design review, not an import". **That review happened**, in
+ * `phase-10-coach-review-surfaces/relationship-controls/02`, and the answer
+ * was yes for one reason: leaving releases a seat and starts a 30-day clock
+ * on the former coach's read access, and no undo toast can put either back.
+ * The test is not "is this destructive" — every delete is — it is "is there
+ * a take-back the five-second window could honestly offer". Where there is,
+ * `screen-states/03`'s undo toast is still the pattern, including for
+ * deletes.
+ *
+ * A **fourth** consumer is the next review, on the same test.
  */
 export function ConfirmModal({
   isOpen,

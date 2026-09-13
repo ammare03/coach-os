@@ -25,14 +25,19 @@ export type ModalProps = {
  * A centred, focus-trapped dialog.
  *
  * **A sheet is for _doing_ something; a modal is for _stopping_ something.**
- * `CLAUDE.md` §7.5 permits exactly two stopping points in the whole product
- * — account deletion (§21.4) and client archival — and both take a typed
+ * `CLAUDE.md` §7.5 permits three stopping points in the whole product —
+ * account deletion (§21.4), client archival, and a client leaving their
+ * coach (`relationship-controls/02`) — and all three take a typed
  * confirmation. Everything else, including every delete, performs
  * immediately with an undo toast (`screen-states/03`).
  *
- * So this component ships with two known consumers and no more. A third is
- * a design review, not an import: confirmation dialogs train people to tap
- * "yes" without reading, which is precisely why undo is the pattern.
+ * The third was added by design review rather than by import, which is the
+ * bar this comment has always set and the bar the next one meets or does
+ * not: **is there a take-back a five-second window could honestly offer?**
+ * Leaving a coach has none — it releases a seat and starts a 30-day clock
+ * on somebody else's access. Confirmation dialogs train people to tap "yes"
+ * without reading, which is precisely why undo is the pattern everywhere
+ * that test passes.
  */
 export function Modal({ isOpen, onDismiss, isDismissible = true, children, testID }: ModalProps) {
   const { elevation } = useTheme();

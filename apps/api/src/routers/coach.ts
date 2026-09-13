@@ -1,5 +1,6 @@
 import { coach as coachSchemas } from '@coachos/schemas';
 
+import { setClientStatus } from '../features/clients/set-status.ts';
 import { getClientOverview } from '../features/coach/client-overview.ts';
 import { getClientTrainingHistory } from '../features/coach/client-training-history.ts';
 import { getCoachDashboard } from '../features/coach/dashboard.ts';
@@ -74,6 +75,26 @@ export const coachRouter = router({
       .input(coachSchemas.clientTrainingHistoryInput)
       .use(ownsResource('client', (i: { clientId: string }) => i.clientId))
       .query(({ ctx, input }) => getClientTrainingHistory(ctx.db, input.clientId, input)),
+
+    // `phase-10-coach-review-surfaces/relationship-controls/01` — pause,
+    // resume, archive. Beside `release` below because the four are one
+    // affordance group on client detail, and because both take a
+    // `clientId` and are guarded identically.
+    //
+    // The resolver is one line on purpose: every rule about
+    // `client_profiles.status` — which moves are legal, which timestamp
+    // each writes, the `client_status_timestamps` check, the audit entry —
+    // lives in `set-status.ts`, so P20 `seat-management/03` has exactly one
+    // file to extend with `seat_hold_until`.
+    setStatus: coachProcedure
+      .input(coachSchemas.setClientStatusInput)
+      .use(ownsResource('client', (i: { clientId: string }) => i.clientId))
+      .mutation(({ ctx, input }) =>
+        setClientStatus(ctx.db, ctx, {
+          clientProfileId: input.clientId,
+          status: input.status,
+        }),
+      ),
 
     release: coachProcedure
       .input(coachSchemas.releaseClientInput)

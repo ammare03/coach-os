@@ -14,6 +14,16 @@ import { AuthScreenShell } from '../components/AuthScreenShell.tsx';
 // `attachClient` throws `CLIENT_ALREADY_HAS_COACH` — and this screen gives
 // that refusal an honest surface. It adds no rule and performs no action.
 
+// `relationship-controls/02` made the pointer below real. This screen was
+// written when Settings had no Coaching section, so "leave in Settings
+// first" was a sentence describing a place that did not exist yet; it now
+// names the row a client will actually find, and the button under it is the
+// link. The button itself is unchanged — `InviteArrival` has always wired
+// `onOpenSettings` to `/(client)/settings`.
+const MOVE_INSTRUCTIONS =
+  'Go to Settings → Coaching → Leave coach. Your training history, photos and messages stay ' +
+  'yours either way — nothing is deleted when a coaching relationship ends.';
+
 export type InviteRefusedReason = 'client-has-coach' | 'signed-in-as-coach';
 
 export interface InviteRefusedScreenProps {
@@ -56,8 +66,7 @@ export function InviteRefusedScreen({
           <Card>
             <Text size="label">If you want to move</Text>
             <Text size="body" tone="muted" style={styles.cardBody}>
-              Leave your current coach in Settings first. Your training history, photos and messages
-              stay yours either way — nothing is deleted when a coaching relationship ends.
+              {MOVE_INSTRUCTIONS}
             </Text>
           </Card>
         )}

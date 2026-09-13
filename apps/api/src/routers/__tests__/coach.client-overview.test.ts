@@ -275,6 +275,78 @@ describe('coach.clients.overview', () => {
       expect(overview.injuries).toEqual([]);
     });
   });
+
+  /**
+   * **`relationship-controls/01` needs the DATE, not just the status.**
+   *
+   * `ClientStatusChip` and `ClientStatusActions` both take a `since` and
+   * render "Paused since 11 September" from it, falling back to the bare
+   * word when it is `null` rather than inventing a date. They were shipped
+   * against a payload that had no such column, so the dated form was
+   * unreachable — these two assertions are what make it reachable.
+   *
+   * Driven through `client_profiles` directly rather than through
+   * `coach.clients.setStatus`, and deliberately: this suite is about what
+   * the READ returns for a row in a given state. The transition itself is
+   * `features/clients/set-status.test.ts`'s subject, and going through it
+   * here would make a read test fail when a write rule changes.
+   */
+  describe('the status timestamps the paused and archived chips are dated from', () => {
+    async function withStatus<T>(
+      status: 'paused' | 'archived',
+      at: Date,
+      body: () => Promise<T>,
+    ): Promise<T> {
+      const column = status === 'paused' ? { pausedAt: at } : { archivedAt: at };
+      await db
+        .update(schema.clientProfiles)
+        .set({ status, ...column })
+        .where(eq(schema.clientProfiles.id, fixture.clientA2.profileId));
+      try {
+        return await body();
+      } finally {
+        // Restored in `finally` so a failing expectation cannot leave a
+        // paused client behind for whatever runs next in this file.
+        await db
+          .update(schema.clientProfiles)
+          .set({ status: 'active', pausedAt: null, archivedAt: null })
+          .where(eq(schema.clientProfiles.id, fixture.clientA2.profileId));
+      }
+    }
+
+    it('carries paused_at for a paused client', async () => {
+      const pausedAt = new Date('2026-09-11T09:30:00.000Z');
+
+      await withStatus('paused', pausedAt, async () => {
+        const overview = await callAs(fixture.coachA, fixture.clientA2.profileId);
+
+        expect(overview.status).toBe('paused');
+        expect(overview.pausedAt).toEqual(pausedAt);
+        expect(overview.archivedAt).toBeNull();
+      });
+    });
+
+    it('carries archived_at for an archived client', async () => {
+      const archivedAt = new Date('2026-09-04T16:00:00.000Z');
+
+      await withStatus('archived', archivedAt, async () => {
+        const overview = await callAs(fixture.coachA, fixture.clientA2.profileId);
+
+        expect(overview.status).toBe('archived');
+        expect(overview.archivedAt).toEqual(archivedAt);
+      });
+    });
+
+    it('carries neither for an active client, so the chip says nothing at all', async () => {
+      const overview = await callAs(fixture.coachA, fixture.clientA1.profileId);
+
+      // `client_status_timestamps` is what guarantees this, not the query —
+      // asserted here so the two columns cannot be selected from the wrong
+      // row and still look right.
+      expect(overview.pausedAt).toBeNull();
+      expect(overview.archivedAt).toBeNull();
+    });
+  });
 });
 
 // `injuries` is `jsonb` with no `CHECK` behind it, so the parse is the only

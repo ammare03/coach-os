@@ -96,6 +96,16 @@ export interface ClientOverviewDetail {
   avatarAssetId: string | null;
   /** When the CURRENT coaching relationship began; null for a first-ever coach (DB§5.1). */
   coachSince: Date | null;
+  /**
+   * `client_profiles.paused_at` — set while `status = 'paused'` and cleared
+   * on resume (`client_status_timestamps`). `ClientStatusChip` and
+   * `ClientStatusActions` both render the dated form ("Paused since
+   * Thursday 11 September") from it, and the undated one when it is `null`
+   * rather than inventing a date.
+   */
+  pausedAt: Date | null;
+  /** `client_profiles.archived_at`. Never cleared — archiving is one-way. */
+  archivedAt: Date | null;
   /** Empty array means no injuries. The banner renders iff this is non-empty (§8.3 AC). */
   injuries: ClientInjury[];
   weightTrend: WeightTrendPoint[];
@@ -175,6 +185,11 @@ export function identityQuery(db: DbClient, clientProfileId: string) {
       nutritionAdherence7d: schema.vClientOverview.nutritionAdherence7d,
       injuries: schema.clientProfiles.injuries,
       coachSince: schema.clientProfiles.coachSince,
+      // Free: `client_profiles` is already joined for the two above, so the
+      // status timestamps the header's chip is dated from cost no statement
+      // and no round trip.
+      pausedAt: schema.clientProfiles.pausedAt,
+      archivedAt: schema.clientProfiles.archivedAt,
     })
     .from(schema.vClientOverview)
     .innerJoin(schema.clientProfiles, eq(schema.clientProfiles.id, schema.vClientOverview.clientId))
@@ -380,6 +395,8 @@ export async function getClientOverview(
     goal: identity.goal,
     avatarAssetId: identity.avatarAssetId,
     coachSince: identity.coachSince,
+    pausedAt: identity.pausedAt,
+    archivedAt: identity.archivedAt,
     injuries: parseInjuries(identity.injuries),
     weightTrend,
     adherence: {

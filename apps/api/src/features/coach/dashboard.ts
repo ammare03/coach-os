@@ -22,12 +22,34 @@ import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 // that could drift.
 
 /**
- * `client_profiles_active_seats`-shaped: the roster is the clients a coach
- * is actually carrying (§15.5). Paused and archived clients are off it —
- * they cost the coach nothing and reviewing them is not this week's work.
- * `deleted_at IS NULL` is already in the view (DB§9).
+ * **Every status, and the payload is the whole book — not the roster.**
+ *
+ * This read `['active', 'invited']` until `relationship-controls/01`, on the
+ * reasoning that paused and archived clients cost the coach nothing and are
+ * not this week's work. That is still true of the *work*, and false of the
+ * *list*: that task gives a coach a Paused chip on the row and a Paused and
+ * an Archived filter above it, and a filter over a set the server never
+ * sent is a filter that always yields nothing.
+ *
+ * Listed in full rather than dropped, so a new `client_status` value has to
+ * be added here deliberately instead of joining the payload the day the
+ * enum grows.
+ *
+ * ⚠️ **This is not a seat list and nothing may count it as one** — see
+ * `COACHED_STATUSES` immediately below, which is. `deleted_at IS NULL` is
+ * already in the view (DB§9).
  */
-const ROSTER_STATUSES = ['active', 'invited'] as const;
+const PAYLOAD_STATUSES = ['active', 'invited', 'paused', 'archived'] as const;
+
+/**
+ * **`CLAUDE.md` §15.5, and the only place on this screen that encodes it.**
+ *
+ * Active and invited count against a coach's seats; paused and archived do
+ * not. Widening `PAYLOAD_STATUSES` above put four statuses into one array,
+ * so every number derived from that array has to say which of the two sets
+ * it means — and `offTrack` means this one.
+ */
+const COACHED_STATUSES: ReadonlySet<ClientOverview['status']> = new Set(['active', 'invited']);
 
 /** §8.2's amber/red boundary, read through `adherenceColor` and never re-stated. */
 const OFF_TRACK_COLOR: AdherenceColor = 'red';
@@ -68,6 +90,21 @@ export interface ClientOverviewRow {
   unreviewedSessions: number;
   unreviewedVideos: number;
   latestWeightKg: number | null;
+  /**
+   * `client_profiles.paused_at` — set while `status = 'paused'` and cleared
+   * on resume (`client_status_timestamps`). The row's meta lead and the
+   * chip's spoken label are dated from it; both render their undated form
+   * when it is `null` rather than inventing a date.
+   */
+  pausedAt: Date | null;
+  /** `client_profiles.archived_at`. Never cleared — archiving is one-way. */
+  archivedAt: Date | null;
+  /**
+   * When the CURRENT coaching relationship began (DB§5.1); `null` for a
+   * first-ever coach. The archived row's "42 weeks together" is measured
+   * from here to `archivedAt`.
+   */
+  coachSince: Date | null;
   /** `completed / scheduled`, or `null` when nothing was scheduled. */
   trainingAdherence: number | null;
   /** The view's already-averaged 7-day figure, not a recomputation. */
@@ -102,12 +139,40 @@ export function clientOverviewQuery(db: DbClient, coachProfileId: string) {
       goal: schema.vClientOverview.goal,
       avatarAssetId: schema.vClientOverview.avatarAssetId,
       unreadMessages: schema.vClientOverview.unreadMessages,
+      // The three `client_profiles` columns the view does not carry, taken
+      // through a join rather than a fourth statement — the same shape
+      // `client-overview.ts`'s `identityQuery` already uses for `injuries`
+      // and `coach_since`.
+      //
+      // Not added to `v_client_overview` itself, which would be the one
+      // read cheaper still: the view is `CREATE OR REPLACE`, so a column can
+      // only be appended, and appending three to serve one screen's
+      // furniture is a migration every other consumer of the view carries.
+      pausedAt: schema.clientProfiles.pausedAt,
+      archivedAt: schema.clientProfiles.archivedAt,
+      coachSince: schema.clientProfiles.coachSince,
     })
     .from(schema.vClientOverview)
+    .innerJoin(
+      schema.clientProfiles,
+      and(
+        eq(schema.clientProfiles.id, schema.vClientOverview.clientId),
+        // **Load-bearing, and not the redundancy it looks like.** The id
+        // equality alone is a join key with no selective predicate on
+        // `client_profiles`, and the planner answers it by hashing the
+        // WHOLE table — measured at 10k rows against the 100 this coach
+        // has, and caught by the query-plan test rather than in production.
+        // Repeating the coach scope the view has already applied gives
+        // `client_profiles_coach` something to match, which is the same
+        // argument the two `deleted_at IS NULL` clauses below make about
+        // their partial indexes. Do not "simplify" it away.
+        eq(schema.clientProfiles.coachId, coachProfileId),
+      ),
+    )
     .where(
       and(
         eq(schema.vClientOverview.coachId, coachProfileId),
-        inArray(schema.vClientOverview.status, ROSTER_STATUSES),
+        inArray(schema.vClientOverview.status, PAYLOAD_STATUSES),
       ),
     )
     .orderBy(schema.vClientOverview.name);
@@ -223,6 +288,9 @@ export async function getCoachDashboard(
       unreviewedSessions: row.unreviewedSessions,
       unreviewedVideos: row.unreviewedVideos,
       latestWeightKg: parseNumeric(row.latestWeightKg),
+      pausedAt: row.pausedAt,
+      archivedAt: row.archivedAt,
+      coachSince: row.coachSince,
       trainingAdherence,
       nutritionAdherence,
       overallAdherence,
@@ -234,7 +302,20 @@ export async function getCoachDashboard(
     // A client with no data at all is grey, not red — `adherenceColor` is
     // what decides that, so the counter cannot drift from the dot beside
     // the client's name (`adherence-engine/01`).
-    offTrack: clients.filter((client) => client.adherenceColor === OFF_TRACK_COLOR).length,
+    //
+    // **`COACHED_STATUSES` is the second half of that sentence, and it is
+    // what keeps this number where it was when the payload widened.** A
+    // client paused on Tuesday still has last week's half-finished sessions
+    // in the view's seven-day window, so their score is genuinely red — and
+    // it is red about a week they were not asked to train in. Counting them
+    // would tell a coach that pausing a client put them off plan.
+    //
+    // The list agrees by construction: `ClientRow` forces a non-coached
+    // client's dots to no-data for exactly this reason, so neither the
+    // counter nor any dot beside a paused name is ever red.
+    offTrack: clients.filter(
+      (client) => COACHED_STATUSES.has(client.status) && client.adherenceColor === OFF_TRACK_COLOR,
+    ).length,
     needsReview: readCount(needsReviewRows[0]),
     checkinsDue: readCount(checkinRows[0]),
     clients,

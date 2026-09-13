@@ -1,6 +1,8 @@
 import { spacing, tapTarget } from '@coachos/ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import type { DockItemGeometry } from '../dock/dock-item-geometry.ts';
+
 // Every number here is `DESIGN.md` §9's Dock row, transcribed, and cross-read
 // against the live markup in `CoachOS-Coach.dc.html` (the dock is the
 // `tabsVisible` block). They live in one module rather than inside
@@ -8,10 +10,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // every scrollable coach screen has to know how tall the strip it hides is
 // (`router-skeleton/03`, "Content scrolls beneath the bar, not up to it").
 //
-// Coach-scoped on purpose. `router-skeleton/04` builds the client dock from
-// the same §9 row with four items; whether the two collapse into one shared
-// primitive is a decision for after both exist, not a guess made while they
-// are being written in parallel.
+// Coach-scoped on purpose, and it stays that way. `router-skeleton/04`
+// builds the client dock from the same §9 row with four items; the two
+// docks now share ONE item component (`dock/DockItem.tsx`, UNFORGET S11)
+// and still keep TWO geometry records, because §9 states the dock as
+// ranges and the two apps sit at their ends. Nothing below may be replaced
+// by a shared default.
 //
 // `spacing()` rather than a bare literal wherever the value is genuinely a
 // gap, a padding, or an offset — it throws on anything off §1.4's scale, so
@@ -56,6 +60,43 @@ export const COACH_DOCK_BADGE_RIGHT = spacing(12);
 
 /** Breathing room between the last row of content and the dock's lower edge. */
 export const COACH_DOCK_CONTENT_GAP = spacing(12);
+
+/**
+ * The prototype's own `style-active="transform:scale(.94)"`, inside
+ * `DESIGN.md` §5's sanctioned `.92-.98` press range.
+ */
+export const COACH_DOCK_PRESS_SCALE = 0.94;
+
+/**
+ * `accessibility` §3: a tab-bar label is the one place a scale cap is the
+ * right answer rather than a cop-out — the dock's height is a fixed design
+ * value, the icon carries the meaning visually, and every item still exposes
+ * its full name to a screen reader through `accessibilityLabel`. 1.4 keeps
+ * the label inside the 52px item at the largest OS text size.
+ */
+export const COACH_DOCK_LABEL_MAX_FONT_SCALE = 1.4;
+
+/**
+ * The coach half of the two records `DockItem` is parameterised by. The
+ * client half is `CLIENT_DOCK_ITEM` in `client/client-dock-geometry.ts`,
+ * and the two must never be collapsed toward each other — §9 states the
+ * dock as ranges because the two apps sit at their ends
+ * (`dock/dock-item-geometry.ts`, and the test beside it).
+ *
+ * No `hitSlop`: the five coach items are `flex: 1` inside the bar's own 5px
+ * padding and already meet edge to edge, so slop would overlap a neighbour
+ * rather than add reach. The client dock's four wider items do carry it.
+ */
+export const COACH_DOCK_ITEM = {
+  itemHeight: COACH_DOCK_ITEM_HEIGHT,
+  itemGap: COACH_DOCK_ITEM_GAP,
+  iconSize: COACH_DOCK_ICON_SIZE,
+  iconStrokeWidth: COACH_DOCK_ICON_STROKE_WIDTH,
+  pressScale: COACH_DOCK_PRESS_SCALE,
+  /** The client dock's label is tracked `.01em`; this one sets none. */
+  labelTracking: 0,
+  labelMaxFontScale: COACH_DOCK_LABEL_MAX_FONT_SCALE,
+} as const satisfies DockItemGeometry;
 
 // §9's `bottom: 26px` is measured from the physical screen edge and already
 // contains the home-indicator band — the prototype draws the indicator at

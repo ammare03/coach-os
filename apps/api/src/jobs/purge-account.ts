@@ -7,16 +7,29 @@ import { createHash } from 'node:crypto';
 import { schema, type DbClient } from '@coachos/db';
 import { and, eq } from 'drizzle-orm';
 
-import { deleteR2Objects } from '../lib/storage/r2-client.ts';
+import { deleteR2Objects, deleteR2ObjectsByPrefix } from '../lib/storage/r2-client.ts';
 
-// DEFERRED — DB§19.2 steps 7 and 8 touch tables that don't exist in this
+// DEFERRED — DB§19.2 step 7 touches tables that don't exist in this
 // codebase yet: `platform.moderation_actions` belongs to
-// `phase-26-trust-and-safety` (unbuilt), and `platform.export_requests` is
-// built by this same feature's own tasks 09/10, which run after this one.
-// Both MUST extend this function once their tables land — tracked in
-// docs/UNFORGET.md so this isn't silently forgotten past ship gate 1.
-// `reports`/`blocks` (also phase-26) are the same story, not separately
-// called out since DB§19.2 doesn't number them as their own step.
+// `phase-26-trust-and-safety` (unbuilt), and `reports`/`blocks` are the
+// same story, not separately called out since DB§19.2 doesn't number them
+// as their own step. That step MUST extend this function once those
+// tables land — tracked in docs/UNFORGET.md so it isn't silently
+// forgotten past ship gate 1. Note it is not just a delete: a
+// `suspension`/`ban` row has to survive with its `target_user_id`
+// replaced by `hashUserId()` below, or deleting an account becomes a
+// ban-reset button (DB§19.2's own warning, CLAUDE.md §21.4).
+//
+// Step 8 is now closed, both halves — see `purgeAccount`'s own doc.
+
+// `exports/{userId}/{exportId}.zip` is DB§16's keyspace; the folder half
+// of it is all this function needs. The key half lives in
+// `./data-export.ts` (`objectKeyFor`), which is deliberately not imported
+// here — it pulls archiver, the export collectors, and the email client
+// into a job that needs one string.
+function exportArchivePrefix(userId: string): string {
+  return `exports/${userId}/`;
+}
 
 function hashUserId(userId: string): string {
   // SHA-256 hex, same pattern as `../features/auth/password-reset.ts`'s
@@ -52,7 +65,19 @@ async function collectMediaAssetKeys(db: DbClient, userId: string): Promise<stri
  *   the rows that pointed at them. A crash between the two leaves at worst
  *   a database row that no longer resolves to real bytes — safe, and
  *   self-healing on retry — never the reverse (orphaned R2 objects with no
- *   row left to ever find them again).
+ *   row left to ever find them again). Either delete throwing aborts the
+ *   purge before a single row changes, and the job retries whole
+ *   (`../queues/registry.ts` — 5 attempts, then dead-letter); R2 treats
+ *   deleting an already-gone key as success, so the retry is safe.
+ *
+ * - **Step 8 (export archives)** — the same step-1 reasoning applied to a
+ *   prefix rather than a key list. `platform.export_requests` rows cascade
+ *   away with `users`, but R2 is not a foreign key: the archives under
+ *   `exports/{userId}/` would otherwise outlive the account until their
+ *   own 7-day lifecycle rule caught up, and DB§19.2 is explicit that an
+ *   archive is a copy of the data being purged and must not outlive it.
+ *   The listing is paged to its end inside the helper — a user with more
+ *   than 1000 archives must not keep the 1001st.
  *
  * - **Steps 2-5** collapse into one `DELETE FROM identity.users`. Every
  *   table those steps name — every `coaching.*`, `nutrition.*`, and
@@ -89,6 +114,7 @@ async function collectMediaAssetKeys(db: DbClient, userId: string): Promise<stri
 export async function purgeAccount(db: DbClient, userId: string): Promise<void> {
   const mediaKeys = await collectMediaAssetKeys(db, userId);
   await deleteR2Objects(mediaKeys);
+  await deleteR2ObjectsByPrefix(exportArchivePrefix(userId));
 
   await db.transaction(async (tx) => {
     // Step 9 — verified foods are excluded; they're reference data once

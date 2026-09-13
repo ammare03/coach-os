@@ -90,9 +90,17 @@ jest.mock('../../../../lib/trpc.ts', () => ({
         },
       },
     },
+    // `relationship-controls/02` — the Coaching section's one read. Left
+    // unresolved on purpose: this file's subject is where **Delete account**
+    // sits, and a section that draws nothing until the coach is known is
+    // the state that proves the row's placement does not depend on it.
+    clientApp: {
+      coach: { useQuery: () => ({ data: undefined, isSuccess: false }) },
+    },
     auth: { signOut: { useMutation: () => ({ mutateAsync: jest.fn() }) } },
     useUtils: () => ({
       invalidate: jest.fn(),
+      clientApp: { invalidate: jest.fn() },
       me: {
         get: {
           cancel: jest.fn(),

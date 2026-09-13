@@ -81,6 +81,8 @@ function describeCode(code: AppErrorCode): string {
     case 'CLIENT_ALREADY_HAS_ACTIVE_ASSIGNMENT':
     case 'SESSION_CLAIMED_ELSEWHERE':
     case 'ACCOUNT_PENDING_DELETION':
+    case 'CLIENT_ARCHIVED':
+    case 'CLIENT_STATUS_TRANSITION_INVALID':
       return code;
     default:
       return assertNever(code);

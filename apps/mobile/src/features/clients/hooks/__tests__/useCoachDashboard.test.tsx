@@ -70,6 +70,9 @@ function buildClient(clientId: string): CoachDashboard['clients'][number] {
     nutritionAdherence: null,
     overallAdherence: 50,
     adherenceColor: 'amber',
+    pausedAt: null,
+    archivedAt: null,
+    coachSince: null,
   };
 }
 

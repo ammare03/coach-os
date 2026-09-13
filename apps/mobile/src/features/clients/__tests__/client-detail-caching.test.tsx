@@ -49,6 +49,8 @@ function makeOverview(clientId: string, name = 'Priya Sharma'): ClientOverview {
     goal: 'fat_loss',
     avatarAssetId: null,
     coachSince: new Date('2026-03-01T00:00:00.000Z'),
+    pausedAt: null,
+    archivedAt: null,
     injuries: [],
     weightTrend: [],
     adherence: {

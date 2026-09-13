@@ -1,6 +1,18 @@
 import type { Worker } from 'bullmq';
 
+import { logger } from '../lib/logger.ts';
+
 import { registerGracefulShutdown } from './graceful-shutdown.ts';
+
+// This suite exercises the force-exit path deliberately, so the subject emits a
+// real error-level `worker.shutdown.timeout`. Unmocked it went to stdout on every
+// full run and read as a production worker hanging — UNFORGET S20 spent a week
+// chasing a queue whose `close()` was never stuck. Mocked the way `../worker.test.ts`
+// and `./worker-registry.test.ts` already do, so the line means something when a
+// run log carries it. Still asserted below, so mocking removes no coverage.
+jest.mock('../lib/logger.ts', () => ({
+  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+}));
 
 function fakeWorker(close: () => Promise<void>): Worker {
   return { close } as unknown as Worker;
@@ -12,6 +24,7 @@ describe('registerGracefulShutdown', () => {
     // they don't stack across tests (or fire for a later, unrelated signal).
     process.removeAllListeners('SIGTERM');
     process.removeAllListeners('SIGINT');
+    jest.clearAllMocks();
   });
 
   it('exits 0 promptly when there are no workers to wait for', async () => {
@@ -58,6 +71,7 @@ describe('registerGracefulShutdown', () => {
     await jest.advanceTimersByTimeAsync(1000);
 
     expect(exit).toHaveBeenCalledWith(1);
+    expect(logger.error).toHaveBeenCalledWith('worker.shutdown.timeout');
     jest.useRealTimers();
   });
 

@@ -1,7 +1,6 @@
 import { schema, type DbClient } from '@coachos/db';
 import { and, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 
-import { dispatchAlert } from '../../lib/alerts.ts';
 import { logger } from '../../lib/logger.ts';
 
 import { ownedByCoach } from './visibility.ts';
@@ -234,28 +233,29 @@ export interface IntegrityFinding {
   orphanCount: number;
 }
 
+/** Both counts, always — a metric needs the zero, a finding does not. */
+export interface OrphanCounts {
+  setLogs: number;
+  personalRecords: number;
+}
+
 /**
- * Asserts every `set_logs.exercise_id` and `personal_records.exercise_id`
- * resolves, and **alerts** (OB§4.1 P1, data integrity) if one does not.
- *
- * This should find nothing, ever — both columns are `REFERENCES
- * training.exercises(id)`, and exercises are archived rather than deleted.
- * It runs anyway because a finding here means a constraint was dropped or a
- * migration went wrong, and a canary nobody listens to is not a canary
- * (that task's Risks).
+ * Counts every `set_logs.exercise_id` and `personal_records.exercise_id`
+ * that does not resolve. Two anti-joins and nothing else: no alert, no log,
+ * no write.
  *
  * **Deliberately global, unlike the other three passes.** An orphan belongs
  * to the system, not to a coach: scoping it through
  * `client_profiles.coach_id` would miss exactly the rows whose ownership
- * chain is itself broken, which is the state this exists to catch. It is
- * two indexed anti-joins, so paying for it once per coach-run is cheaper
- * than the bug it guards against; if that ever stops being true, move it to
- * `metrics-collector.ts`, which already reserves the OB§3.1 row for it.
+ * chain is itself broken, which is the state this exists to catch.
  *
- * The alert carries counts only — never a row id, never a client
- * (`observability-ops` §4, `alerts.ts`'s own contract).
+ * That global shape is why the *metric* built on it lives in
+ * `../../jobs/metrics-collector.ts` (OB§3.1's referential-integrity row)
+ * rather than here — a per-coach series would have to lie about what it
+ * measures. This function is the one query both callers share, so the
+ * weekly pass and the hourly metric can never disagree about the number.
  */
-export async function assertReferentialIntegrity(db: DbClient): Promise<IntegrityFinding[]> {
+export async function countOrphanedExerciseReferences(db: DbClient): Promise<OrphanCounts> {
   const rows = await db.execute(sql`
     SELECT
       (
@@ -274,21 +274,41 @@ export async function assertReferentialIntegrity(db: DbClient): Promise<Integrit
 
   const row: unknown = rows[0];
   const counts = isRecord(row) ? row : {};
+  return {
+    setLogs: readCount(counts.set_logs),
+    personalRecords: readCount(counts.personal_records),
+  };
+}
+
+/**
+ * Pass 3. Reports the non-zero counts and logs them; **does not alert**.
+ *
+ * This should find nothing, ever — both columns are `REFERENCES
+ * training.exercises(id)`, and exercises are archived rather than deleted.
+ * It runs anyway because a finding here means a constraint was dropped or a
+ * migration went wrong, and a canary nobody listens to is not a canary
+ * (that task's Risks).
+ *
+ * **Somebody does listen — just not from here.** The P1 page
+ * (OB§4.1, data integrity) is raised by `../../jobs/alert-evaluator.ts` off
+ * `integrity.orphaned_exercise_refs`, which is the same query on the
+ * collector's cadence. Dispatching from inside this pass instead meant one
+ * page per coach in a genuinely broken week, because the reconcile sweep
+ * fans out one job per coach and each job ran this — and it bypassed the
+ * only dedupe/escalation this codebase has (`observability-ops` §7: alert
+ * fatigue kills alerting in week two). The log line stays: it is the
+ * weekly, per-coach-run record, and it is searchable without paging anyone.
+ */
+export async function assertReferentialIntegrity(db: DbClient): Promise<IntegrityFinding[]> {
+  const counts = await countOrphanedExerciseReferences(db);
   const findings: IntegrityFinding[] = (
     [
-      { table: 'set_logs', orphanCount: readCount(counts.set_logs) },
-      { table: 'personal_records', orphanCount: readCount(counts.personal_records) },
+      { table: 'set_logs', orphanCount: counts.setLogs },
+      { table: 'personal_records', orphanCount: counts.personalRecords },
     ] satisfies IntegrityFinding[]
   ).filter((finding) => finding.orphanCount > 0);
 
   if (findings.length > 0) {
-    const summary = findings
-      .map((finding) => `${finding.orphanCount} orphaned row(s) in training.${finding.table}`)
-      .join('; ');
-    await dispatchAlert({
-      alertId: 'P1',
-      summary: `exercise-reconcile pass 3: ${summary}. A foreign key to training.exercises is missing or was dropped.`,
-    });
     logger.error('exercise_reconcile.integrity_violation', {
       count: findings.reduce((total, finding) => total + finding.orphanCount, 0),
     });

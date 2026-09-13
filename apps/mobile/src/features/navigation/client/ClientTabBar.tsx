@@ -1,6 +1,5 @@
-import { Badge, GlassSurface, Pressable, Text, useTheme } from '@coachos/ui';
+import { Badge, GlassSurface } from '@coachos/ui';
 import { duration, easing, useReducedMotion } from '@coachos/ui/theme';
-import { LinearGradient } from 'expo-linear-gradient';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { ChartColumn, House, MessageSquare, Utensils, type LucideIcon } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
@@ -12,11 +11,9 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import {
-  CLIENT_DOCK,
-  CLIENT_DOCK_ITEM_HIT_SLOP,
-  clientDockBottom,
-} from './client-dock-geometry.ts';
+import { DockItem, DockSelectionPill } from '../dock/index.ts';
+
+import { CLIENT_DOCK, CLIENT_DOCK_ITEM, clientDockBottom } from './client-dock-geometry.ts';
 
 interface ClientTabMeta {
   label: string;
@@ -43,8 +40,8 @@ interface ClientTabMeta {
  * - Coach → `MessageSquare`. A rounded rectangle with a tail dropping from
  *   its lower-left, in both.
  *
- * `DESIGN.md` §13: an icon never travels alone in navigation. Every item
- * below renders icon AND label, and neither is optional.
+ * `DESIGN.md` §13: an icon never travels alone in navigation. `DockItem`
+ * requires both channels and offers no icon-only variant.
  */
 const CLIENT_TABS: Record<string, ClientTabMeta> = {
   index: { label: 'Today', Icon: House },
@@ -54,33 +51,12 @@ const CLIENT_TABS: Record<string, ClientTabMeta> = {
 };
 
 /**
- * §1.2's type scale bottoms out at `micro` (11px); §9's dock label is 10px,
- * a step the scale does not have. `micro` is the nearest, and rounding UP
- * is the right direction for the one app read at arm's length in a badly
- * lit room (`CLAUDE.md` §1.1). Reported rather than hardcoded — adding a
- * 10px step to `packages/ui` is a design decision, not one a route task
- * takes on its own.
- */
-const LABEL_SIZE = 'micro' as const;
-
-/** The client dock's `letter-spacing: .01em`, at `micro`'s 11px. The coach dock sets none. */
-const LABEL_TRACKING = 0.11;
-
-/**
- * `accessibility` §3 accepts a tab bar's labels being lost at 200% text
- * ("icons carry it, and every tab has a label for screen readers"). Capping
- * is strictly better than losing them: at 1.6 the label grows 11 → 17.6px
- * and the item's content still measures 21 + 3 + 24 = 48px inside its 52px
- * box, so nothing clips and the bar never has to grow. The screen reader
- * reads `accessibilityLabel`, which no font scale truncates.
- */
-const LABEL_MAX_FONT_SCALE = 1.6;
-
-/**
  * The badge hangs off the glyph's top-right corner rather than off the
  * item's, so it tracks the icon — this dock's items are ~25% wider than the
  * five-item coach dock's, and the coach prototype's `right: 12px` would
- * leave the badge stranded mid-air here.
+ * leave the badge stranded mid-air here. That is why it goes in
+ * `DockItem`'s `glyphAccessory` slot and the coach's goes in
+ * `itemAccessory`.
  */
 const BADGE_OFFSET = { top: -6, right: -10 } as const;
 
@@ -109,10 +85,15 @@ const PILL_EASING = Easing.bezier(easing.fill[0], easing.fill[1], easing.fill[2]
  * (`duration.state` + `easing.fill`) because §4 says it moves between
  * options and the track never recolours, and it jumps rather than slides
  * under reduced motion — the state change is never optional, only its
- * animation is.
+ * animation is. The sliding is this file's; the pill's material is
+ * `DockSelectionPill`'s, shared with the coach dock, which cross-fades one
+ * per item instead (UNFORGET S11).
+ *
+ * **The item is `dock/DockItem`, drawn from `CLIENT_DOCK_ITEM`.** One
+ * component, two geometry records — §9 states the dock as ranges and this
+ * bar takes the client end of every one of them.
  */
 export function ClientTabBar({ state, descriptors, navigation, insets }: BottomTabBarProps) {
-  const { colors, selectionPill } = useTheme();
   const reducedMotion = useReducedMotion();
 
   const tabs = state.routes.flatMap((route, index) => {
@@ -183,33 +164,20 @@ export function ClientTabBar({ state, descriptors, navigation, insets }: BottomT
             style={[
               styles.pill,
               pillStyle,
-              selectionPill.shadow,
               {
                 top: CLIENT_DOCK.padding,
                 bottom: CLIENT_DOCK.padding,
                 left: CLIENT_DOCK.padding,
-                borderRadius: CLIENT_DOCK.radius,
               },
             ]}
           >
-            <LinearGradient
-              colors={selectionPill.gradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            />
-            <View
-              pointerEvents="none"
-              style={[styles.hairlineTop, { backgroundColor: selectionPill.highlight }]}
-            />
+            <DockSelectionPill cornerRadius={CLIENT_DOCK.radius} />
           </Animated.View>
         ) : null}
 
         {tabs.map(({ route, meta, focused }, position) => {
           const rawBadge = descriptors[route.key]?.options.tabBarBadge;
           const badgeCount = typeof rawBadge === 'number' && rawBadge > 0 ? rawBadge : undefined;
-          const tint = focused ? colors.fg.bright : colors.fg.muted;
-          const Icon = meta.Icon;
 
           function handlePress() {
             const event = navigation.emit({
@@ -227,14 +195,14 @@ export function ClientTabBar({ state, descriptors, navigation, insets }: BottomT
           }
 
           return (
-            <Pressable
+            <DockItem
               key={route.key}
+              geometry={CLIENT_DOCK_ITEM}
+              Icon={meta.Icon}
+              label={meta.label}
+              focused={focused}
               onPress={handlePress}
               onLongPress={handleLongPress}
-              pressScale={CLIENT_DOCK.pressScale}
-              hitSlop={CLIENT_DOCK_ITEM_HIT_SLOP}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: focused }}
               // `Badge` hides itself from the reading order by design, so a
               // count has to be folded in here or it is silent
               // (`accessibility` §2). Factual, never "you have" (`COPY.md`).
@@ -243,34 +211,15 @@ export function ClientTabBar({ state, descriptors, navigation, insets }: BottomT
                   ? `${meta.label}, tab ${position + 1} of ${tabs.length}`
                   : `${meta.label}, ${badgeCount} unread, tab ${position + 1} of ${tabs.length}`
               }
-              containerStyle={styles.itemOuter}
-              style={[styles.item, { minHeight: CLIENT_DOCK.itemHeight, gap: CLIENT_DOCK.itemGap }]}
-            >
-              {/* The testID sits on the wrapper, not the glyph: `react-native-svg`
-                  does not forward one to its host view, and an icon that cannot be
-                  asserted is an icon that can silently go missing. */}
-              <View testID={`client-tab-icon-${route.name}`} style={styles.glyph}>
-                <Icon
-                  size={CLIENT_DOCK.iconSize}
-                  color={tint}
-                  strokeWidth={CLIENT_DOCK.iconStrokeWidth}
-                />
-                {badgeCount === undefined ? null : (
+              iconTestID={`client-tab-icon-${route.name}`}
+              glyphAccessory={
+                badgeCount === undefined ? null : (
                   <View style={[styles.badge, BADGE_OFFSET]}>
                     <Badge tone="brand" size="sm" count={badgeCount} />
                   </View>
-                )}
-              </View>
-              <Text
-                size={LABEL_SIZE}
-                tone={focused ? 'bright' : 'muted'}
-                numberOfLines={1}
-                maxFontSizeMultiplier={LABEL_MAX_FONT_SCALE}
-                style={styles.label}
-              >
-                {meta.label}
-              </Text>
-            </Pressable>
+                )
+              }
+            />
           );
         })}
       </View>
@@ -286,34 +235,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  // The box the pill is slid across. Its radius, gradient, hairline and
+  // drop all belong to `DockSelectionPill` — which is also why this node no
+  // longer clips: `overflow: 'hidden'` and a shadow on one view swallow the
+  // shadow on iOS.
   pill: {
     position: 'absolute',
-    overflow: 'hidden',
-  },
-  hairlineTop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-  },
-  itemOuter: {
-    flex: 1,
-  },
-  item: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  glyph: {
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   badge: {
     position: 'absolute',
-  },
-  label: {
-    letterSpacing: LABEL_TRACKING,
   },
 });
 

@@ -321,6 +321,111 @@ describe('updateHistorySharing', () => {
   });
 });
 
+// `relationship-controls/03`. The settings screen has to show the option
+// the client actually picked, and `history_shared_from` cannot supply it:
+// `computeHistorySharedFrom` above maps *nothing* to the write instant and
+// *12 weeks* to the write instant minus twelve weeks, so a *nothing* chosen
+// six weeks ago and a *12 weeks* chosen today are two past instants with
+// nothing to tell them apart. `history_sharing_choice` is written beside
+// them for display, and only for display.
+describe('history_sharing_choice, the display-only column', () => {
+  async function readClient(tx: DbClient, profileId: string) {
+    const [row] = await tx
+      .select({
+        choice: schema.clientProfiles.historySharingChoice,
+        historySharedFrom: schema.clientProfiles.historySharedFrom,
+        metricsSharedFrom: schema.clientProfiles.metricsSharedFrom,
+        nutritionSharedFrom: schema.clientProfiles.nutritionSharedFrom,
+      })
+      .from(schema.clientProfiles)
+      .where(eq(schema.clientProfiles.id, profileId));
+    return row;
+  }
+
+  it('records the option acceptance chose, beside the timestamp it resolved to', async () => {
+    await withRolledBackTx(async (tx) => {
+      await detachClient(tx, createTestContext({ db: tx }), {
+        clientProfileId: fixture.clientA1.profileId,
+        initiatedBy: 'client',
+      });
+      await attachClient(tx, createTestContext({ db: tx }), {
+        clientProfileId: fixture.clientA1.profileId,
+        newCoachId: fixture.coachB.profileId,
+        historySharing: 'twelve_weeks',
+        shareMetrics: true,
+        shareNutrition: false,
+      });
+
+      const client = await readClient(tx, fixture.clientA1.profileId);
+      expect(client?.choice).toBe('twelve_weeks');
+      expect(client?.historySharedFrom).not.toBeNull();
+    });
+  });
+
+  // The case the column exists for. Both writes land on a past instant;
+  // only the stored choice distinguishes them.
+  it('distinguishes a settings change that a timestamp alone cannot', async () => {
+    await withRolledBackTx(async (tx) => {
+      await detachClient(tx, createTestContext({ db: tx }), {
+        clientProfileId: fixture.clientA1.profileId,
+        initiatedBy: 'client',
+      });
+      await attachClient(tx, createTestContext({ db: tx }), {
+        clientProfileId: fixture.clientA1.profileId,
+        newCoachId: fixture.coachB.profileId,
+        historySharing: 'twelve_weeks',
+        shareMetrics: false,
+        shareNutrition: false,
+      });
+
+      await updateHistorySharing(tx, createTestContext({ db: tx }), {
+        clientProfileId: fixture.clientA1.profileId,
+        historySharing: 'nothing',
+        shareMetrics: false,
+        shareNutrition: true,
+      });
+
+      const client = await readClient(tx, fixture.clientA1.profileId);
+      expect(client?.choice).toBe('nothing');
+      expect(client?.metricsSharedFrom).toBeNull();
+      expect(client?.nutritionSharedFrom).not.toBeNull();
+    });
+  });
+
+  // The guarantee `03`'s Risks section asks for, as a test: enforcement is
+  // the timestamp's job and the enum is never consulted. Narrowing the
+  // stored CHOICE while leaving the stored TIMESTAMP wide must not take
+  // access away — if it did, the display column would have become an
+  // authorisation input behind everyone's back.
+  it('is never read by the authorisation path — only the timestamp is', async () => {
+    await withRolledBackTx(async (tx) => {
+      await detachClient(tx, createTestContext({ db: tx }), {
+        clientProfileId: fixture.clientA1.profileId,
+        initiatedBy: 'client',
+      });
+      await attachClient(tx, createTestContext({ db: tx }), {
+        clientProfileId: fixture.clientA1.profileId,
+        newCoachId: fixture.coachB.profileId,
+        historySharing: 'everything',
+        shareMetrics: false,
+        shareNutrition: false,
+      });
+
+      await tx
+        .update(schema.clientProfiles)
+        .set({ historySharingChoice: 'nothing' })
+        .where(eq(schema.clientProfiles.id, fixture.clientA1.profileId));
+
+      const granted = await graceFnOf('workoutSession', 'historySharedOwnedIds')(
+        tx,
+        { coachProfileId: fixture.coachB.profileId },
+        [fixture.clientA1.workoutSessionId],
+      );
+      expect(granted.has(fixture.clientA1.workoutSessionId)).toBe(true);
+    });
+  });
+});
+
 // Guards against the exact leak this task's implementation fixed: without
 // the `coach_since` boundary, `comment.coachOwnedIds`'s live join to
 // `client_profiles.coach_id` would grant coach B every comment coach A ever

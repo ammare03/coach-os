@@ -4,12 +4,14 @@ import { Download, Info, LogOut, Trash2 } from 'lucide-react-native';
 import { ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { api } from '../../../lib/trpc.ts';
 import { UnsyncedWorkPrompt } from '../../auth/components/UnsyncedWorkPrompt.tsx';
 import { useSignOutFlow } from '../../auth/hooks/useSignOutFlow.ts';
 import { useAuthStore } from '../../auth/store.ts';
 import { AccountHeader } from '../components/AccountHeader.tsx';
 import { AppearanceRow } from '../components/AppearanceRow.tsx';
 import { AppVersionRow } from '../components/AppVersionRow.tsx';
+import { CoachingSection } from '../components/CoachingSection.tsx';
 import { UnitRow } from '../components/UnitRow.tsx';
 
 /**
@@ -49,6 +51,14 @@ export function SettingsScreen() {
   const gutter = densityTokens[density].gutter;
   const sectionGap = densityTokens[density].sectionGap;
 
+  // `relationship-controls/02`. `clientApp.coach`, not `me.get`: `get-me.ts`
+  // returns `users` columns only and says so in its first doc comment —
+  // role-specific fields are their own routers' business. `enabled` because
+  // it is a `clientProcedure`; a coach never calls it. Resolved once, here,
+  // so the section's rows take an object rather than each running a query
+  // (`screen-composition` §2).
+  const coachQuery = api.clientApp.coach.useQuery(undefined, { enabled: isClient });
+
   return (
     <ScrollView
       style={styles.screen}
@@ -81,7 +91,7 @@ export function SettingsScreen() {
                          Availability (quiet hours)            ✓     —     P14 quiet-hours/01
                          Sync workouts to Health               —     ✓     P24 workout-export/03
         Coaching         What {coach} can see                  —     ✓     P10 relationship-controls/03
-                         Leave coach                           —     ✓     P10 relationship-controls/02
+                         Leave coach                           —     ✓     P10 relationship-controls/02 ← MOUNTED
         Privacy & safety Privacy                               ✓     ✓     P15 preferences-and-quiet-hours/04
                          Blocked people                        ✓     ✓     P26 blocking-and-filtering/03
         Your data        Your data (export)                    ✓     ✓     P03 account-lifecycle/11  ← MOUNTED
@@ -114,8 +124,21 @@ export function SettingsScreen() {
         <AppearanceRow density={density} />
       </ListSection>
 
-      {/* COACHING — client only. Empty until P10; renders nothing. */}
-      {isClient ? <ListSection title="Coaching" density={density} /> : null}
+      {/* COACHING — client only, and `CoachingSection` owns everything
+          inside it: the rows when the client has a coach, the section-scale
+          empty state when they do not, and nothing at all until the answer
+          is known. `relationship-controls/03` adds its row inside that
+          component, never here. */}
+      {isClient ? (
+        <CoachingSection
+          coach={coachQuery.data ?? null}
+          // Not `isPending`: a read that FAILED is not "no coach", and
+          // drawing the empty state on a network error would tell a
+          // coached client they have no coach.
+          isLoading={!coachQuery.isSuccess}
+          density={density}
+        />
+      ) : null}
 
       {/* PRIVACY & SAFETY — empty until P15 and P26; renders nothing. */}
       <ListSection title="Privacy & safety" density={density} />

@@ -4,6 +4,8 @@ import { trackEvent } from '../../../lib/analytics/index.ts';
 import { QUERY_CACHE_MAX_AGE_MS } from '../../../lib/query/persister.ts';
 import { api } from '../../../lib/trpc.ts';
 
+import { COACHED_STATUSES } from './useClientListFilters.ts';
+
 // The dashboard's ONE read (`screen-composition` §2 — a list endpoint
 // returns render-complete rows, so no row ever fetches anything). Extracted
 // from the route so `coach-dashboard/03` can tune caching here without
@@ -121,7 +123,12 @@ export function useCoachDashboard() {
  * (`analytics-events` §7).
  */
 function useDashboardViewed(
-  data: { clients: unknown[]; needsReview: number } | undefined,
+  // `clients` was `unknown[]` while only its length was read. `client_count`
+  // now filters on status (§15.5), so the element type narrows to the one
+  // field this needs — not to the whole row, which would couple the event to
+  // the payload's shape.
+  data:
+    { clients: readonly Pick<CoachDashboardClient, 'status'>[]; needsReview: number } | undefined,
   dataUpdatedAt: number,
 ): void {
   // Read in the mount effect rather than in `useRef(Date.now())`: a clock
@@ -146,7 +153,11 @@ function useDashboardViewed(
     const mountedAtMs = mountedAtMsRef.current === 0 ? now : mountedAtMsRef.current;
 
     trackEvent('dashboard_viewed', {
-      client_count: data.clients.length,
+      // Active + invited — the seat-consuming set (`CLAUDE.md` §15.5), which
+      // is what this measured before `relationship-controls/01` widened the
+      // payload to all four statuses. Keyed off `COACHED_STATUSES` rather
+      // than `clients.length` so a future widening cannot move it silently.
+      client_count: data.clients.filter((client) => COACHED_STATUSES.has(client.status)).length,
       // The Needs-review counter is the same signal `coach-dashboard/02`
       // ranks "attention-needed" by, so the property and the sort agree on
       // what attention means rather than inventing a second definition.

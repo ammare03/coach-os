@@ -22,8 +22,10 @@ import type { purgeAccount as PurgeAccount } from './purge-account.ts';
 // credentials, same reasoning as `../features/invites/create-invite.test.ts`'s
 // `sendEmail` mock.
 const deleteR2Objects = jest.fn().mockResolvedValue(undefined);
+const deleteR2ObjectsByPrefix = jest.fn().mockResolvedValue(0);
 jest.mock('../lib/storage/r2-client.ts', () => ({
   deleteR2Objects: (keys: string[]) => deleteR2Objects(keys),
+  deleteR2ObjectsByPrefix: (prefix: string) => deleteR2ObjectsByPrefix(prefix),
 }));
 
 let pgContainer: StartedTestContainer;
@@ -70,6 +72,8 @@ afterAll(async () => {
 
 beforeEach(() => {
   deleteR2Objects.mockClear();
+  deleteR2ObjectsByPrefix.mockClear();
+  deleteR2ObjectsByPrefix.mockResolvedValue(0);
 });
 
 // ---------------------------------------------------------------------------
@@ -655,5 +659,44 @@ describe('purgeAccount', () => {
       .where(eq(schema.mealItems.id, otherItem.id));
     expect(survivingItem).toBeDefined(); // the other client's diary entry still resolves
     expect(survivingItem?.calories).toBe('150.00'); // its snapshot never depended on foods.name
+  });
+
+  // DB§19.2 step 8, both halves. The row half is a cascade and needs no
+  // code here; the R2 half has no foreign key behind it and is the only
+  // reason this function calls storage a second time.
+  it("deletes the user's export archives from R2, which no cascade can reach", async () => {
+    const { user } = await insertCoach();
+    const [request] = await db
+      .insert(schema.exportRequests)
+      .values({ userId: user.id, status: 'ready', objectKey: `exports/${user.id}/x.zip` })
+      .returning();
+    if (!request) throw new Error('no export_requests row');
+
+    await purgeAccount(db, user.id);
+
+    expect(deleteR2ObjectsByPrefix).toHaveBeenCalledWith(`exports/${user.id}/`);
+    const [remainingRequest] = await db
+      .select()
+      .from(schema.exportRequests)
+      .where(eq(schema.exportRequests.id, request.id));
+    expect(remainingRequest).toBeUndefined();
+  });
+
+  it('leaves every row in place when the export-archive delete fails, so the retry is honest', async () => {
+    const { user } = await insertCoach();
+    deleteR2ObjectsByPrefix.mockRejectedValueOnce(new Error('R2 unavailable'));
+
+    await expect(purgeAccount(db, user.id)).rejects.toThrow('R2 unavailable');
+
+    // Same policy the media-key delete already has: storage runs before
+    // the transaction and its failure aborts the purge outright, so the
+    // job retries (queues/registry.ts — 5 attempts, then dead-letter)
+    // against a user whose rows are all still there. The reverse order
+    // would leave archives nobody can ever find again.
+    const [survivingUser] = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.id, user.id));
+    expect(survivingUser).toBeDefined();
   });
 });

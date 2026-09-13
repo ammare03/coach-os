@@ -36,6 +36,57 @@ describe('detectFiringConditions', () => {
     expect(detectFiringConditions(metrics)).toEqual([]);
   });
 
+  it('fires P1 when orphaned exercise references are non-zero (OB§3.1 pass 3, S23)', async () => {
+    const { detectFiringConditions } = await import('./alert-evaluator.ts');
+    const metrics: CollectedMetric[] = [
+      {
+        metric: 'integrity.orphaned_exercise_refs',
+        value: 2,
+        dimensions: { setLogs: 2, personalRecords: 0 },
+      },
+    ];
+    const firing = detectFiringConditions(metrics);
+    expect(firing).toEqual([
+      expect.objectContaining({
+        alertId: 'P1',
+        summary: expect.stringContaining('training.exercises'),
+      }),
+    ]);
+  });
+
+  it('does not fire P1 when orphaned exercise references is zero', async () => {
+    const { detectFiringConditions } = await import('./alert-evaluator.ts');
+    const metrics: CollectedMetric[] = [
+      {
+        metric: 'integrity.orphaned_exercise_refs',
+        value: 0,
+        dimensions: { setLogs: 0, personalRecords: 0 },
+      },
+    ];
+    expect(detectFiringConditions(metrics)).toEqual([]);
+  });
+
+  // `evaluateAlerts` dispatches at most one alert per alert id per cycle, so
+  // two integrity metrics firing as two separate P1 objects would silently
+  // drop one of the two summaries. OB§4.1's P1 is "any integrity metric
+  // non-zero" — one alert, every reason named.
+  it('folds every firing integrity metric into ONE P1 that names both', async () => {
+    const { detectFiringConditions } = await import('./alert-evaluator.ts');
+    const metrics: CollectedMetric[] = [
+      { metric: 'integrity.duplicate_sessions', value: 3 },
+      {
+        metric: 'integrity.orphaned_exercise_refs',
+        value: 1,
+        dimensions: { setLogs: 1, personalRecords: 0 },
+      },
+    ];
+    const firing = detectFiringConditions(metrics);
+    expect(firing).toHaveLength(1);
+    expect(firing[0]?.alertId).toBe('P1');
+    expect(firing[0]?.summary).toContain('duplicate workout session');
+    expect(firing[0]?.summary).toContain('training.exercises');
+  });
+
   it('fires P2 only above the error-rate threshold AND above the minimum traffic floor', async () => {
     const { detectFiringConditions } = await import('./alert-evaluator.ts');
     const lowTraffic: CollectedMetric[] = [
@@ -115,6 +166,33 @@ describe('evaluateAlerts — dedupe and escalation', () => {
 
       expect(thirdPass).toEqual(['P3']);
       expect(dispatchAlert).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // S23's second half. Pass 3 used to call `dispatchAlert` directly from
+  // `services/exercises/reconcile.ts`, once per coach-run — in a genuinely
+  // broken week that is one page per coach, which is how alerting dies
+  // (`observability-ops` §7). Routing the orphan count through the metric
+  // makes it share the one dedupe every other condition already uses.
+  it('dedupes the orphan P1 across evaluations, exactly like every other condition', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const dispatchAlert = jest.fn(async () => undefined);
+      jest.doMock('../lib/alerts.ts', () => ({ dispatchAlert }));
+      const { evaluateAlerts } = await import('./alert-evaluator.ts');
+      const { redis } = fakeRedis();
+
+      const orphans: CollectedMetric[] = [
+        {
+          metric: 'integrity.orphaned_exercise_refs',
+          value: 4,
+          dimensions: { setLogs: 3, personalRecords: 1 },
+        },
+      ];
+
+      expect(await evaluateAlerts(orphans, redis)).toEqual(['P1']);
+      expect(await evaluateAlerts(orphans, redis)).toEqual([]);
+      expect(await evaluateAlerts(orphans, redis)).toEqual([]);
+      expect(dispatchAlert).toHaveBeenCalledTimes(1);
     });
   });
 

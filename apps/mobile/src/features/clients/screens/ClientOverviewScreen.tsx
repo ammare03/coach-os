@@ -15,14 +15,18 @@ import {
 } from '@coachos/ui';
 import { formatLocalDate } from '@coachos/utils';
 import { TriangleAlert } from 'lucide-react-native';
+import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { useWeightUnit } from '../../../hooks/useWeightUnit.ts';
 import { getErrorCode } from '../../../lib/error-code.ts';
 import { useClientOverview, type ClientOverview, type PinnedNote } from '../api.ts';
+import { ClientStatusActions } from '../components/ClientStatusActions.tsx';
 import { InjuriesBanner } from '../components/InjuriesBanner.tsx';
 import { PrivacyLabel } from '../components/PrivacyLabel.tsx';
 import { WeightTrendChart } from '../components/WeightTrendChart.tsx';
+
+import { firstNameOf } from './ClientNotesScreen.tsx';
 
 // §8.3's Overview tab: "weight trend chart, adherence sparkline, current
 // program + week, upcoming check-in, pinned notes, injuries banner."
@@ -45,12 +49,44 @@ export interface ClientOverviewScreenProps {
   clientId: string;
   /** Where "not your client" and "go back" lead. Never a query-dependent action (`screen-composition` §3). */
   onBack: () => void;
+  /** Where a released client's screen goes. The route decides; this screen only reports it. */
+  onReleased: () => void;
 }
 
-export function ClientOverviewScreen({ clientId, onBack }: ClientOverviewScreenProps) {
+/**
+ * Where the relationship block sits, decided ONCE — on the first render
+ * that has a status to decide from, and never again
+ * (`relationship-controls/01`).
+ *
+ * For an active or invited client it is last: the actions come after the
+ * evidence, which is the order a decision is actually made. For a paused or
+ * archived one it is first, because "why is nothing happening here" is the
+ * question the screen now has to answer before anything else on it means
+ * anything.
+ *
+ * It never animates between the two. A pause taken at the foot of the
+ * screen leaves the card where the finger left it; sliding it to the top
+ * under an open undo window would move Archive to where Pause just was.
+ */
+type BlockPlacement = 'top' | 'foot';
+
+function placementFor(status: ClientOverview['status']): BlockPlacement {
+  return status === 'paused' || status === 'archived' ? 'top' : 'foot';
+}
+
+export function ClientOverviewScreen({ clientId, onBack, onReleased }: ClientOverviewScreenProps) {
   const themed = useThemedStyles();
   const unit = useWeightUnit();
   const overview = useClientOverview(clientId);
+
+  // React's own derive-during-render, not an effect: the first render with
+  // data fixes the placement and every render after it reads the same
+  // answer. An effect would place the block, commit, and move it.
+  const [placement, setPlacement] = useState<BlockPlacement | null>(null);
+  const loadedStatus = overview.data?.status;
+  if (placement === null && loadedStatus !== undefined) {
+    setPlacement(placementFor(loadedStatus));
+  }
 
   if (overview.isPending) {
     return (
@@ -86,9 +122,18 @@ export function ClientOverviewScreen({ clientId, onBack }: ClientOverviewScreenP
       testID="client-overview"
     >
       {/* First, and unconditional when non-empty (§8.3 AC). Anything a coach
-          must not miss cannot sit below a chart. */}
+          must not miss cannot sit below a chart — including the statement
+          that follows it, which explains the screen rather than warning
+          about the person. */}
       <InjuriesBanner injuries={overview.data.injuries} />
 
+      {placement === 'top' ? (
+        <RelationshipBlock overview={overview.data} onReleased={onReleased} />
+      ) : null}
+
+      {/* Nothing below is dimmed for a paused client. 82% is still what
+          happened in the seven days before they stopped, and greying it
+          would say otherwise. */}
       <WeightTrendChart points={overview.data.weightTrend} unit={unit} />
 
       <AdherenceCard adherence={overview.data.adherence} />
@@ -98,7 +143,38 @@ export function ClientOverviewScreen({ clientId, onBack }: ClientOverviewScreenP
       <CheckinCard checkin={overview.data.nextCheckin} />
 
       <PinnedNotes notes={overview.data.pinnedNotes} />
+
+      {placement === 'foot' ? (
+        <RelationshipBlock overview={overview.data} onReleased={onReleased} />
+      ) : null}
     </ScrollView>
+  );
+}
+
+interface RelationshipBlockProps {
+  overview: ClientOverview;
+  onReleased: () => void;
+}
+
+/**
+ * Pause, resume, archive and release, wherever `placement` put them.
+ *
+ * `statusSince` is `null` because `coach.clients.overview` does not return
+ * `paused_at` or `archived_at` — the statement well and the header chip
+ * therefore state the status without a date rather than inventing one.
+ * Adding the two columns to `features/coach/client-overview.ts`'s identity
+ * select is the whole of the change that fills them in.
+ */
+function RelationshipBlock({ overview, onReleased }: RelationshipBlockProps) {
+  return (
+    <ClientStatusActions
+      clientId={overview.clientId}
+      firstName={firstNameOf(overview.name)}
+      fullName={overview.name}
+      status={overview.status}
+      statusSince={null}
+      onReleased={onReleased}
+    />
   );
 }
 
