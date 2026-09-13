@@ -5,6 +5,7 @@ import type { Redis } from 'ioredis';
 import { sumRequestOutcome } from '../lib/metrics-counters.ts';
 import type { DependencyStatus } from '../lib/readiness.ts';
 import { pingRedis } from '../lib/redis.ts';
+import { countOrphanedExerciseReferences } from '../services/exercises/reconcile.ts';
 
 /**
  * `observability/06-metrics-and-alerts.md` step 1: "compute, don't
@@ -21,8 +22,6 @@ import { pingRedis } from '../lib/redis.ts';
  *     `SYNC_CONFLICT` rate (OB§3.1) — sourced from the offline outbox and
  *     PostHog (`sync_failed`, ANALYTICS.md AN§3.8), neither of which exists
  *     yet (`offline-sync` skill territory).
- *   - Referential integrity pass 3 (OB§3.1) — the `exercise-reconcile`
- *     queue job (DB§15) is not built.
  *   - API p95 latency by route, transcode/dead-letter queue depth and age
  *     (OB§3.2) — no per-route latency store and no BullMQ queues exist yet
  *     (`background-jobs`, this same phase's feature 6, not started at the
@@ -60,6 +59,38 @@ async function countDuplicateSessions(db: DbClient): Promise<number> {
   return Number((row as { count: string } | undefined)?.count ?? 0);
 }
 
+/**
+ * OB§3.1's referential-integrity row (`exercise-reconcile` pass 3), and the
+ * second P1 signal in this file.
+ *
+ * **A global gauge, with no coach dimension, and that is the measurement
+ * rather than a convenience.** An orphan belongs to the system: scoping it
+ * through `client_profiles.coach_id` would miss exactly the rows whose
+ * ownership chain is the broken thing, so a per-coach series would report a
+ * clean zero for the one failure the metric exists to catch. `metric_samples`
+ * has no coach column and `countDuplicateSessions` above is global for the
+ * same reason — this is the file's existing shape, not an exception to it.
+ *
+ * **Here rather than in the weekly pass, because the cadence is better and
+ * cheaper both.** The reconcile sweep fans out one job per coach, so the
+ * anti-joins ran once per coach per week — at 500 coaches that is ~71 runs a
+ * day and a finding could sit unseen for seven. The collector's cron is
+ * hourly (`.github/workflows/metrics-cron.yml`), so it is 24 runs a day and
+ * a ceiling of one hour. `services/exercises/reconcile.ts` anticipated the
+ * move and owns the query; this imports it rather than writing a second copy
+ * that could drift.
+ */
+async function countOrphanedExerciseRefs(db: DbClient): Promise<CollectedMetric> {
+  const counts = await countOrphanedExerciseReferences(db);
+  return {
+    metric: 'integrity.orphaned_exercise_refs',
+    value: counts.setLogs + counts.personalRecords,
+    // Two counts, so the alert can name which table lost its foreign key
+    // without a second query. Counts only — OB§3's dimension rule.
+    dimensions: { setLogs: counts.setLogs, personalRecords: counts.personalRecords },
+  };
+}
+
 /** OB§3.2: webhook processing lag, in seconds, of the oldest unprocessed event. */
 async function maxWebhookLagSeconds(db: DbClient): Promise<number> {
   const [row] = await db.execute(sql`
@@ -82,20 +113,29 @@ export async function collectMetrics(
   pingDbDep: () => Promise<DependencyStatus> = () => pingDb(db),
   pingRedisDep: () => Promise<DependencyStatus> = pingRedis,
 ): Promise<CollectedMetric[]> {
-  const [duplicateSessions, webhookLagSeconds, dbStatus, redisStatus, okCount, errorCount] =
-    await Promise.all([
-      countDuplicateSessions(db),
-      maxWebhookLagSeconds(db),
-      pingDbDep(),
-      pingRedisDep(),
-      sumRequestOutcome(redis, 'ok', 5),
-      sumRequestOutcome(redis, 'error', 5),
-    ]);
+  const [
+    duplicateSessions,
+    orphanedExerciseRefs,
+    webhookLagSeconds,
+    dbStatus,
+    redisStatus,
+    okCount,
+    errorCount,
+  ] = await Promise.all([
+    countDuplicateSessions(db),
+    countOrphanedExerciseRefs(db),
+    maxWebhookLagSeconds(db),
+    pingDbDep(),
+    pingRedisDep(),
+    sumRequestOutcome(redis, 'ok', 5),
+    sumRequestOutcome(redis, 'error', 5),
+  ]);
 
   const totalRequests = okCount + errorCount;
 
   return [
     { metric: 'integrity.duplicate_sessions', value: duplicateSessions },
+    orphanedExerciseRefs,
     { metric: 'service.webhook_lag_seconds', value: webhookLagSeconds },
     { metric: 'service.db_reachable', value: dbStatus === 'ok' ? 1 : 0 },
     { metric: 'service.redis_reachable', value: redisStatus === 'ok' ? 1 : 0 },

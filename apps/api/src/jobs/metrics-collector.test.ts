@@ -81,6 +81,20 @@ describe('collectMetrics', () => {
     expect(metrics).toContainEqual({ metric: 'service.redis_reachable', value: 1 });
   });
 
+  it('reports zero orphaned exercise references on a healthy database (OB§3.1, pass 3)', async () => {
+    const metrics = await collectMetrics(
+      db,
+      fakeRedis,
+      async () => 'ok',
+      async () => 'ok',
+    );
+    expect(metrics).toContainEqual({
+      metric: 'integrity.orphaned_exercise_refs',
+      value: 0,
+      dimensions: { setLogs: 0, personalRecords: 0 },
+    });
+  });
+
   it('reports zero webhook lag when no webhook events are pending', async () => {
     const metrics = await collectMetrics(
       db,

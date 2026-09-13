@@ -14,6 +14,7 @@ import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainer
 
 import type {
   assertReferentialIntegrity as AssertReferentialIntegrity,
+  countOrphanedExerciseReferences as CountOrphanedExerciseReferences,
   findArchivedButPrescribed as FindArchivedButPrescribed,
   findDuplicateCandidates as FindDuplicateCandidates,
   refreshStaleDisplayNames as RefreshStaleDisplayNames,
@@ -24,10 +25,13 @@ import type {
   runExerciseReconcileSweep as RunExerciseReconcileSweep,
 } from './exercise-reconcile.ts';
 
-// Pass 3 alerts through `dispatchAlert`, which posts to Resend and Expo over
-// real `fetch`. Stubbed at the boundary, same reasoning as
-// `purge-account.test.ts`'s R2 mock: this suite proves the alert *fires*,
-// not that a third party received it.
+// `dispatchAlert` posts to Resend and Expo over real `fetch`, so it is
+// stubbed at the boundary — but no pass calls it any more, and this mock is
+// now here to prove exactly that. The P1 for pass 3 is raised by
+// `alert-evaluator.ts` off `integrity.orphaned_exercise_refs`, where it
+// shares the one dedupe every other alert already uses (S23). A green
+// `not.toHaveBeenCalled()` below is what keeps a future pass from
+// reintroducing a per-coach-run page.
 const dispatchAlert = jest.fn().mockResolvedValue(undefined);
 jest.mock('../lib/alerts.ts', () => ({
   dispatchAlert: (alert: unknown) => dispatchAlert(alert),
@@ -46,6 +50,7 @@ let db: DbClient;
 let findArchivedButPrescribed: typeof FindArchivedButPrescribed;
 let refreshStaleDisplayNames: typeof RefreshStaleDisplayNames;
 let assertReferentialIntegrity: typeof AssertReferentialIntegrity;
+let countOrphanedExerciseReferences: typeof CountOrphanedExerciseReferences;
 let findDuplicateCandidates: typeof FindDuplicateCandidates;
 let runExerciseReconcile: typeof RunExerciseReconcile;
 let runExerciseReconcileSweep: typeof RunExerciseReconcileSweep;
@@ -85,6 +90,7 @@ beforeAll(async () => {
     findArchivedButPrescribed,
     refreshStaleDisplayNames,
     assertReferentialIntegrity,
+    countOrphanedExerciseReferences,
     findDuplicateCandidates,
   } = await import('../services/exercises/reconcile.ts'));
   ({ runExerciseReconcile, runExerciseReconcileSweep } = await import('./exercise-reconcile.ts'));
@@ -464,7 +470,20 @@ describe('pass 3 — referential integrity', () => {
     expect(dispatchAlert).not.toHaveBeenCalled();
   });
 
-  it('alerts P1 when a dropped foreign key has let an orphan through', async () => {
+  it('counts both tables, zeroes included — the metric needs the zero (S23)', async () => {
+    expect(await countOrphanedExerciseReferences(db)).toEqual({
+      setLogs: 0,
+      personalRecords: 0,
+    });
+  });
+
+  // Pass 3 deliberately does NOT dispatch. The reconcile sweep fans out one
+  // job per coach, so alerting from in here was one P1 page per coach in a
+  // genuinely broken week, and it bypassed the only dedupe this codebase has
+  // (`alert-evaluator.ts`). The P1 now comes from
+  // `integrity.orphaned_exercise_refs`; what this pass owes is the count and
+  // the log line. S23.
+  it('reports the orphan and pages nobody when a dropped foreign key lets one through', async () => {
     const coach = await insertCoach();
     const clientId = await insertClient(coach.profileId);
     const exerciseId = await insertExercise(coach.profileId, `Orphan Source ${seq}`, {
@@ -508,10 +527,12 @@ describe('pass 3 — referential integrity', () => {
       const findings = await assertReferentialIntegrity(db);
 
       expect(findings).toEqual([{ table: 'set_logs', orphanCount: 1 }]);
-      expect(dispatchAlert).toHaveBeenCalledTimes(1);
-      expect(dispatchAlert).toHaveBeenCalledWith(
-        expect.objectContaining({ alertId: 'P1', summary: expect.stringContaining('set_logs') }),
-      );
+      // The same orphan is what the metric counts, from the one shared query.
+      expect(await countOrphanedExerciseReferences(db)).toEqual({
+        setLogs: 1,
+        personalRecords: 0,
+      });
+      expect(dispatchAlert).not.toHaveBeenCalled();
     } finally {
       await db.delete(schema.setLogs).where(eq(schema.setLogs.clientLocalId, orphanLocalId));
       await db.execute(sql`
